@@ -56,6 +56,15 @@ struct Grid3D {
             "Wave3D allocated grid size overflows size_t");
     }
 
+    [[nodiscard]] std::size_t physical_linear_index(
+        std::size_t x, std::size_t y, std::size_t z) const {
+        static_cast<void>(physical_cell_count());
+        if (x >= nx || y >= ny || z >= nz) {
+            throw std::out_of_range("Wave3D grid index is outside physical storage");
+        }
+        return x + nx * (y + ny * z);
+    }
+
     // Storage order is [z][y][x], so x is the contiguous dimension.
     [[nodiscard]] std::size_t linear_index(
         std::size_t x, std::size_t y, std::size_t z) const {

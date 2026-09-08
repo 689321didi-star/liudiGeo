@@ -6,7 +6,7 @@ directory and is used only as a numerical reference.
 
 ## Current foundation
 
-The first two increments intentionally contain no wave-propagation kernels.
+The first three increments intentionally contain no wave-propagation kernels.
 They define and test:
 
 - physical and allocated grid dimensions;
@@ -17,7 +17,11 @@ They define and test:
 - optional CUDA discovery and error translation;
 - move-only RAII device memory;
 - a field-by-field elastic forward memory budget;
-- a trivial CUDA allocation/copy/fill round trip.
+- a trivial CUDA allocation/copy/fill round trip;
+- distinct physical, physical-grid, and padded-storage coordinates;
+- validated homogeneous and horizontal-layer elastic models;
+- a Ricker source-time function and symmetric moment-tensor source;
+- deterministic regular surface receivers for `vx`, `vy`, and `vz`.
 
 ## Build
 

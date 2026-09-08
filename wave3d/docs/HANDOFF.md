@@ -255,14 +255,79 @@ Observed results:
 - Plan result: fits with approximately 4136.2 MiB budget headroom. Available
   memory is time-dependent and must be queried for every production run.
 
+## Increment 3 implementation
+
+Increment 3 adds deterministic physical inputs without propagation code:
+
+- `coordinates.hpp` defines separate physical-point, physical-grid, and
+  padded-storage coordinate/index types, validates the inclusive grid-node
+  domain, and performs checked mappings.
+- `physical_model.hpp` owns unpadded `[z][y][x]` `Vp`, `Vs`, and density arrays,
+  validates their sizes and cells, reports extrema, and generates homogeneous
+  or horizontal-layer models.
+- `source.hpp` validates a six-component symmetric moment tensor in N·m,
+  provides a positive isotropic-explosion preset, evaluates a delayed Ricker
+  wavelet robustly, and prepares source storage coordinates.
+- `receiver.hpp` prepares arbitrary receiver locations and generates regular
+  three-component surface geometry with deterministic x-fastest ordering.
+- `wave3d_forward` prints resolved source/receiver coordinate conventions,
+  tensor order and values, source-time parameters, and receiver components.
+- Coordinate, model, and acquisition tests cover valid and invalid domains,
+  layer interfaces, extrema, deterministic generation, waveform values,
+  metadata, tensor validation, and receiver ordering.
+
+No source injection, interpolation weights, finite-difference coefficients,
+wavefield state, or time stepping is implemented. The metadata intentionally
+labels the moment-injection sign provisional.
+
+## Increment 3 verification
+
+Commands run on 2026-09-08:
+
+```text
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DWAVE3D_ENABLE_CUDA=OFF
+cmake --build build --config Release --parallel
+ctest --test-dir build -C Release --output-on-failure
+./build/wave3d_forward
+
+cmake -S . -B build-cuda -DCMAKE_BUILD_TYPE=Release \
+  -DWAVE3D_ENABLE_CUDA=ON
+cmake --build build-cuda --config Release --parallel
+ctest --test-dir build-cuda -C Release --output-on-failure
+
+cmake -S . -B build-sanitize -DCMAKE_BUILD_TYPE=Debug \
+  -DWAVE3D_ENABLE_CUDA=OFF \
+  -DCMAKE_CXX_FLAGS=-fsanitize=address,undefined \
+  -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined
+cmake --build build-sanitize --config Debug --parallel
+ASAN_OPTIONS=detect_leaks=0 \
+  ctest --test-dir build-sanitize -C Debug --output-on-failure
+
+compute-sanitizer --tool memcheck --error-exitcode 1 \
+  ./build-cuda/wave3d_cuda_tests
+```
+
+Observed results:
+
+- CPU-only Release: 5/5 tests passed without compiler warnings.
+- CUDA-enabled Release: 6/6 tests passed, including the existing RTX 5060
+  allocation/copy/fill regression.
+- AddressSanitizer and UndefinedBehaviorSanitizer: 5/5 CPU tests passed with
+  leak detection disabled for the previously documented execution constraint.
+- Compute Sanitizer memcheck: zero errors.
+- The `200^3` smoke executable maps the sample source at
+  `(1000 m, 1000 m, 500 m)` to fractional padded storage coordinate
+  `(126, 126, 56)` and reports nine regular surface receivers.
+
 ## Exact next action
 
-Increment 2 is complete after reviewing and committing its diff. Do not start
-propagation equations or CUDA propagation kernels. Increment 3 is limited to
-physical-coordinate/storage mapping, validated `Vp`/`Vs`/density model objects,
-homogeneous/layered generators, Ricker source, symmetric moment tensor, and
-deterministic receiver geometry.
+Increment 3 is complete after reviewing and committing its diff. Stop before
+Increment 4: do not implement propagation equations, source injection, or CPU
+or CUDA propagation kernels yet.
 
-Before Increment 4, complete the scientific reference gate in `ROADMAP.md` and
-obtain reviewable equations, staggering, coefficients, source convention,
-stability condition, and analytical test definitions.
+The next increment is the scientific reference gate in `ROADMAP.md`. It must
+produce reviewable elastic equations, component staggering, spatial
+coefficients, update/time-level order, source sign and normalization, stability
+condition, and analytical test definitions from auditable primary references
+or explicitly marked derivations. Only after that gate is reviewed may the CPU
+elastic reference implementation begin.

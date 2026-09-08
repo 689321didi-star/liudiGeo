@@ -205,3 +205,22 @@ allocation plus a runtime reserve against a configurable fraction of current
 free device memory. The initial plan deliberately retains conservative model,
 coefficient, wavefield, sponge, receiver, and workspace allocations. It must be
 revised explicitly as later ownership and boundary designs become concrete.
+
+## D021 — Physical input storage and prepared acquisition coordinates
+
+**Status:** Accepted, 2026-09-08
+
+Elastic input models own only the unpadded physical `Vp`, `Vs`, and density
+arrays in `[z][y][x]` order with contiguous x. Halo and absorbing storage are
+propagator concerns; duplicating them in the input model would obscure model
+semantics and commit to an unverified boundary implementation. Homogeneous and
+horizontal-layer generators produce this same representation.
+
+Public source and receiver locations are expressed in metres and must lie on
+or within the physical grid's node extent. Preparation maps them once to
+fractional padded-storage coordinates. Regular surface receivers use x-fastest
+ordering and declare `vx`, `vy`, and `vz` as their eventual sampled components.
+The six-component symmetric moment tensor uses N·m and a separately parameterized
+Ricker time function. Tensor injection sign, normalization, interpolation, and
+staggered placement are not decided by this domain layer and remain blocked on
+the scientific reference gate.

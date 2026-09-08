@@ -28,6 +28,18 @@ if(WAVE3D_BUILD_TESTS)
     add_executable(wave3d_memory_plan_tests tests/test_memory_plan.cpp)
     target_link_libraries(wave3d_memory_plan_tests PRIVATE wave3d_core)
     add_test(NAME wave3d_memory_plan_tests COMMAND wave3d_memory_plan_tests)
+
+    add_executable(wave3d_coordinate_tests tests/test_coordinates.cpp)
+    target_link_libraries(wave3d_coordinate_tests PRIVATE wave3d_core)
+    add_test(NAME wave3d_coordinate_tests COMMAND wave3d_coordinate_tests)
+
+    add_executable(wave3d_model_tests tests/test_model.cpp)
+    target_link_libraries(wave3d_model_tests PRIVATE wave3d_core)
+    add_test(NAME wave3d_model_tests COMMAND wave3d_model_tests)
+
+    add_executable(wave3d_acquisition_tests tests/test_acquisition.cpp)
+    target_link_libraries(wave3d_acquisition_tests PRIVATE wave3d_core)
+    add_test(NAME wave3d_acquisition_tests COMMAND wave3d_acquisition_tests)
 endif()
 
 if(WAVE3D_ENABLE_CUDA)

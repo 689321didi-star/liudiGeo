@@ -91,6 +91,11 @@ racecheck, or synccheck errors.
 physical domain fail; generated models have correct layers and extrema; moment
 tensor and coordinate conventions are printed in resolved metadata.
 
+**Status:** Verified on the target Linux machine on 2026-09-08. CPU-only,
+CUDA-enabled, and sanitizer builds pass. Source injection sign, normalization,
+and staggered placement remain explicitly provisional and block propagation
+until the scientific reference gate is complete.
+
 ## Increment 4 — CPU elastic reference
 
 **Goal:** Create a slow, transparent reference implementation.

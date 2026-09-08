@@ -41,6 +41,12 @@ Owns scalar types, `Grid3D`, coordinate conventions, checked arithmetic, error
 types, non-owning views, and common metadata. It has no CUDA or file-format
 dependency in its public CPU-only subset.
 
+The concrete coordinate API keeps metres (`PhysicalPoint3D`), integer physical
+grid indices, fractional physical-grid coordinates, integer padded-storage
+indices, and fractional padded-storage coordinates distinct. The physical
+domain consists of the grid nodes from zero through `(n-1)d`, inclusively.
+Mapping validates the point before adding the halo and lower absorbing width.
+
 ### `model`
 
 Separates physical input fields from derived propagation coefficients.
@@ -52,6 +58,14 @@ ElasticCoefficients: inverse density, lambda, mu, staggered averages
 
 Generated test models and HDF5-loaded models must produce the same validated
 `PhysicalModel` interface.
+
+The current `PhysicalModel` owns unpadded physical arrays shaped `[nz, ny, nx]`
+with contiguous x. Homogeneous and horizontal-layer generators fill these
+arrays deterministically. Layer interfaces use the first physical z node whose
+depth is greater than or equal to the declared layer top. Per-cell validation
+currently requires finite `Vp > Vs >= 0` and positive finite density; any
+stronger constitutive constraint must follow from the scientific reference
+gate rather than being added implicitly.
 
 ### `wave`
 
@@ -125,6 +139,13 @@ explosion is represented by equal diagonal terms and zero off-diagonal terms.
 `ReceiverSet` supports surface three-component particle-velocity sampling and
 eventually arbitrary geometry. Mapping/interpolation weights are prepared once,
 then reused during the time loop. Per-step host/device transfers are forbidden.
+
+Increment 3 implements exact fractional coordinate preparation, not yet an
+interpolation stencil. A regular surface grid is emitted with x changing
+fastest, then y, at `z=0`; all locations are validated before the set is
+returned. Source metadata records SI coordinates, tensor order and units,
+origin time, and Ricker parameters. The source injection sign is deliberately
+reported as provisional until the equation and staggering review is complete.
 
 ### `io`
 
