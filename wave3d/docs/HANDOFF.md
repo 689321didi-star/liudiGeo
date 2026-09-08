@@ -614,12 +614,32 @@ output remains Increment 9.
 
 ## Exact next action
 
-Increment 4e is complete. The exact next action is Increment 5 only: implement
-clear CUDA stress and velocity kernels plus device-side source injection and
-receiver sampling using the already accepted coefficients, staggering, signs,
-normalization, and time labels. Start with small multi-step full-field and
-trace comparisons against the completed CPU reference. Do not add sponge,
-CPML, free-surface, HDF5, SEG-Y, RTM, or performance fusion in this increment.
-Compile CPU and CUDA builds, run all CPU physics regressions and all Compute
-Sanitizer tools, document numerical tolerances and measured results, then
-commit before Increment 6.
+Increment 5 is complete. The exact next action is Increment 6 only: predeclare
+and implement a replaceable multiplicative sponge with independently prepared
+coefficients and explicit stress/velocity application hooks, including faces,
+edges, and corners. Compare the interior solution before boundary contact,
+measure a reflected-wave threshold, and run a finite long case. Do not add
+CPML or free-surface behavior in this increment.
+
+## Increment 5 implementation and verification
+
+Increment 5 completed the boundary-free CUDA reference on 2026-09-09:
+
+- `cuda/elastic_propagator.cu` implements separate grid-stride stress and
+  velocity kernels, fixed-stencil moment-source injection, and component-wise
+  receiver sampling in the accepted leapfrog order.
+- `cuda/elastic_propagator.hpp` owns all nine wavefields, nine coefficients,
+  fixed source/receiver tables, and complete traces in move-only RAII buffers.
+  Launch and step calls perform no allocation or full-field transfer.
+- `test_cuda_elastic.cpp` compares a deterministic nonzero nine-component
+  manufactured state and an eight-step centered explosion with four off-grid
+  receivers. Every full field and trace had normalized maximum error `0`
+  against CPU, below the predeclared `2e-5` limit; incomplete-stencil corner
+  storage remained exactly zero.
+- The direct Release run measured `400 us` for eight steps and `1,419,864`
+  bytes for all owned device fields/tables/traces in that case.
+
+Verification: CPU Release 11/11, CUDA Release 13/13, ASan/UBSan 11/11, and
+Compute Sanitizer memcheck/initcheck/racecheck/synccheck all passed with zero
+errors or hazards. These results qualify CUDA interior propagation only; no
+absorbing or surface boundary has yet been applied.

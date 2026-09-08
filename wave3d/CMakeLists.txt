@@ -106,7 +106,8 @@ if(WAVE3D_ENABLE_CUDA)
         wave3d_cuda
         STATIC
             src/cuda/device_info.cpp
-            cuda/fill.cu)
+            cuda/fill.cu
+            cuda/elastic_propagator.cu)
     target_link_libraries(wave3d_cuda PUBLIC wave3d_core CUDA::cudart)
     set_target_properties(
         wave3d_cuda
@@ -123,5 +124,16 @@ if(WAVE3D_ENABLE_CUDA)
         target_link_libraries(wave3d_cuda_tests PRIVATE wave3d_cuda)
         add_test(NAME wave3d_cuda_tests COMMAND wave3d_cuda_tests)
         set_tests_properties(wave3d_cuda_tests PROPERTIES LABELS "cuda")
+
+        add_executable(
+            wave3d_cuda_elastic_tests
+            tests/test_cuda_elastic.cpp)
+        target_link_libraries(
+            wave3d_cuda_elastic_tests PRIVATE wave3d_cuda)
+        add_test(
+            NAME wave3d_cuda_elastic_tests
+            COMMAND wave3d_cuda_elastic_tests)
+        set_tests_properties(
+            wave3d_cuda_elastic_tests PROPERTIES LABELS "cuda;physics")
     endif()
 endif()

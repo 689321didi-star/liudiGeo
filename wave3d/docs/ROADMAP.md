@@ -181,6 +181,15 @@ and staggering are documented.
 multiple time steps; compute-sanitizer reports no memory errors; homogeneous
 physics tests pass; timings and peak memory are recorded.
 
+**Status:** Verified on the target RTX 5060 on 2026-09-09. Separate CUDA
+stress, source, velocity, and receiver kernels reproduce the CPU reference
+bitwise for a nonzero nine-component manufactured state and an eight-step
+source/trace case (fixed normalized maximum error limit `2e-5`). All device
+state is move-only and preallocated; the direct eight-step measurement was
+`400 us` with `1,419,864 bytes` of deterministic owned device storage. CPU and
+CUDA Release, ASan/UBSan, and all four Compute Sanitizer gates pass. Increment
+6 sponge preparation and application are next.
+
 ## Increment 6 — Sponge boundary
 
 **Goal:** Obtain a stable finite-domain elastic baseline.

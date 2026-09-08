@@ -355,3 +355,21 @@ transverse leakage, bounded post-source energy, bitwise repeatability, and
 zero-allocation time loops complete Increment 4. This is not a boundary
 qualification, CUDA implementation, file-output feature, or surface-record
 claim.
+
+## D028 — Separate preallocated CUDA elastic reference path
+
+**Status:** Accepted and implemented, 2026-09-09
+
+The first GPU implementation deliberately keeps stress, moment-source,
+velocity, and receiver sampling in separate CUDA kernels.  It owns nine
+wavefield and nine coefficient arrays through move-only `DeviceBuffer`
+members, uploads fixed source/receiver interpolation tables once, and stores
+all three receiver components in preallocated receiver-major arrays.  A step
+does not allocate, free, resize, copy a full field, or synchronize.
+
+The same grid identity, positive time-step, source time `q(n*dt)`, stress sign,
+cell-volume normalization, complete-stencil target ranges, velocity sampling,
+and implicit `(n+1)*dt` trace labels as the CPU reference are retained.  The
+target RTX 5060 produced bitwise-equal fields and traces in the predeclared
+Increment 5 tests.  This decision does not add a boundary or authorize kernel
+fusion; later optimization must continue to compare against this clear path.

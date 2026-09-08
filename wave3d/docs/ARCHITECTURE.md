@@ -125,6 +125,13 @@ discovery, and move-only RAII `DeviceBuffer<T>`. Raw `cudaMalloc` and
 `cudaFree` calls are confined to this ownership layer. CUDA is an optional
 build feature, so CPU core and memory-plan tests do not include CUDA headers.
 
+Increment 5 adds move-only device owners for the nine elastic wavefields, nine
+prepared coefficients, fixed moment-source and receiver stencils, and complete
+receiver trace storage.  Separate CUDA launches preserve the CPU ordering and
+perform no allocation, resize, full-field copy, or synchronization inside a
+step.  Traces use receiver-major `[receiver][sample]` storage and retain `dt`
+as explicit metadata.
+
 ### `physics`
 
 Contains the 3D isotropic elastic constitutive update. Attenuation and
