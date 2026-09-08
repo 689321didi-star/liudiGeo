@@ -17,8 +17,8 @@ enum class TopBoundary {
 };
 
 struct TimeConfig {
-    float dt_s{0.0F};
-    float total_time_s{0.0F};
+    double dt_s{0.0};
+    double total_time_s{0.0};
 
     [[nodiscard]] std::size_t step_count() const {
         if (!std::isfinite(dt_s) || !std::isfinite(total_time_s) ||
@@ -46,27 +46,18 @@ struct MaterialExtrema {
     float max_density_kg_m3{0.0F};
 };
 
+struct NumericalConfig {
+    double cfl_safety_factor{0.9};
+    double design_frequency_hz{0.0};
+};
+
 struct SimulationConfig {
     Grid3D grid{};
     TimeConfig time{};
     MaterialExtrema material{};
     TopBoundary top_boundary{TopBoundary::FreeSurface};
-    // Provisional until the selected staggered-grid coefficients are verified.
-    float provisional_cfl_safety_factor{0.45F};
+    NumericalConfig numerics{};
 };
-
-[[nodiscard]] inline double provisional_dt_limit_s(
-    const SimulationConfig& config) {
-    const auto& grid = config.grid;
-    const auto dx = static_cast<double>(grid.dx_m);
-    const auto dy = static_cast<double>(grid.dy_m);
-    const auto dz = static_cast<double>(grid.dz_m);
-    const double inverse_spacing_norm = std::sqrt(
-        1.0 / (dx * dx) + 1.0 / (dy * dy) + 1.0 / (dz * dz));
-    return static_cast<double>(config.provisional_cfl_safety_factor) /
-           (static_cast<double>(config.material.max_vp_m_s) *
-            inverse_spacing_norm);
-}
 
 [[nodiscard]] inline std::vector<std::string> validate(
     const SimulationConfig& config) {
@@ -126,15 +117,15 @@ struct SimulationConfig {
         grid.z_boundary.lower_absorbing == 0) {
         errors.emplace_back("an absorbing top boundary requires a non-zero layer");
     }
-    if (!std::isfinite(config.provisional_cfl_safety_factor) ||
-        !(config.provisional_cfl_safety_factor > 0.0F) ||
-        !(config.provisional_cfl_safety_factor < 1.0F)) {
+    if (!std::isfinite(config.numerics.cfl_safety_factor) ||
+        !(config.numerics.cfl_safety_factor > 0.0) ||
+        !(config.numerics.cfl_safety_factor < 1.0)) {
         errors.emplace_back(
-            "provisional CFL safety factor must lie between zero and one");
+            "CFL safety factor must lie between zero and one");
     }
-
-    if (errors.empty() && config.time.dt_s > provisional_dt_limit_s(config)) {
-        errors.emplace_back("configured time step exceeds the provisional CFL limit");
+    if (!std::isfinite(config.numerics.design_frequency_hz) ||
+        !(config.numerics.design_frequency_hz > 0.0)) {
+        errors.emplace_back("design frequency must be finite and positive");
     }
 
     try {

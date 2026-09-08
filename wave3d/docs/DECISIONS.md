@@ -59,9 +59,10 @@ framework and a radius value of 6. Wave3D uses the independently derived
 standard 12th-order radius-six spatial operator and second-order leapfrog
 scheme fixed in `ELASTIC_NUMERICAL_SPEC.md` and D022.
 
-The current `provisional_cfl_safety_factor=0.45` helper is a configuration smoke
-check. Increment 4a replaces it with the accepted coefficient-aware CFL and
-dispersion validation before any time stepping is implemented.
+Increment 4a replaced the provisional safety hook with the accepted
+coefficient-aware CFL and dispersion validation before any time stepping was
+implemented. The default safety factor is `0.9`, and every run must declare a
+positive design frequency.
 
 ## D007 — Canonical coordinates and storage layout
 
@@ -254,3 +255,22 @@ The specification and `LEGACY_AUDIT.md` were completed before propagation
 code. The legacy repository has no supplied license and is not copied. Its
 radius, rounded coefficients, layout, and broad launch order are corroborating
 evidence only.
+
+## D023 — Prepared elastic coefficient ownership and numerical gate
+
+**Status:** Accepted and implemented, 2026-09-09
+
+Increment 4a stores the six derivative weights as exact integer ratios with
+compile-time derived doubles and stores the exact spectral maximum
+`1187803/887040`. Runtime numerical validation uses double-precision time and
+design-frequency values, applies the accepted coefficient-aware CFL formula,
+and independently enforces five S-wave points per design wavelength on every
+axis plus twenty samples per design period.
+
+`PhysicalModel` remains unpadded. `ElasticCoefficients` owns nine padded
+`float32` volumes: collocated `lambda`, `mu`, and `K`; three face buoyancies;
+and `mu_xy`, `mu_xz`, and `mu_yz`. Preparation computes in double precision,
+extends physical edge samples constantly before staggering, and rejects
+required nonzero coefficients that overflow or underflow `float32`. The memory
+planner enumerates these actual nine fields. No derivative, wavefield, or time
+update belongs to this decision.

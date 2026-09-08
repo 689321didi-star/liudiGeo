@@ -53,7 +53,7 @@ Separates physical input fields from derived propagation coefficients.
 
 ```text
 PhysicalModel: Vp, Vs, rho
-ElasticCoefficients: inverse density, lambda, mu, staggered averages
+ElasticCoefficients: lambda, mu, K, face buoyancy, edge shear modulus
 ```
 
 Generated test models and HDF5-loaded models must produce the same validated
@@ -66,6 +66,11 @@ depth is greater than or equal to the declared layer top. Per-cell validation
 requires a finite solid with positive `Vp`, `Vs`, density, shear modulus, and
 bulk modulus: `Vp^2 > (4/3)Vs^2`. The accepted coefficient placement and
 heterogeneous averages are defined in `ELASTIC_NUMERICAL_SPEC.md`.
+Increment 4a prepares nine padded `float32` coefficient volumes. Physical edge
+values are extended constantly through all nonphysical storage before face
+buoyancies and four-point harmonic edge shear moduli are calculated in double
+precision. Values that overflow or underflow their required nonzero `float32`
+representation are rejected.
 
 ### `wave`
 
@@ -94,6 +99,11 @@ exact rational coefficients, `I->H`/`H->I` index formulas, spectral radius,
 CFL limit, and design-band rules are fixed in
 `ELASTIC_NUMERICAL_SPEC.md`. Increment 4 implements that document in five
 separately verified sub-increments.
+
+Increment 4a now owns the exact rational constants, their derived double
+values, the exact spectral maximum, coefficient-aware CFL calculation, and
+design-band reporting/validation. It does not apply a derivative or update a
+wavefield; those remain separate gates.
 
 ### `cuda`
 
@@ -236,9 +246,9 @@ total and safety margin
 The program must reject a plan that exceeds a configurable fraction of
 currently available VRAM.
 
-The initial conservative elastic plan enumerates three physical model fields
-(`Vp`, `Vs`, density), five derived coefficient fields (`lambda`, `mu`, and
-three staggered inverse-density fields), nine wavefields, one full-volume
+The conservative elastic plan enumerates three physical model fields (`Vp`,
+`Vs`, density), nine derived coefficient fields (`lambda`, `mu`, `K`, three
+face buoyancies, and three edge shear moduli), nine wavefields, one full-volume
 sponge field, three optional receiver-trace arrays, optional workspace, and a
 runtime reserve. Later increments must update the plan when actual ownership or
 the boundary implementation changes; unimplemented CPML state is not silently

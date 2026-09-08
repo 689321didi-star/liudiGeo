@@ -1,6 +1,6 @@
 # Wave3D Project Handoff
 
-Last updated: 2026-09-08
+Last updated: 2026-09-09
 
 ## Purpose
 
@@ -87,8 +87,8 @@ Do not fill missing kernels by guesswork or copy the monolithic structure.
 - Full wavefield history, RTM images, reverse fields, and P/S-decomposed fields
   are not allocated by the forward executable.
 
-The preliminary CFL helper is only an architectural safety hook. It is not a
-proven limit for the final high-order staggered-grid operator.
+Increment 4a replaced the preliminary CFL hook with the accepted exact
+radius-six spectral bound and independent design-band accuracy checks.
 
 ## Planned I/O
 
@@ -119,10 +119,11 @@ origin https://github.com/689321didi-star/liudiGeo.git
 ```
 
 The local `main` branch tracks `origin/main`. The user requested a push after
-Increment 3; local and remote were synchronized at `63ecc49`. Fetch uses the
-HTTPS URL and push uses the authenticated SSH URL. Never force-push or rewrite
-shared history. The user authorizes local commits; a later push still requires
-an explicit request.
+Increment 3; `origin/main` remains at `63ecc49`. Local `main` contains the
+scientific reference gate and Increment 4a after that remote commit. Fetch uses
+the HTTPS URL and push uses the authenticated SSH URL. Never force-push or
+rewrite shared history. The user authorizes local commits; a later push still
+requires an explicit request.
 
 ## Target environment recorded on 2026-09-08
 
@@ -207,12 +208,13 @@ Increment 2 adds CUDA infrastructure without implementing wave propagation:
   launch checking, synchronization, and round-trip copies.
 - `wave3d_cuda_info` prints the device and complete initial memory plan.
 
-The conservative `200^3` example currently budgets 18 padded-volume fields:
-three physical model fields, five derived coefficient fields, nine wavefields,
-and one sponge field. It also budgets 1000 receivers × 4000 samples × three
-components, a 64 MiB workspace, and a 512 MiB runtime reserve. This is a
-planning baseline, not a claim that later CPML or propagator ownership is
-already designed.
+At the Increment 2 gate, the conservative `200^3` example budgeted 18
+padded-volume fields: three physical model fields, five placeholder coefficient
+fields, nine wavefields, and one sponge field. It also budgeted 1000 receivers
+× 4000 samples × three components, a 64 MiB workspace, and a 512 MiB runtime
+reserve. Increment 4a later replaced the coefficient placeholder count with
+the nine actually prepared fields; its current measurements are recorded
+below.
 
 ## Increment 2 verification
 
@@ -349,8 +351,8 @@ written:
 
 No legacy code, finite-difference operator, wavefield, propagation loop,
 boundary algorithm, or CUDA propagation kernel was added during this gate.
-The existing provisional CFL helper deliberately remains conservative until
-Increment 4a installs the accepted coefficient-aware formula and tests.
+Increment 4a subsequently replaced the provisional CFL helper with the
+accepted coefficient-aware formula and tests.
 
 ### Gate verification
 
@@ -379,15 +381,66 @@ commands used for Increment 3. Observed results:
 - `wave3d_forward` prints the accepted tension-positive stress convention,
   distributional body-force sign, stress-rate sign, and Ricker `s^-1` units.
 
+## Increment 4a implementation
+
+Increment 4a was completed on 2026-09-09 without implementing a derivative,
+wavefield, or time step:
+
+- `numerics/staggered_grid.hpp` stores all six weights as accepted exact integer
+  ratios, derives their compile-time doubles, stores the exact spectral maximum
+  `1187803/887040`, and evaluates the phase and group symbols used by tests and
+  metadata.
+- `numerics/elastic_validation.hpp` applies the coefficient-aware CFL bound,
+  requires a positive explicit design frequency, enforces at least five
+  minimum-S-wave points per wavelength on x, y, and z, enforces twenty time
+  samples per design period, and emits the resolved margins.
+- `model/elastic_coefficients.hpp` converts physical `Vp`, `Vs`, and density in
+  double precision to padded `float32` `lambda`, `mu`, and `K`; three face
+  buoyancies; and three harmonic edge shear moduli. Physical edge samples are
+  extended constantly through nonphysical storage before averaging. Overflow
+  and required-nonzero underflow are rejected.
+- `TimeConfig` and numerical control values use double precision. The obsolete
+  provisional safety field and helper are removed. The smoke configuration
+  uses `eta=0.9` and `f_design=45 Hz`, which is three times its `15 Hz` Ricker
+  central frequency.
+- The conservative forward memory plan now enumerates the nine actual prepared
+  coefficient volumes rather than the earlier five-field placeholder.
+
+Focused tests retain the exact rational numerators and denominators, verify all
+odd Taylor moments through power 13, the Nyquist spectral maximum, five-PPW
+phase/group reference errors, exact pass/fail CFL and dispersion thresholds,
+resolved metadata, all nine coefficient arrays, heterogeneous face/edge
+averages, both halo extremes, valid negative `lambda`, and `float32`
+overflow/underflow rejection.
+
+### Increment 4a verification
+
+Commands were the established Release CPU, Release CUDA-enabled, Debug
+ASan/UBSan, and Compute Sanitizer invocations. Observed results:
+
+- CPU-only Release: 7/7 tests passed without compiler warnings.
+- CUDA-enabled Release: 8/8 tests passed, including the existing RTX 5060
+  allocation/copy/fill regression.
+- AddressSanitizer and UndefinedBehaviorSanitizer: 7/7 CPU tests passed with
+  leak detection disabled for the documented execution constraint.
+- Compute Sanitizer memcheck, initcheck, racecheck, and synccheck: zero errors,
+  hazards, or warnings.
+- The sample reports `dt_limit=0.000970109320535 s`, CFL fraction
+  `0.515405830473`, `5.11111111111` S-wave points per design wavelength on all
+  axes, and `44.4444444444` samples per design period.
+- With nine coefficient fields, planned allocations are approximately
+  `1346.2 MiB`; including the `512 MiB` runtime reserve requires approximately
+  `1858.2 MiB`. At the sampled `7314.2 MiB` free VRAM, the 80% budget retained
+  approximately `3993.2 MiB` headroom.
+
 ## Exact next action
 
-The scientific reference gate is complete after its documentation, validation
-changes, regression tests, and commit are reviewed. Do not implement the whole
-CPU propagator in one change.
+Increment 4a is complete. Do not implement the whole CPU propagator in one
+change.
 
-The exact next action is Increment 4a only: implement compile-time exact
-radius-six FD constants, elastic `lambda/mu/K` and staggered buoyancy/shear
-coefficient preparation, the coefficient-aware CFL formula, and design-band
-dispersion validation. Add focused unit tests, compile CPU and CUDA-enabled
-builds, run sanitizers, update this handoff, and commit before starting the CPU
-derivative operator in Increment 4b.
+The exact next action is Increment 4b only: implement the transparent CPU
+radius-six staggered derivative for both `I->H` and `H->I` mappings on x, y,
+and z. Add the predeclared constant, polynomial, convergence, impulse, affine,
+and lattice-offset tests; compile CPU and CUDA-enabled builds; run sanitizers;
+update this handoff; and commit before starting wavefield ownership or a stress
+or velocity update in Increment 4c.

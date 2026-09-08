@@ -6,8 +6,8 @@ directory and is used only as a numerical reference.
 
 ## Current foundation
 
-The first three increments intentionally contain no wave-propagation kernels.
-They define and test:
+The first three increments and Increment 4a intentionally contain no
+wave-propagation kernels. They define and test:
 
 - physical and allocated grid dimensions;
 - the `[z][y][x]` storage convention with contiguous `x`;
@@ -23,10 +23,16 @@ They define and test:
 - a dimensionally defined Ricker moment-rate function and symmetric
   moment-tensor source;
 - deterministic regular surface receivers for `vx`, `vy`, and `vz`.
+- exact rational constants for the standard radius-six, 12th-order staggered
+  derivative and its spectral maximum;
+- padded `float32` elastic `lambda`, `mu`, `K`, face-buoyancy, and edge-`mu`
+  coefficient preparation with constant material extension;
+- the accepted coefficient-aware CFL limit and explicit design-band spatial
+  and temporal dispersion gates.
 
 The accepted interior-equation contract and its predeclared validation tests
-are in `docs/ELASTIC_NUMERICAL_SPEC.md`. No propagation operator is implemented
-yet.
+are in `docs/ELASTIC_NUMERICAL_SPEC.md`. The derivative application itself is
+the next sub-increment and is not implemented yet.
 
 ## Build
 

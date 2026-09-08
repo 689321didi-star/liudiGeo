@@ -1,6 +1,7 @@
 #include "wave3d/acquisition/receiver.hpp"
 #include "wave3d/acquisition/source.hpp"
 #include "wave3d/core/simulation_config.hpp"
+#include "wave3d/numerics/elastic_validation.hpp"
 
 #include <iostream>
 
@@ -13,12 +14,13 @@ int main() {
         10.0F, 10.0F, 10.0F,
         6,
         {20, 20}, {20, 20}, {0, 20}};
-    config.time = {0.0005F, 2.0F};
+    config.time = {0.0005, 2.0};
     config.material = {
         4000.0F, 4000.0F, 2300.0F, 2300.0F, 2500.0F, 2500.0F};
     config.top_boundary = wave3d::TopBoundary::FreeSurface;
+    config.numerics = {0.9, 45.0};
 
-    const auto errors = wave3d::validate(config);
+    const auto errors = wave3d::validate_staggered_elastic(config);
     if (!errors.empty()) {
         for (const auto& error : errors) {
             std::cerr << "configuration error: " << error << '\n';
@@ -42,8 +44,7 @@ int main() {
               << config.grid.allocated_ny() << " x "
               << config.grid.allocated_nz() << '\n'
               << "time steps: " << config.time.step_count() << '\n'
-              << "provisional dt limit: "
-              << wave3d::provisional_dt_limit_s(config) << " s\n"
+              << wave3d::resolved_elastic_numerical_metadata(config) << '\n'
               << wave3d::resolved_source_metadata(source) << '\n'
               << wave3d::resolved_receiver_metadata(receivers) << '\n';
     return 0;

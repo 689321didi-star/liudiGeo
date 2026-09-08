@@ -150,7 +150,16 @@ struct ForwardMemoryPlanRequest {
     for (const char* name : {"vp", "vs", "rho"}) {
         add_field(name, MemoryCategory::Model, cells, scalar_bytes);
     }
-    for (const char* name : {"lambda", "mu", "inv_rho_x", "inv_rho_y", "inv_rho_z"}) {
+    for (const char* name : {
+             "lambda",
+             "mu",
+             "bulk_modulus",
+             "buoyancy_x",
+             "buoyancy_y",
+             "buoyancy_z",
+             "mu_xy",
+             "mu_xz",
+             "mu_yz"}) {
         add_field(name, MemoryCategory::Coefficient, cells, scalar_bytes);
     }
     for (const char* name : {

@@ -40,6 +40,22 @@ if(WAVE3D_BUILD_TESTS)
     add_executable(wave3d_acquisition_tests tests/test_acquisition.cpp)
     target_link_libraries(wave3d_acquisition_tests PRIVATE wave3d_core)
     add_test(NAME wave3d_acquisition_tests COMMAND wave3d_acquisition_tests)
+
+    add_executable(
+        wave3d_numerical_foundation_tests
+        tests/test_numerical_foundation.cpp)
+    target_link_libraries(wave3d_numerical_foundation_tests PRIVATE wave3d_core)
+    add_test(
+        NAME wave3d_numerical_foundation_tests
+        COMMAND wave3d_numerical_foundation_tests)
+
+    add_executable(
+        wave3d_elastic_coefficient_tests
+        tests/test_elastic_coefficients.cpp)
+    target_link_libraries(wave3d_elastic_coefficient_tests PRIVATE wave3d_core)
+    add_test(
+        NAME wave3d_elastic_coefficient_tests
+        COMMAND wave3d_elastic_coefficient_tests)
 endif()
 
 if(WAVE3D_ENABLE_CUDA)

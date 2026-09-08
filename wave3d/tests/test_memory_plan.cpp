@@ -40,15 +40,15 @@ void test_field_by_field_plan() {
     expect(
         plan.grid.allocated_nx() == 252 && plan.grid.allocated_nz() == 232,
         "plan must retain allocated grid dimensions");
-    expect(plan.fields.size() == 22, "plan must enumerate every initial field");
+    expect(plan.fields.size() == 26, "plan must enumerate every prepared field");
     expect(
         plan.category_bytes(wave3d::MemoryCategory::Model) ==
             3 * bytes_per_volume,
         "model category must contain Vp, Vs, and density");
     expect(
         plan.category_bytes(wave3d::MemoryCategory::Coefficient) ==
-            5 * bytes_per_volume,
-        "coefficient category must contain five elastic fields");
+            9 * bytes_per_volume,
+        "coefficient category must contain nine elastic fields");
     expect(
         plan.category_bytes(wave3d::MemoryCategory::Wavefield) ==
             9 * bytes_per_volume,

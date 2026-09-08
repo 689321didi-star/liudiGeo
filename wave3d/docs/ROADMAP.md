@@ -121,6 +121,12 @@ Each sub-increment is a separate compile/test/commit gate. Use a small grid and
 the deliberately unqualified boundary treatment documented in the numerical
 specification.
 
+**4a status:** Verified on 2026-09-09. Exact rational constants and moments,
+the spectral maximum, coefficient preparation and constant halo extension,
+exact CFL/design thresholds, resolved numerical metadata, `float32` conversion
+failures, memory planning, CPU/CUDA builds, ASan/UBSan, and all four Compute
+Sanitizer tools pass. No derivative or time update was added; 4b is next.
+
 **Acceptance:** Derivative tests converge at the documented order; homogeneous
 wavefront symmetry and theoretical P/S arrival times meet stated tolerances;
 energy remains stable after the source in a controlled test; update time levels

@@ -1,4 +1,5 @@
 #include "wave3d/core/simulation_config.hpp"
+#include "wave3d/numerics/elastic_validation.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -23,9 +24,10 @@ wave3d::SimulationConfig valid_config() {
         10.0F, 10.0F, 10.0F,
         6,
         {20, 20}, {20, 20}, {0, 20}};
-    config.time = {0.0005F, 2.0F};
+    config.time = {0.0005, 2.0};
     config.material = {
         4000.0F, 4000.0F, 2300.0F, 2300.0F, 2500.0F, 2500.0F};
+    config.numerics = {0.9, 45.0};
     return config;
 }
 
@@ -58,8 +60,10 @@ void test_validation() {
     auto config = valid_config();
     expect(wave3d::validate(config).empty(), "reference configuration must validate");
 
-    config.time.dt_s = 0.01F;
-    expect(!wave3d::validate(config).empty(), "unstable time step must fail validation");
+    config.time.dt_s = 0.01;
+    expect(
+        !wave3d::validate_staggered_elastic(config).empty(),
+        "unstable time step must fail numerical validation");
 
     config = valid_config();
     config.grid.dx_m = std::numeric_limits<float>::infinity();
