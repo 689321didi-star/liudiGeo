@@ -2,12 +2,13 @@
 
 Status: accepted scientific reference gate, 2026-09-08.
 
-Implementation status: Increments 4a through 4d (exact constants, material
+Implementation status: Increments 4a through 4e (exact constants, material
 coefficients, CFL/design-band validation, checked CPU derivatives, wavefield
 ownership, separate CPU stress/velocity updates, normalized moment-source
-injection, and component-specific receiver interpolation) verified on
-2026-09-09. Boundary hooks and a propagation driver remain unimplemented until
-their later increments; the multi-step physical validation is Increment 4e.
+injection, component-specific receiver interpolation, multi-step CPU
+composition, and pre-boundary homogeneous physical validation) verified on
+2026-09-09. Increment 4 is complete. CUDA propagation and accepted boundary
+operations remain unimplemented until their later increments.
 
 This document is the implementation contract for Increment 4. It fixes the
 interior equations, signs, units, staggering, spatial coefficients, update
@@ -427,9 +428,9 @@ addition to, not substitutes for, the CFL stability check.
 
 ## Increment 4 boundary limitation
 
-The CPU reference will allocate a radius-six halo, extend material coefficients
-constantly, initialize wavefields to zero, and update only points with complete
-stencils. It will not claim an absorbing or free-surface boundary. Physical
+The CPU reference allocates a radius-six halo, extends material coefficients
+constantly, initializes wavefields to zero, and updates only points with
+complete stencils. It does not claim an absorbing or free-surface boundary. Physical
 tests must stop before a wave traveling at `Vp_max` can leave the validation
 region, reach the unqualified edge, and return to a receiver.
 

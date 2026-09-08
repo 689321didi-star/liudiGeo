@@ -120,7 +120,7 @@ origin https://github.com/689321didi-star/liudiGeo.git
 
 The local `main` branch tracks `origin/main`. The user requested a push after
 Increment 3; `origin/main` remains at `63ecc49`. Local `main` contains the
-scientific reference gate and verified work through Increment 4d after that
+scientific reference gate and verified work through Increment 4e after that
 remote commit. Fetch uses the HTTPS URL and push uses the authenticated SSH
 URL. Never force-push or rewrite shared history. The user authorizes local
 commits; a later push still requires an explicit request.
@@ -549,15 +549,77 @@ coupling to a traction-free surface remains Increment 8 work.
 - Compute Sanitizer memcheck, initcheck, racecheck, and synccheck: zero errors,
   hazards, or warnings.
 
+## Increment 4e implementation
+
+Increment 4e completed the boundary-free CPU elastic reference on 2026-09-09.
+It did not add CUDA propagation, an absorbing or free-surface boundary, file
+output, RTM, or performance-oriented kernel fusion:
+
+- `docs/INCREMENT_4E_VALIDATION_PLAN.md` fixed the homogeneous material,
+  sampling, source, receiver geometry, phase-derived arrival tolerances,
+  symmetry/leakage limits, energy window, and allocation criterion before the
+  first multi-step run. It records the rejected `60 m` S trial and the
+  geometry-only Revision A; no acceptance threshold was relaxed.
+- `physics/cpu_elastic_step.hpp` composes one step in the accepted order:
+  stress update, source at `q(n*dt)`, deliberate no-op stress boundary,
+  velocity update, deliberate no-op velocity boundary, and receiver sampling
+  at `(n+1)*dt`. The caller owns the loop and preallocated trace storage.
+- `diagnostics/elastic_energy.hpp` sums face kinetic energy, collocated
+  deviatoric/volumetric normal-stress energy, and the three edge shear-energy
+  terms in joules. It rejects non-finite wavefields or non-positive required
+  coefficients.
+- `test_cpu_elastic_physics.cpp` generates in-memory `vx`, `vy`, and `vz`
+  records. It validates P and S arrival features with an analytical Ricker-
+  derivative matched filter, causal explosion polarity, opposite-axis and
+  cubic symmetry, transverse leakage, a pre-boundary post-source energy
+  envelope, bitwise repeatability, input rejection before mutation, fixed
+  buffer ownership, and zero time-loop allocations.
+
+The accepted Revision A case uses a `41^3` physical grid, six-cell halo,
+`10 m` spacing, `Vp=3200 m/s`, `Vs=2200 m/s`, `rho=2500 kg/m^3`, `0.5 ms`
+sampling, a `40 Hz` source at `(200,200,200) m`, and six axis receivers at
+`90 m`. Delayed arrival runs end at `0.09 s`, before the shortest theoretical
+reflected P path at `0.096875 s`. The causal energy run ends at `0.062 s`,
+before fastest theoretical boundary contact at `0.0625 s`.
+
+Observed physical metrics:
+
+- P feature: `0.0658258512 s` versus `0.065625 s`, within the fixed
+  `0.0010185209 s` tolerance; normalized correlation `0.9939220`.
+- S feature: `0.0792410475 s` versus `0.0784090909 s`, within the fixed
+  `0.0010263976 s` tolerance; normalized correlation `0.9714117`.
+- Maximum recorded symmetry error: `1.21975e-7` relative L2, below `2e-5`.
+- Isotropic transverse/radial trace-energy ratio: `2.05475e-16`, below `1e-8`.
+- Positive/negative x first significant explosion samples:
+  `+2.6643791e-5/-2.6643791e-5 m/s`, both outward.
+- Post-source energy `max/min`: `1.00094514`, below `1.05`.
+- Repeated wavefields and records: bitwise identical; dynamic allocations in
+  every instrumented time loop: zero.
+
+These are interior homogeneous validation records, not surface seismic records
+and not persistent files. Surface physics remains Increment 8; HDF5/SEG-Y
+output remains Increment 9.
+
+### Increment 4e verification
+
+- CPU-only Release: 11/11 tests passed without compiler warnings; the physical
+  test took approximately `11.34 s`.
+- CUDA-enabled Release: 12/12 tests passed, including the unchanged RTX 5060
+  CUDA foundation regression and the CPU physical test.
+- AddressSanitizer and UndefinedBehaviorSanitizer: 11/11 CPU tests passed with
+  leak detection disabled for the documented execution constraint; the fully
+  instrumented physical test took approximately `178.20 s`.
+- Compute Sanitizer memcheck, initcheck, racecheck, and synccheck: zero errors,
+  hazards, or warnings.
+
 ## Exact next action
 
-Increment 4d is complete. The exact next action is Increment 4e only: compose
-the already verified stress update, source injection, velocity update, and
-receiver sampling into the smallest deterministic CPU stepping path needed for
-pre-boundary homogeneous tests. Predeclare the grid, duration, receiver
-geometry, arrival tolerances, and boundary-safe time window before running it.
-Then verify positive-explosion first-motion polarity, theoretical P and S
-arrivals, opposite-axis symmetry, isotropic transverse leakage, post-source
-energy behavior, repeatability, and absence of time-loop allocations. Compile
-CPU and CUDA-enabled builds, rerun sanitizers, document results, and commit
-before beginning Increment 5 CUDA propagation.
+Increment 4e is complete. The exact next action is Increment 5 only: implement
+clear CUDA stress and velocity kernels plus device-side source injection and
+receiver sampling using the already accepted coefficients, staggering, signs,
+normalization, and time labels. Start with small multi-step full-field and
+trace comparisons against the completed CPU reference. Do not add sponge,
+CPML, free-surface, HDF5, SEG-Y, RTM, or performance fusion in this increment.
+Compile CPU and CUDA builds, run all CPU physics regressions and all Compute
+Sanitizer tools, document numerical tolerances and measured results, then
+commit before Increment 6.

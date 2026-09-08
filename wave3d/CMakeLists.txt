@@ -82,6 +82,17 @@ if(WAVE3D_BUILD_TESTS)
     add_test(
         NAME wave3d_staggered_acquisition_tests
         COMMAND wave3d_staggered_acquisition_tests)
+
+    add_executable(
+        wave3d_cpu_elastic_physics_tests
+        tests/test_cpu_elastic_physics.cpp)
+    target_link_libraries(
+        wave3d_cpu_elastic_physics_tests PRIVATE wave3d_core)
+    add_test(
+        NAME wave3d_cpu_elastic_physics_tests
+        COMMAND wave3d_cpu_elastic_physics_tests)
+    set_tests_properties(
+        wave3d_cpu_elastic_physics_tests PROPERTIES LABELS "physics")
 endif()
 
 if(WAVE3D_ENABLE_CUDA)

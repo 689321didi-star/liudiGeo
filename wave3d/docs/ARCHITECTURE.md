@@ -160,6 +160,13 @@ therefore samples `q(n*dt)`; the receiver API accepts the same `n` and labels
 the post-velocity sample `(n+1)*dt`. It does not yet compose these calls into a
 multi-step driver.
 
+Increment 4e adds `cpu_advance_elastic_interior_step`, the minimal composition
+of the two updates, source injection, deliberate no-op boundary positions, and
+receiver sampling. The caller owns the time loop and all trace/frame storage.
+The verified path produces deterministic in-memory three-component records
+without allocating inside a step, but it remains a boundary-free CPU reference
+rather than a production propagator.
+
 ### `boundary`
 
 Provides replaceable boundary components with separate preparation and update
@@ -230,6 +237,13 @@ Provides resolved configuration, environment and Git metadata, NaN/Inf checks,
 amplitude extrema, energy histories, phase/timing measurements, memory plans,
 and sparse snapshots/slices. Diagnostic observers may read views but may not
 control propagation physics.
+
+Increment 4e implements a read-only elastic-energy diagnostic. It sums face
+kinetic energy from buoyancy and particle velocity, normal-stress deviatoric
+and volumetric energy from `mu` and `K`, and edge shear energy from each
+staggered shear modulus. It is used as a bounded pre-boundary stability metric;
+because velocity and stress occupy different leapfrog time levels, it is not
+claimed as an exact same-time invariant.
 
 ### `checkpoint`
 

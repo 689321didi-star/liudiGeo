@@ -330,3 +330,28 @@ written. Receiver sampling occurs after velocity step `n`, labels every sample
 This establishes numerical acquisition mechanics only: multi-step propagation,
 explosion first-motion polarity, arrivals, symmetry, energy behavior, and
 surface/free-surface validity remain later gates.
+
+## D027 — Qualified boundary-free CPU elastic reference
+
+**Status:** Accepted and implemented, 2026-09-09
+
+The Increment 4 CPU path composes each step in the fixed order: stress update,
+moment-rate injection at `q(n*dt)`, explicit no-op stress-boundary position,
+velocity update, explicit no-op velocity-boundary position, and three-component
+sampling labeled `(n+1)*dt`. The caller retains the time loop and owns all
+receiver-frame and trace storage. Valid stepping performs no dynamic allocation.
+
+Physical acceptance uses the predeclared homogeneous case and thresholds in
+`INCREMENT_4E_VALIDATION_PLAN.md`. Arrival lags use a normalized matched filter
+against the time derivative of the Ricker moment-rate pulse and tolerances
+derived from time sampling plus the combined radius-six spatial and leapfrog
+temporal phase prediction. The first `60 m` S trial was rejected because its
+near-field contribution shifted the far-field landmark outside the unchanged
+tolerance; Revision A increased the range and domain without relaxing any
+acceptance threshold.
+
+The accepted `90 m` P and S results, explosion polarity, cubic symmetry,
+transverse leakage, bounded post-source energy, bitwise repeatability, and
+zero-allocation time loops complete Increment 4. This is not a boundary
+qualification, CUDA implementation, file-output feature, or surface-record
+claim.

@@ -151,6 +151,16 @@ volume integrals, signs, unavailable support, invalid state, CPU/CUDA builds,
 ASan/UBSan, and all four Compute Sanitizer regressions pass. No multi-step
 driver or physical propagation claim was added; 4e is next.
 
+**4e status:** Verified on 2026-09-09. The minimal CPU step now composes the
+accepted stress update, `q(n*dt)` source injection, explicit no-op boundary
+positions, velocity update, and `(n+1)*dt` three-component sampling. A
+predeclared homogeneous test passes combined-dispersion P/S arrival tolerances,
+outward explosion polarity, opposite-axis and cubic symmetry, isotropic
+transverse leakage, post-source pre-boundary energy, bitwise determinism, and
+zero time-loop allocations. CPU Release, CUDA-enabled Release, ASan/UBSan, and
+all four Compute Sanitizer gates pass. Increment 4 is complete; Increment 5
+CUDA propagation is next.
+
 **Acceptance:** Derivative tests converge at the documented order; homogeneous
 wavefront symmetry and theoretical P/S arrival times meet stated tolerances;
 energy remains stable after the source in a controlled test; update time levels
