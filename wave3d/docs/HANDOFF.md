@@ -120,7 +120,7 @@ origin https://github.com/689321didi-star/liudiGeo.git
 
 The local `main` branch tracks `origin/main`. The user requested a push after
 Increment 3; `origin/main` remains at `63ecc49`. Local `main` contains the
-scientific reference gate and verified work through Increment 4c after that
+scientific reference gate and verified work through Increment 4d after that
 remote commit. Fetch uses the HTTPS URL and push uses the authenticated SSH
 URL. Never force-push or rewrite shared history. The user authorizes local
 commits; a later push still requires an explicit request.
@@ -504,15 +504,60 @@ malformed layouts, grid mismatch, invalid `dt`, and overflow rejection.
 - Compute Sanitizer memcheck, initcheck, racecheck, and synccheck: zero errors,
   hazards, or warnings.
 
+## Increment 4d implementation
+
+Increment 4d was completed on 2026-09-09 without a boundary algorithm, a
+multi-step propagation driver, CUDA propagation, or physical wave-propagation
+claims:
+
+- `acquisition/trilinear_stencil.hpp` defines the integer, three face, and
+  three edge lattices. It prepares a fixed eight-node stencil by subtracting
+  the field's logical half-cell offsets from the common fractional storage
+  coordinate. Every node index and weight is retained explicitly.
+- Preparation requires complete allocated support and finite, non-negative
+  weights whose double-precision sum is one. It rejects unavailable support;
+  no node clipping or weight renormalization occurs at an edge.
+- `acquisition/moment_source_injector.hpp` prepares separate `sxx`, `syy`,
+  `szz`, `sxy`, `sxz`, and `syz` stencils. At step `n`, it evaluates the Ricker
+  moment rate at `t_n=n*dt` and adds
+  `-dt*Mij*q(t_n)*w/(dx*dy*dz)` to each stress component. Off-diagonal tensor
+  entries are deposited once. All 48 candidate `float32` results are checked
+  before any field is changed.
+- `acquisition/receiver_sampler.hpp` prepares separate `vx`, `vy`, and `vz`
+  stencils. After velocity step `n`, it interpolates the three fields into an
+  exactly sized caller-owned output array and labels the samples `(n+1)*dt`.
+  Sampling neither resizes nor allocates output storage.
+- The focused test verifies all nine lattice assignments and weight sums,
+  volume-integrated source increments for all six tensor entries, source sign
+  and `q(t_n)` timing, unchanged velocity during stress injection, unavailable
+  support rejection, affine-field interpolation for all three velocity
+  components, `(n+1)*dt` labels, preallocated-output preservation, grid and
+  layout checks, invalid time values, transactional `float32` overflow
+  rejection, and non-finite sampled fields.
+
+Surface receiver objects can be prepared when their padded support exists, but
+Increment 4d validates interpolation only at interior points. Their physical
+coupling to a traction-free surface remains Increment 8 work.
+
+### Increment 4d verification
+
+- CPU-only Release: 10/10 tests passed without compiler warnings.
+- CUDA-enabled Release: 11/11 tests passed, including the unchanged RTX 5060
+  CUDA foundation regression.
+- AddressSanitizer and UndefinedBehaviorSanitizer: 10/10 CPU tests passed with
+  leak detection disabled for the documented execution constraint.
+- Compute Sanitizer memcheck, initcheck, racecheck, and synccheck: zero errors,
+  hazards, or warnings.
+
 ## Exact next action
 
-Increment 4c is complete. Do not implement the whole CPU propagator in one
-change.
-
-The exact next action is Increment 4d only: prepare component-specific
-trilinear interpolation stencils, inject the normalized tension-positive
-moment-rate source into the six staggered stress fields, sample `vx/vy/vz` at
-their separate staggered locations, and preserve the accepted time labels.
-Add weight-sum, volume-integral, sign, unavailable-support, interpolation, and
-time-label tests; compile CPU and CUDA-enabled builds; run sanitizers; update
-this handoff; and commit before the multi-step physical tests in Increment 4e.
+Increment 4d is complete. The exact next action is Increment 4e only: compose
+the already verified stress update, source injection, velocity update, and
+receiver sampling into the smallest deterministic CPU stepping path needed for
+pre-boundary homogeneous tests. Predeclare the grid, duration, receiver
+geometry, arrival tolerances, and boundary-safe time window before running it.
+Then verify positive-explosion first-motion polarity, theoretical P and S
+arrivals, opposite-axis symmetry, isotropic transverse leakage, post-source
+energy behavior, repeatability, and absence of time-loop allocations. Compile
+CPU and CUDA-enabled builds, rerun sanitizers, document results, and commit
+before beginning Increment 5 CUDA propagation.

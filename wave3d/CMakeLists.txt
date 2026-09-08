@@ -73,6 +73,15 @@ if(WAVE3D_BUILD_TESTS)
     add_test(
         NAME wave3d_cpu_elastic_update_tests
         COMMAND wave3d_cpu_elastic_update_tests)
+
+    add_executable(
+        wave3d_staggered_acquisition_tests
+        tests/test_staggered_acquisition.cpp)
+    target_link_libraries(
+        wave3d_staggered_acquisition_tests PRIVATE wave3d_core)
+    add_test(
+        NAME wave3d_staggered_acquisition_tests
+        COMMAND wave3d_staggered_acquisition_tests)
 endif()
 
 if(WAVE3D_ENABLE_CUDA)

@@ -154,6 +154,12 @@ positions. Each component is updated only where all of its derivative stencils
 are complete; other storage values remain unchanged because no boundary rule
 is yet accepted.
 
+Increment 4d implements the operation at the source hook and the sampling
+operation after the velocity hook. The source API accepts step index `n` and
+therefore samples `q(n*dt)`; the receiver API accepts the same `n` and labels
+the post-velocity sample `(n+1)*dt`. It does not yet compose these calls into a
+multi-step driver.
+
 ### `boundary`
 
 Provides replaceable boundary components with separate preparation and update
@@ -181,13 +187,20 @@ With tension-positive stress, the accepted distribution is
 eventually arbitrary geometry. Mapping/interpolation weights are prepared once,
 then reused during the time loop. Per-step host/device transfers are forbidden.
 
-Increment 3 implements exact fractional coordinate preparation, not yet an
-interpolation stencil. A regular surface grid is emitted with x changing
+Increment 3 implements exact fractional coordinate preparation. A regular
+surface grid is emitted with x changing
 fastest, then y, at `z=0`; all locations are validated before the set is
 returned. Source metadata records SI coordinates, tensor order and units,
 origin time, moment-rate units, body-force convention, and stress-source sign.
-Increment 4d must prepare separate trilinear stencils for each staggered source
-or receiver component; using one array index for all components is forbidden.
+
+Increment 4d prepares fixed eight-node trilinear stencils separately for the
+integer normal-stress lattice, the three shear-stress edge lattices, and the
+three velocity face lattices. Complete support is required; preparation never
+clips or renormalizes a stencil. Source injection deposits each tensor entry
+once as `-dt*Mij*q(n*dt)*w/(dx*dy*dz)` into its own stress field. Receiver
+sampling writes `vx`, `vy`, and `vz` into caller-preallocated output and does
+not allocate in the time step. Surface receiver physics remains unqualified
+until the traction-free boundary in Increment 8.
 
 ### `io`
 

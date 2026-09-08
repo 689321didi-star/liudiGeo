@@ -309,3 +309,24 @@ specified source and stress-boundary hooks between them and the velocity
 boundary/receiver hooks afterward. Each field updates only its own
 complete-stencil target region. No source, receiver, boundary behavior, or
 multi-step driver is implied by Increment 4c.
+
+## D026 — Component-specific staggered acquisition stencils
+
+**Status:** Accepted and implemented, 2026-09-09
+
+Acquisition preparation converts each physical source or receiver point into
+an independent fixed eight-node trilinear stencil for every required field
+lattice. Normal stresses use the integer lattice; `sxy`, `sxz`, and `syz` use
+their corresponding edge lattices; `vx`, `vy`, and `vz` use their distinct
+face lattices. A stencil is valid only when all eight nodes exist in allocated
+storage and its finite, non-negative weights sum to one within double-precision
+roundoff. No clipping or silent boundary renormalization is permitted.
+
+Moment-source injection samples `q(t_n)` from the supplied step index and adds
+`-dt*Mij*q(t_n)*w/(dx*dy*dz)` once to each tensor component's stress field.
+Updates are checked for finite `float32` representation before any component is
+written. Receiver sampling occurs after velocity step `n`, labels every sample
+`(n+1)*dt`, and writes into caller-preallocated storage without resizing it.
+This establishes numerical acquisition mechanics only: multi-step propagation,
+explosion first-motion polarity, arrivals, symmetry, energy behavior, and
+surface/free-surface validity remain later gates.

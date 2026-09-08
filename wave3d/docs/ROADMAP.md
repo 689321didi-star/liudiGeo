@@ -141,6 +141,16 @@ rejection, unchanged incomplete-stencil storage, and `float32` overflow
 handling. No source, receiver, boundary hook, or propagation driver was added;
 4d is next.
 
+**4d status:** Verified on 2026-09-09. Fixed eight-node trilinear stencils are
+prepared separately for all six stress components and all three particle-
+velocity components. Source injection uses the accepted tension-positive sign,
+cell-volume normalization, one deposition per off-diagonal component, and
+`q(n*dt)`. Receiver sampling restores affine fields on each face lattice,
+labels output `(n+1)*dt`, and writes to preallocated storage. Weight sums,
+volume integrals, signs, unavailable support, invalid state, CPU/CUDA builds,
+ASan/UBSan, and all four Compute Sanitizer regressions pass. No multi-step
+driver or physical propagation claim was added; 4e is next.
+
 **Acceptance:** Derivative tests converge at the documented order; homogeneous
 wavefront symmetry and theoretical P/S arrival times meet stated tolerances;
 energy remains stable after the source in a controlled test; update time levels

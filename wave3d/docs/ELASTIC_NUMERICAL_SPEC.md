@@ -2,11 +2,12 @@
 
 Status: accepted scientific reference gate, 2026-09-08.
 
-Implementation status: Increments 4a through 4c (exact constants, material
+Implementation status: Increments 4a through 4d (exact constants, material
 coefficients, CFL/design-band validation, checked CPU derivatives, wavefield
-ownership, and separate CPU stress/velocity updates) verified on 2026-09-09.
-Source injection, receiver interpolation, boundary hooks, and a propagation
-driver remain unimplemented until their later sub-increments.
+ownership, separate CPU stress/velocity updates, normalized moment-source
+injection, and component-specific receiver interpolation) verified on
+2026-09-09. Boundary hooks and a propagation driver remain unimplemented until
+their later increments; the multi-step physical validation is Increment 4e.
 
 This document is the implementation contract for Increment 4. It fixes the
 interior equations, signs, units, staggering, spatial coefficients, update
