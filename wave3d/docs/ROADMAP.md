@@ -127,6 +127,12 @@ exact CFL/design thresholds, resolved numerical metadata, `float32` conversion
 failures, memory planning, CPU/CUDA builds, ASan/UBSan, and all four Compute
 Sanitizer tools pass. No derivative or time update was added; 4b is next.
 
+**4b status:** Verified on 2026-09-09. The checked pointwise CPU derivative
+implements both stagger mappings on x, y, and z. Constants, affine fields,
+degrees 0–12, every positive/negative impulse offset, complete-stencil ranges,
+`float32` input, invalid sizes/boundaries, and smooth-wave 12th-order
+convergence pass. No wavefield or time update was added; 4c is next.
+
 **Acceptance:** Derivative tests converge at the documented order; homogeneous
 wavefront symmetry and theoretical P/S arrival times meet stated tolerances;
 energy remains stable after the source in a controlled test; update time levels

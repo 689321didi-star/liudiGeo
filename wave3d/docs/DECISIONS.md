@@ -274,3 +274,20 @@ extends physical edge samples constantly before staggering, and rejects
 required nonzero coefficients that overflow or underflow `float32`. The memory
 planner enumerates these actual nine fields. No derivative, wavefield, or time
 update belongs to this decision.
+
+## D024 — Explicit CPU staggered-derivative mappings
+
+**Status:** Accepted and implemented, 2026-09-09
+
+The CPU reference exposes one pointwise radius-six derivative that requires an
+explicit axis and an explicit `IntegerToHalf` or `HalfToInteger` mapping. For
+an allocated axis of length `n`, the valid target ranges are `[5,n-6)` for
+`I->H` and `[6,n-5)` for `H->I`, with the upper limit exclusive. These ranges
+encode the asymmetric array indices caused by the half-cell lattice offset;
+callers may not compensate with ad-hoc index shifts.
+
+The function accepts padded `float` or `double` fields, checks the full volume
+size and target support, and accumulates into double without allocating.
+Boundary targets without all twelve source samples are rejected because the
+Increment 4 CPU interior does not yet define a boundary algorithm. Wavefield
+ownership and update equations remain outside this interface.

@@ -6,8 +6,7 @@ directory and is used only as a numerical reference.
 
 ## Current foundation
 
-The first three increments and Increment 4a intentionally contain no
-wave-propagation kernels. They define and test:
+The verified foundation through Increment 4b defines and tests:
 
 - physical and allocated grid dimensions;
 - the `[z][y][x]` storage convention with contiguous `x`;
@@ -29,10 +28,13 @@ wave-propagation kernels. They define and test:
   coefficient preparation with constant material extension;
 - the accepted coefficient-aware CFL limit and explicit design-band spatial
   and temporal dispersion gates.
+- a checked CPU radius-six staggered derivative for `I->H` and `H->I` mappings
+  along all three storage axes.
 
 The accepted interior-equation contract and its predeclared validation tests
-are in `docs/ELASTIC_NUMERICAL_SPEC.md`. The derivative application itself is
-the next sub-increment and is not implemented yet.
+are in `docs/ELASTIC_NUMERICAL_SPEC.md`. Wavefield ownership and the first
+manufactured stress/velocity update are the next sub-increment and are not
+implemented yet.
 
 ## Build
 

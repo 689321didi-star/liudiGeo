@@ -120,10 +120,10 @@ origin https://github.com/689321didi-star/liudiGeo.git
 
 The local `main` branch tracks `origin/main`. The user requested a push after
 Increment 3; `origin/main` remains at `63ecc49`. Local `main` contains the
-scientific reference gate and Increment 4a after that remote commit. Fetch uses
-the HTTPS URL and push uses the authenticated SSH URL. Never force-push or
-rewrite shared history. The user authorizes local commits; a later push still
-requires an explicit request.
+scientific reference gate and verified work through Increment 4b after that
+remote commit. Fetch uses the HTTPS URL and push uses the authenticated SSH
+URL. Never force-push or rewrite shared history. The user authorizes local
+commits; a later push still requires an explicit request.
 
 ## Target environment recorded on 2026-09-08
 
@@ -433,14 +433,47 @@ ASan/UBSan, and Compute Sanitizer invocations. Observed results:
   `1858.2 MiB`. At the sampled `7314.2 MiB` free VRAM, the 80% budget retained
   approximately `3993.2 MiB` headroom.
 
+## Increment 4b implementation
+
+Increment 4b was completed on 2026-09-09 without adding wavefield ownership or
+any stress, velocity, source, receiver, or boundary update:
+
+- `numerics/cpu_staggered_derivative.hpp` defines explicit x/y/z axes and
+  `IntegerToHalf`/`HalfToInteger` mappings and evaluates the accepted
+  radius-six stencil at one padded-storage target.
+- The complete target range is `[5,n-6)` for `I->H` and `[6,n-5)` for `H->I`,
+  where the upper bound is exclusive. Targets outside these ranges fail rather
+  than silently using an incomplete stencil.
+- Input may be a padded `float` production field or `double` validation field.
+  The operator verifies the exact allocated volume size, accumulates in double,
+  and allocates no temporary volume.
+
+The focused test checks constants, affine fields, every polynomial degree from
+zero through twelve, all 72 combinations of axis, mapping, coefficient, and
+positive/negative impulse location, exact complete-stencil ranges, `float32`
+input, invalid field sizes and boundary targets, and sinusoidal grid
+refinement. Both mappings produced an observed order of approximately `11.87`
+before roundoff, inside the predeclared 12th-order regime.
+
+### Increment 4b verification
+
+- CPU-only Release: 8/8 tests passed without compiler warnings.
+- CUDA-enabled Release: 9/9 tests passed, including the unchanged RTX 5060
+  CUDA foundation regression.
+- AddressSanitizer and UndefinedBehaviorSanitizer: 8/8 CPU tests passed with
+  leak detection disabled for the documented execution constraint.
+- Compute Sanitizer memcheck, initcheck, racecheck, and synccheck: zero errors,
+  hazards, or warnings.
+
 ## Exact next action
 
-Increment 4a is complete. Do not implement the whole CPU propagator in one
+Increment 4b is complete. Do not implement the whole CPU propagator in one
 change.
 
-The exact next action is Increment 4b only: implement the transparent CPU
-radius-six staggered derivative for both `I->H` and `H->I` mappings on x, y,
-and z. Add the predeclared constant, polynomial, convergence, impulse, affine,
-and lattice-offset tests; compile CPU and CUDA-enabled builds; run sanitizers;
-update this handoff; and commit before starting wavefield ownership or a stress
-or velocity update in Increment 4c.
+The exact next action is Increment 4c only: add nine-component `float32`
+wavefield ownership and the transparent one-step CPU stress and velocity
+updates using the accepted leapfrog time levels, prepared coefficients, and
+explicit derivative mappings. Add manufactured affine-field tests covering all
+normal and cross derivatives, compile CPU and CUDA-enabled builds, run
+sanitizers, update this handoff, and commit before source injection or receiver
+interpolation begins in Increment 4d.

@@ -105,6 +105,14 @@ values, the exact spectral maximum, coefficient-aware CFL calculation, and
 design-band reporting/validation. It does not apply a derivative or update a
 wavefield; those remain separate gates.
 
+Increment 4b adds a checked pointwise CPU derivative over padded SoA storage.
+Callers must select `DerivativeAxis::{X,Y,Z}` and either `IntegerToHalf` or
+`HalfToInteger`; the API exposes each mapping's distinct complete-stencil
+target range and rejects boundary targets that cannot supply all radius-six
+samples. It accepts `float` production fields and `double` validation fields,
+accumulates in double, allocates no temporary volume, and still owns no
+wavefield or time-update behavior.
+
 ### `cuda`
 
 Owns CUDA runtime interaction: error translation, launch checks, device

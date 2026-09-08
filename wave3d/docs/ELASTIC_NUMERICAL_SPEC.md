@@ -2,9 +2,10 @@
 
 Status: accepted scientific reference gate, 2026-09-08.
 
-Implementation status: Increment 4a (exact constants, material coefficients,
-CFL, and design-band validation) verified on 2026-09-09. The derivative and
-all wavefield updates remain unimplemented until their later sub-increments.
+Implementation status: Increments 4a and 4b (exact constants, material
+coefficients, CFL/design-band validation, and the checked CPU staggered
+derivative) verified on 2026-09-09. Wavefield ownership and all time updates
+remain unimplemented until their later sub-increments.
 
 This document is the implementation contract for Increment 4. It fixes the
 interior equations, signs, units, staggering, spatial coefficients, update
