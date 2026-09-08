@@ -23,7 +23,8 @@ struct SymmetricMomentTensor {
 struct RickerWavelet {
     double dominant_frequency_hz{0.0};
     double peak_delay_s{0.0};
-    double peak_amplitude{1.0};
+    // q(t)=ds/dt is a moment-rate shape, so its amplitude has units s^-1.
+    double peak_rate_s_inv{1.0};
 };
 
 struct MomentTensorSource {
@@ -82,10 +83,10 @@ inline void require_valid_ricker_wavelet(const RickerWavelet& wavelet) {
         throw std::invalid_argument(
             "Ricker peak delay must be finite and non-negative");
     }
-    if (!std::isfinite(wavelet.peak_amplitude) ||
-        wavelet.peak_amplitude == 0.0) {
+    if (!std::isfinite(wavelet.peak_rate_s_inv) ||
+        wavelet.peak_rate_s_inv == 0.0) {
         throw std::invalid_argument(
-            "Ricker peak amplitude must be finite and non-zero");
+            "Ricker peak moment rate must be finite and non-zero");
     }
 }
 
@@ -103,7 +104,7 @@ inline void require_valid_ricker_wavelet(const RickerWavelet& wavelet) {
     if (!std::isfinite(squared) || squared > 350.0) {
         return 0.0;
     }
-    return wavelet.peak_amplitude * (1.0 - 2.0 * squared) *
+    return wavelet.peak_rate_s_inv * (1.0 - 2.0 * squared) *
            std::exp(-squared);
 }
 
@@ -157,11 +158,14 @@ inline void require_valid_ricker_wavelet(const RickerWavelet& wavelet) {
            << source.moment.m_yy_nm << ',' << source.moment.m_zz_nm << ','
            << source.moment.m_xy_nm << ',' << source.moment.m_xz_nm << ','
            << source.moment.m_yz_nm << '\n'
-           << "moment_injection_sign=provisional_until_increment_4\n"
+           << "stress_sign=tension_positive\n"
+           << "moment_body_force=f_i=-M_ij*s(t)*d_j_delta\n"
+           << "moment_stress_rate=-M_ij*q(t)*delta\n"
            << "ricker_frequency_hz=" << source.wavelet.dominant_frequency_hz
            << '\n'
            << "ricker_peak_delay_s=" << source.wavelet.peak_delay_s << '\n'
-           << "ricker_peak_amplitude=" << source.wavelet.peak_amplitude;
+           << "ricker_value_units=s^-1\n"
+           << "ricker_peak_rate_s_inv=" << source.wavelet.peak_rate_s_inv;
     return output.str();
 }
 

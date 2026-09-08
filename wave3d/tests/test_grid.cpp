@@ -75,6 +75,17 @@ void test_validation() {
     expect(!wave3d::validate(config).empty(), "NaN density must fail validation");
 
     config = valid_config();
+    config.material.min_vs_m_s = 0.0F;
+    expect(!wave3d::validate(config).empty(), "zero Vs is outside solid scope");
+
+    config = valid_config();
+    config.material.min_vp_m_s = 2000.0F;
+    config.material.max_vs_m_s = 1800.0F;
+    expect(
+        !wave3d::validate(config).empty(),
+        "material extrema must guarantee positive bulk modulus");
+
+    config = valid_config();
     config.grid.z_boundary.lower_absorbing = 20;
     expect(
         !wave3d::validate(config).empty(),

@@ -20,8 +20,13 @@ They define and test:
 - a trivial CUDA allocation/copy/fill round trip;
 - distinct physical, physical-grid, and padded-storage coordinates;
 - validated homogeneous and horizontal-layer elastic models;
-- a Ricker source-time function and symmetric moment-tensor source;
+- a dimensionally defined Ricker moment-rate function and symmetric
+  moment-tensor source;
 - deterministic regular surface receivers for `vx`, `vy`, and `vz`.
+
+The accepted interior-equation contract and its predeclared validation tests
+are in `docs/ELASTIC_NUMERICAL_SPEC.md`. No propagation operator is implemented
+yet.
 
 ## Build
 

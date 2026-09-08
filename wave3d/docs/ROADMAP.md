@@ -24,9 +24,13 @@ the propagation equations.
 explicitly marked derivation; legacy reuse and licensing boundaries are clear;
 the CPU reference test plan is reviewable without reading implementation code.
 
-**Status:** Paper metadata is identified, but the full paper is unavailable and
-the elastic equation/operator specification remains incomplete. This does not
-block infrastructure Increments 1–3, but it blocks Increment 4.
+**Status:** Passed on 2026-09-08. `ELASTIC_NUMERICAL_SPEC.md` fixes the
+interior equations, units, stress/source signs, component staggering, standard
+12th-order radius-six coefficients, second-order leapfrog time levels,
+heterogeneous coefficient averages, exact interior CFL bound, design-band
+dispersion rules, and analytical CPU test plan. `LEGACY_AUDIT.md` records the
+supplied and deleted historical source, its limitations, hashes, and licensing
+boundary. Propagation code was not added during this gate.
 
 ## Increment 1 — CPU-only core skeleton
 
@@ -92,9 +96,9 @@ physical domain fail; generated models have correct layers and extrema; moment
 tensor and coordinate conventions are printed in resolved metadata.
 
 **Status:** Verified on the target Linux machine on 2026-09-08. CPU-only,
-CUDA-enabled, and sanitizer builds pass. Source injection sign, normalization,
-and staggered placement remain explicitly provisional and block propagation
-until the scientific reference gate is complete.
+CUDA-enabled, and sanitizer builds pass. The later scientific reference gate
+resolved source injection sign, normalization, and staggered placement before
+propagation work began.
 
 ## Increment 4 — CPU elastic reference
 
@@ -102,11 +106,20 @@ until the scientific reference gate is complete.
 
 **Work:**
 
-- Implement the approved staggered-grid derivative operator.
-- Implement 3D isotropic elastic stress and velocity updates.
-- Inject an isotropic moment-tensor source.
-- Sample three-component validation receivers.
-- Use a small grid and a deliberately simple boundary treatment.
+- **4a:** implement and test exact FD constants, elastic coefficient
+  preparation, CFL, and design-band validation.
+- **4b:** implement the CPU staggered derivative with polynomial,
+  convergence, and lattice-offset tests.
+- **4c:** implement wavefield ownership and manufactured one-step stress and
+  velocity updates.
+- **4d:** implement normalized moment-source injection and component-specific
+  receiver interpolation.
+- **4e:** run homogeneous symmetry, P/S arrival, polarity, energy, determinism,
+  and sanitizer tests in a pre-boundary time window.
+
+Each sub-increment is a separate compile/test/commit gate. Use a small grid and
+the deliberately unqualified boundary treatment documented in the numerical
+specification.
 
 **Acceptance:** Derivative tests converge at the documented order; homogeneous
 wavefront symmetry and theoretical P/S arrival times meet stated tolerances;

@@ -63,9 +63,9 @@ The current `PhysicalModel` owns unpadded physical arrays shaped `[nz, ny, nx]`
 with contiguous x. Homogeneous and horizontal-layer generators fill these
 arrays deterministically. Layer interfaces use the first physical z node whose
 depth is greater than or equal to the declared layer top. Per-cell validation
-currently requires finite `Vp > Vs >= 0` and positive finite density; any
-stronger constitutive constraint must follow from the scientific reference
-gate rather than being added implicitly.
+requires a finite solid with positive `Vp`, `Vs`, density, shear modulus, and
+bulk modulus: `Vp^2 > (4/3)Vs^2`. The accepted coefficient placement and
+heterogeneous averages are defined in `ELASTIC_NUMERICAL_SPEC.md`.
 
 ### `wave`
 
@@ -88,6 +88,13 @@ small constant-memory data after validation. The first correct implementation
 may use separate kernels for clarity; fusion is allowed only after reference
 tests pass.
 
+The selected interior scheme is a standard radius-six, 12th-order centered
+staggered spatial derivative with second-order leapfrog time integration. Its
+exact rational coefficients, `I->H`/`H->I` index formulas, spectral radius,
+CFL limit, and design-band rules are fixed in
+`ELASTIC_NUMERICAL_SPEC.md`. Increment 4 implements that document in five
+separately verified sub-increments.
+
 ### `cuda`
 
 Owns CUDA runtime interaction: error translation, launch checks, device
@@ -103,18 +110,18 @@ viscoelastic state are intentionally outside the project scope.
 Conceptual time step:
 
 ```text
-update stress
-inject stress/moment-tensor source at its defined staggered time
+update stress from v at integer time n
+inject -M*q(t_n)*delta into stress at half time n+1/2
 apply relevant stress boundary operations
-update particle velocities
-inject force source if configured
+update particle velocities to integer time n+1
 apply velocity boundary operations
-sample receivers at a documented time level
+sample receivers at time (n+1)*dt
 notify diagnostics/output/checkpoint observers
 ```
 
-The exact source order and half-step convention must be fixed by the numerical
-derivation and encoded in tests before kernels are finalized.
+Initial state is `v^0=0`, `sigma^(-1/2)=0`. This order and the tension-positive
+stress convention are fixed by the numerical specification and must be encoded
+in CPU tests before CUDA kernels are written.
 
 ### `boundary`
 
@@ -135,6 +142,9 @@ later, measured optimization preserves a separately tested reference path.
 `SourceSet` accepts physical coordinates, origin times, source-time functions,
 and symmetric moment tensors `(Mxx, Myy, Mzz, Mxy, Mxz, Myz)`. An isotropic
 explosion is represented by equal diagonal terms and zero off-diagonal terms.
+The tensor is a scale in N·m; its Ricker function is a moment rate in `s^-1`.
+With tension-positive stress, the accepted distribution is
+`partial_t(sigma_source)=-M*q(t)*delta`.
 
 `ReceiverSet` supports surface three-component particle-velocity sampling and
 eventually arbitrary geometry. Mapping/interpolation weights are prepared once,
@@ -144,8 +154,9 @@ Increment 3 implements exact fractional coordinate preparation, not yet an
 interpolation stencil. A regular surface grid is emitted with x changing
 fastest, then y, at `z=0`; all locations are validated before the set is
 returned. Source metadata records SI coordinates, tensor order and units,
-origin time, and Ricker parameters. The source injection sign is deliberately
-reported as provisional until the equation and staggering review is complete.
+origin time, moment-rate units, body-force convention, and stress-source sign.
+Increment 4d must prepare separate trilinear stencils for each staggered source
+or receiver component; using one array index for all components is forbidden.
 
 ### `io`
 

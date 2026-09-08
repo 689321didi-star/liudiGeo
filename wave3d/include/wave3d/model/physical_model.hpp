@@ -44,15 +44,20 @@ inline void require_valid_elastic_material(const ElasticMaterial& material) {
     if (!std::isfinite(material.vp_m_s) || !(material.vp_m_s > 0.0F)) {
         throw std::invalid_argument("Vp must be finite and positive");
     }
-    if (!std::isfinite(material.vs_m_s) || !(material.vs_m_s >= 0.0F)) {
-        throw std::invalid_argument("Vs must be finite and non-negative");
+    if (!std::isfinite(material.vs_m_s) || !(material.vs_m_s > 0.0F)) {
+        throw std::invalid_argument("Vs must be finite and positive");
     }
     if (!std::isfinite(material.density_kg_m3) ||
         !(material.density_kg_m3 > 0.0F)) {
         throw std::invalid_argument("density must be finite and positive");
     }
-    if (!(material.vp_m_s > material.vs_m_s)) {
-        throw std::invalid_argument("Vp must be greater than Vs at every cell");
+    const double vp_squared =
+        static_cast<double>(material.vp_m_s) * material.vp_m_s;
+    const double vs_squared =
+        static_cast<double>(material.vs_m_s) * material.vs_m_s;
+    if (!(vp_squared > (4.0 / 3.0) * vs_squared)) {
+        throw std::invalid_argument(
+            "Vp^2 must exceed (4/3)Vs^2 so bulk modulus is positive");
     }
 }
 

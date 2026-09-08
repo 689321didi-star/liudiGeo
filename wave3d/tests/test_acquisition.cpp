@@ -35,7 +35,7 @@ void test_ricker_wavelet() {
     const wave3d::RickerWavelet wavelet{20.0, 0.05, 2.0};
     expect(
         near(wave3d::ricker_value(wavelet, 0.05), 2.0),
-        "Ricker value at peak delay must equal peak amplitude");
+        "Ricker value at peak delay must equal peak moment rate");
     expect(
         near(
             wave3d::ricker_value(wavelet, 0.04),
@@ -58,6 +58,14 @@ void test_ricker_wavelet() {
         threw = true;
     }
     expect(threw, "non-positive Ricker frequency must fail");
+
+    threw = false;
+    try {
+        static_cast<void>(wave3d::ricker_value({20.0, 0.05, 0.0}, 0.0));
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    expect(threw, "zero Ricker peak moment rate must fail");
 }
 
 void test_source_preparation() {
@@ -87,8 +95,13 @@ void test_source_preparation() {
         metadata.find("x=east") != std::string::npos &&
             metadata.find("moment_tensor_order=Mxx,Myy,Mzz,Mxy,Mxz,Myz") !=
                 std::string::npos &&
-            metadata.find("provisional_until_increment_4") != std::string::npos,
-        "resolved source metadata must expose convention and provisional sign");
+            metadata.find("stress_sign=tension_positive") != std::string::npos &&
+            metadata.find("moment_body_force=f_i=-M_ij*s(t)*d_j_delta") !=
+                std::string::npos &&
+            metadata.find("moment_stress_rate=-M_ij*q(t)*delta") !=
+                std::string::npos &&
+            metadata.find("ricker_value_units=s^-1") != std::string::npos,
+        "source metadata must expose coordinates, sign, and moment-rate units");
 
     bool threw = false;
     try {

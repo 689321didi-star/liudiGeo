@@ -92,9 +92,23 @@ void test_invalid_models() {
     model = wave3d::make_homogeneous_model(
         test_grid(), {3000.0F, 1700.0F, 2200.0F});
     model.vs_m_s[5] = model.vp_m_s[5];
-    expect(!wave3d::validate(model).empty(), "Vp not greater than Vs must fail");
+    expect(!wave3d::validate(model).empty(), "non-positive bulk modulus must fail");
+
+    model = wave3d::make_homogeneous_model(
+        test_grid(), {3000.0F, 1700.0F, 2200.0F});
+    model.vs_m_s[5] = 0.0F;
+    expect(!wave3d::validate(model).empty(), "zero Vs is outside solid scope");
 
     bool threw = false;
+    try {
+        static_cast<void>(wave3d::make_homogeneous_model(
+            test_grid(), {2000.0F, 1800.0F, 2200.0F}));
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    expect(threw, "Vp greater than Vs is insufficient when bulk modulus is negative");
+
+    threw = false;
     try {
         static_cast<void>(wave3d::make_horizontal_layered_model(test_grid(), {}));
     } catch (const std::invalid_argument&) {

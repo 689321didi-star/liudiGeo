@@ -118,10 +118,11 @@ repository. The root remote is:
 origin https://github.com/689321didi-star/liudiGeo.git
 ```
 
-The local `main` branch tracks the remote initial commit `21c04df`, which
-contains only the root `README.md`. Never force-push or rewrite shared history.
-The user authorizes the agent to create local commits; pushing still requires
-an explicit user request.
+The local `main` branch tracks `origin/main`. The user requested a push after
+Increment 3; local and remote were synchronized at `63ecc49`. Fetch uses the
+HTTPS URL and push uses the authenticated SSH URL. Never force-push or rewrite
+shared history. The user authorizes local commits; a later push still requires
+an explicit request.
 
 ## Target environment recorded on 2026-09-08
 
@@ -277,8 +278,8 @@ Increment 3 adds deterministic physical inputs without propagation code:
   metadata, tensor validation, and receiver ordering.
 
 No source injection, interpolation weights, finite-difference coefficients,
-wavefield state, or time stepping is implemented. The metadata intentionally
-labels the moment-injection sign provisional.
+wavefield state, or time stepping is implemented. The later scientific gate
+made the metadata dimensionally explicit without adding an injector.
 
 ## Increment 3 verification
 
@@ -319,15 +320,74 @@ Observed results:
   `(1000 m, 1000 m, 500 m)` to fractional padded storage coordinate
   `(126, 126, 56)` and reports nine regular surface receivers.
 
+## Scientific reference gate
+
+The gate was completed on 2026-09-08 before any propagation operator was
+written:
+
+- `ELASTIC_NUMERICAL_SPEC.md` is the accepted implementation contract for the
+  3D isotropic elastic interior. It records all nine continuous equations,
+  tension-positive stress, component units and staggered locations, exact
+  standard 12th-order radius-six coefficients, `I->H` and `H->I` indexing,
+  leapfrog time levels and update order, material averages, source sign and
+  volume normalization, receiver interpolation, stability, dispersion, and
+  predeclared CPU tests.
+- `LEGACY_AUDIT.md` indexes and hashes the supplied 3D fragments, records the
+  upstream deletion history of the missing main and kernel files, distinguishes
+  corroborated facts from unsupported behavior, and prohibits copying because
+  no license is supplied.
+- Primary method references are Virieux (1986), Graves (1996), Moczo et al.
+  (2002), Fornberg (1988), and Holberg (1987). The exact coefficients, CFL
+  formula, moment-source sign conversion, and numerical thresholds are
+  independently written-out Wave3D derivations.
+- The selected solid-domain constraints are `Vs>0` and
+  `Vp^2>(4/3)Vs^2`, ensuring positive shear and bulk moduli. Model and
+  configuration tests now reject violations.
+- `RickerWavelet` now exposes a peak moment rate in `s^-1`. Resolved metadata
+  declares `f_i=-M_ij*s(t)*partial_j(delta)` and the corresponding
+  tension-positive stress-rate source `-M_ij*q(t)*delta`.
+
+No legacy code, finite-difference operator, wavefield, propagation loop,
+boundary algorithm, or CUDA propagation kernel was added during this gate.
+The existing provisional CFL helper deliberately remains conservative until
+Increment 4a installs the accepted coefficient-aware formula and tests.
+
+### Gate verification
+
+The exact coefficient moments and spectral maximum were independently checked
+with rational symbolic arithmetic:
+
+```text
+2 sum c_m*(m-1/2)       = 1
+2 sum c_m*(m-1/2)^p     = 0  for p=3,5,7,9,11
+power-13 error term      = -231/54525952
+max half-symbol sum A    = 1187803/887040
+cubic-grid CFL number    = 0.431159698015551 (eta=1)
+sample dt limit          = 0.000970109320535 s (eta=0.9)
+```
+
+The accepted source/model interface changes were then checked with the same
+Release CPU, Release CUDA-enabled, ASan/UBSan, and CUDA memcheck regression
+commands used for Increment 3. Observed results:
+
+- CPU-only Release: 5/5 tests passed without compiler warnings.
+- CUDA-enabled Release: 6/6 tests passed, including the existing RTX 5060
+  runtime regression.
+- AddressSanitizer and UndefinedBehaviorSanitizer: 5/5 CPU tests passed with
+  leak detection disabled for the documented execution constraint.
+- Compute Sanitizer memcheck: zero errors.
+- `wave3d_forward` prints the accepted tension-positive stress convention,
+  distributional body-force sign, stress-rate sign, and Ricker `s^-1` units.
+
 ## Exact next action
 
-Increment 3 is complete after reviewing and committing its diff. Stop before
-Increment 4: do not implement propagation equations, source injection, or CPU
-or CUDA propagation kernels yet.
+The scientific reference gate is complete after its documentation, validation
+changes, regression tests, and commit are reviewed. Do not implement the whole
+CPU propagator in one change.
 
-The next increment is the scientific reference gate in `ROADMAP.md`. It must
-produce reviewable elastic equations, component staggering, spatial
-coefficients, update/time-level order, source sign and normalization, stability
-condition, and analytical test definitions from auditable primary references
-or explicitly marked derivations. Only after that gate is reviewed may the CPU
-elastic reference implementation begin.
+The exact next action is Increment 4a only: implement compile-time exact
+radius-six FD constants, elastic `lambda/mu/K` and staggered buoyancy/shear
+coefficient preparation, the coefficient-aware CFL formula, and design-band
+dispersion validation. Add focused unit tests, compile CPU and CUDA-enabled
+builds, run sanitizers, update this handoff, and commit before starting the CPU
+derivative operator in Increment 4b.

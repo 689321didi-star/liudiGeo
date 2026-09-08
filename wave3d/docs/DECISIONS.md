@@ -52,16 +52,16 @@ other constitutive models are outside current scope.
 
 ## D006 — Velocity–stress staggered-grid finite differences
 
-**Status:** Provisional
+**Status:** Accepted through D022, 2026-09-08
 
 The legacy work uses a first-order velocity–stress style GPU finite-difference
-framework and a radius value of 6. Wave3D will initially use a high-order
-staggered-grid finite-difference scheme, but exact order, coefficients,
-stability bound, staggering, and time-level convention remain provisional until
-derived from and checked against the authoritative method.
+framework and a radius value of 6. Wave3D uses the independently derived
+standard 12th-order radius-six spatial operator and second-order leapfrog
+scheme fixed in `ELASTIC_NUMERICAL_SPEC.md` and D022.
 
 The current `provisional_cfl_safety_factor=0.45` helper is a configuration smoke
-check, not a final proof of stability for the eventual high-order operator.
+check. Increment 4a replaces it with the accepted coefficient-aware CFL and
+dispersion validation before any time stepping is implemented.
 
 ## D007 — Canonical coordinates and storage layout
 
@@ -78,8 +78,8 @@ distinct types or clearly separated transformations.
 
 The source interface supports all six unique components of a symmetric moment
 tensor and a separate source-time function. An isotropic explosive source is a
-special validation case. Source sign convention, normalization, units, and
-staggered injection must be documented and tested before scientific use.
+special validation case. D022 fixes its sign, normalization, units, time level,
+and stagger-specific interpolation requirements.
 
 ## D009 — Surface three-component acquisition
 
@@ -221,6 +221,36 @@ or within the physical grid's node extent. Preparation maps them once to
 fractional padded-storage coordinates. Regular surface receivers use x-fastest
 ordering and declare `vx`, `vy`, and `vz` as their eventual sampled components.
 The six-component symmetric moment tensor uses N·m and a separately parameterized
-Ricker time function. Tensor injection sign, normalization, interpolation, and
-staggered placement are not decided by this domain layer and remain blocked on
-the scientific reference gate.
+Ricker moment-rate function. D022 resolves injection sign, normalization,
+interpolation, and staggered placement for the CPU reference.
+
+## D022 — Accepted elastic interior numerical contract
+
+**Status:** Accepted, 2026-09-08
+
+The authoritative implementation contract is
+`docs/ELASTIC_NUMERICAL_SPEC.md`. Wave3D uses tension-positive stress, a
+complete 3D first-order isotropic velocity-stress system, standard 12th-order
+radius-six centered staggered derivatives, and second-order leapfrog time
+integration. Velocities live at face offsets, normal stresses at integer
+points, and shear stresses at the corresponding edge offsets.
+
+The physical solid requires positive density, shear modulus, and bulk modulus,
+equivalently `Vs>0` and `Vp^2>(4/3)Vs^2`. Face buoyancy uses the reciprocal of
+the arithmetic density mean; edge shear modulus uses the four-point harmonic
+mean. The exact operator spectral maximum is
+`1187803/887040`, giving the coefficient-aware CFL formula recorded in the
+specification. A declared design frequency must also pass spatial and temporal
+dispersion gates.
+
+A constant moment tensor `M` in N·m is paired with a Ricker moment-rate
+function `q(t)` in `s^-1`. Its body-force convention is
+`f_i=-M_ij*s(t)*partial_j(delta)`, so the tension-positive stress-rate source is
+`-M_ij*q(t)*delta`. Discrete trilinear delta weights sum to one and the update
+divides by cell volume. Positive equal diagonal components define an explosion
+and must produce outward first motion.
+
+The specification and `LEGACY_AUDIT.md` were completed before propagation
+code. The legacy repository has no supplied license and is not copied. Its
+radius, rounded coefficients, layout, and broad launch order are corroborating
+evidence only.
