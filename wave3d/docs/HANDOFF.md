@@ -1,0 +1,200 @@
+# Wave3D Project Handoff
+
+Last updated: 2026-09-08
+
+## Purpose
+
+This document records the current scope, evidence, decisions, verified work,
+and exact next action for a future agent. It distinguishes implemented and
+tested behavior from planned numerical work.
+
+## Current product scope
+
+Wave3D is an incremental, scientifically verifiable, single-GPU program for 3D
+isotropic **elastic** wave forward modeling on Linux. The initial target is a
+desktop NVIDIA GeForce RTX 5060 and a `200 x 200 x 200` physical grid.
+
+The user explicitly removed all viscoelastic work on 2026-09-08. Do not add
+`Qp`, `Qs`, attenuation compensation, relaxation mechanisms, or constitutive
+memory variables. Forward modeling is the current deliverable. RTM and deep
+learning remain separate future research phases and must not enter the current
+propagator.
+
+Development is strictly incremental. Each increment has a narrow acceptance
+gate, must compile, and must pass proportionate tests before the next increment
+begins.
+
+## Identified paper and its role
+
+The user supplied:
+
+```text
+https://onlinelibrary.wiley.com/doi/10.1111/1365-2478.13023
+```
+
+Verified metadata:
+
+- Wei Zhang, Jinghuai Gao, Zhaoqi Gao, and Ying Shi.
+- “2D and 3D amplitude-preserving elastic reverse time migration based on the
+  vector-decomposed P- and S-wave records.”
+- *Geophysical Prospecting* 68(9), 2712–2737.
+- First published 27 August 2020.
+- DOI `10.1111/1365-2478.13023`.
+
+The paper concerns elastic RTM, vector-decomposed P/S records, crosstalk, and
+amplitude/polarity preservation. It is not a viscoelastic constitutive paper.
+The user cannot provide the full PDF. The public publisher abstract and
+metadata may be cited, but inaccessible equations or experiment parameters
+must not be invented. Use auditable primary sources for the elastic forward
+equations and explicitly label independent derivations.
+
+## Legacy repository
+
+The preserved reference source is outside this directory at:
+
+```text
+../2D_and_3D_elastic_reverse_time_migration-master/
+```
+
+The user requires this directory to remain unchanged. It is evidence and a
+numerical reference, not the architecture of the new program.
+
+Previously observed limitations include:
+
+- The 3D makefile expects `3D_elastic_modeling.cu`, which is absent.
+- Important called kernels such as `fwd_vx_3D`, `fwd_vy_3D`, `fwd_vz_3D`, and
+  `fwd_txxzzxzpp_3D` were not found in the supplied 3D files.
+- The build uses obsolete CUDA 5.5 sample paths and Seismic Unix libraries.
+- One large `GPUdevice` structure mixes forward and reverse fields, P/S
+  decomposition, imaging, I/O, host staging, and multi-GPU remnants.
+- Suspicious CUDA initialization calls were observed and require verification.
+
+Do not fill missing kernels by guesswork or copy the monolithic structure.
+
+## Fixed physical and architectural choices
+
+- Coordinates: x east, y north, z positive downward, surface at `z=0`.
+- Volume layout: `[z][y][x]`, x contiguous.
+- Physics: first-order velocity–stress, 3D isotropic elastic.
+- Production wavefields: `float32` structure-of-arrays.
+- Source: general symmetric moment tensor; isotropic explosion is a validation
+  preset.
+- Acquisition: surface, three-component particle velocity.
+- Early boundary: replaceable sponge.
+- Final boundary: traction-free top and CPML on the other five sides.
+- CPU reference precedes CUDA propagation kernels.
+- GPU allocations use RAII and are preceded by an explicit memory plan.
+- Full wavefield history, RTM images, reverse fields, and P/S-decomposed fields
+  are not allocated by the forward executable.
+
+The preliminary CFL helper is only an architectural safety hook. It is not a
+proven limit for the final high-order staggered-grid operator.
+
+## Planned I/O
+
+- Generated homogeneous and layered models for early deterministic tests.
+- YAML run configuration and resolved configuration metadata.
+- HDF5 as the canonical internal format for `Vp`, `Vs`, density, traces, and
+  sparse snapshots.
+- CSV for irregular receiver geometry.
+- Separate VX, VY, and VZ SEG-Y files for external trace exchange.
+- Raw binary/CSV/JSON only for small early diagnostics.
+
+The propagator must not parse file formats. I/O adapters produce validated
+domain objects. Do not save every full 3D time step.
+
+## Repository state
+
+The Git repository root is now:
+
+```text
+/home/ld/tyut/3dsrc
+```
+
+`wave3d/.git` was deliberately removed, so `wave3d` is managed by the root
+repository. The root remote is:
+
+```text
+origin https://github.com/689321didi-star/liudiGeo.git
+```
+
+The local `main` branch tracks the remote initial commit `21c04df`, which
+contains only the root `README.md`. Never force-push or rewrite shared history.
+The user authorizes the agent to create local commits; pushing still requires
+an explicit user request.
+
+## Target environment recorded on 2026-09-08
+
+- OS: Ubuntu 24.04.4 LTS.
+- Kernel: `7.0.0-30-generic` x86_64.
+- C++ compiler: GCC/G++ 13.3.0.
+- CMake: 3.28.3, installed from Ubuntu packages during Increment 1.
+- CUDA compiler: NVIDIA CUDA Toolkit 13.2, `nvcc` 13.2.78.
+- GPU: NVIDIA GeForce RTX 5060.
+- Compute capability reported by `nvidia-smi`: 12.0.
+- Driver: 595.84.
+- Total VRAM: 8151 MiB.
+- Free VRAM at inspection: 7398 MiB; this is time-dependent.
+
+## Increment 1 implementation
+
+The CPU-only core contains:
+
+- `CMakeLists.txt`: C++17 interface library, smoke executable, CTest target,
+  and compiler warnings.
+- `include/wave3d/core/grid.hpp`: physical/allocated dimensions, halo and
+  boundary widths, `[z][y][x]` indexing, physical origins, bounds checks, and
+  checked `size_t` arithmetic.
+- `include/wave3d/core/simulation_config.hpp`: time configuration, elastic
+  material extrema, top-boundary consistency, finite-value checks, a
+  provisional CFL estimate, and validation.
+- `apps/forward3d.cpp`: temporary hard-coded `200^3` smoke configuration.
+- `tests/test_grid.cpp`: dimension, indexing, configuration, non-finite input,
+  top-boundary consistency, time-step count, and overflow tests.
+
+The sample uses a six-cell halo, 20 absorbing cells on both x and y sides, zero
+top absorbing cells, 20 bottom absorbing cells, `10 m` spacing, `0.5 ms` time
+step, and `2 s` duration. Expected allocation is `252 x 252 x 232` with 4000
+time steps.
+
+## Increment 1 verification
+
+Initial unmodified source and the corrected source both configured, compiled,
+and passed tests on the target Linux machine. Final commands:
+
+```text
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release --parallel
+ctest --test-dir build -C Release --output-on-failure
+./build/wave3d_forward
+cmake -S . -B build-sanitize -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_CXX_FLAGS=-fsanitize=address,undefined \
+  -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined
+cmake --build build-sanitize --parallel
+ASAN_OPTIONS=detect_leaks=0 \
+  ctest --test-dir build-sanitize --output-on-failure
+```
+
+Final observed results:
+
+- Configure and build completed without compiler warnings.
+- CTest: 1/1 test passed.
+- AddressSanitizer and UndefinedBehaviorSanitizer: 1/1 test passed with leak
+  detection disabled. LeakSanitizer itself cannot run under the active
+  `ptrace`-based execution environment and exits before testing code.
+- Physical cell count: 8,000,000.
+- Allocated grid: `252 x 252 x 232`.
+- Time steps: 4000.
+- Provisional time-step limit: approximately `0.000649519 s`.
+
+## Exact next action
+
+Increment 1 is complete after reviewing and committing its diff. Do not start
+CUDA propagation. Increment 2 is limited to CUDA error handling, device
+discovery, move-only RAII device buffers, a field-by-field elastic memory plan,
+and a trivial allocation/copy/fill test. CPU-only configuration must continue
+to work.
+
+Before Increment 4, complete the scientific reference gate in `ROADMAP.md` and
+obtain reviewable equations, staggering, coefficients, source convention,
+stability condition, and analytical test definitions.

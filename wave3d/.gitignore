@@ -1,0 +1,49 @@
+# Build directories
+build/
+build-*/
+cmake-build-*/
+
+# Compiled files
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.a
+*.lib
+*.pdb
+
+# CUDA generated files
+*.cubin
+*.fatbin
+*.ptx
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+
+# Runtime output
+runs/
+output/
+checkpoints/
+*.log
+
+# Large modeling data
+*.bin
+*.h5
+*.hdf5
+*.sgy
+*.segy
+*.su
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# System
+.DS_Store
+Thumbs.db
