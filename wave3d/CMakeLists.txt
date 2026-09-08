@@ -65,6 +65,14 @@ if(WAVE3D_BUILD_TESTS)
     add_test(
         NAME wave3d_cpu_staggered_derivative_tests
         COMMAND wave3d_cpu_staggered_derivative_tests)
+
+    add_executable(
+        wave3d_cpu_elastic_update_tests
+        tests/test_cpu_elastic_update.cpp)
+    target_link_libraries(wave3d_cpu_elastic_update_tests PRIVATE wave3d_core)
+    add_test(
+        NAME wave3d_cpu_elastic_update_tests
+        COMMAND wave3d_cpu_elastic_update_tests)
 endif()
 
 if(WAVE3D_ENABLE_CUDA)

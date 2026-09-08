@@ -291,3 +291,21 @@ size and target support, and accumulates into double without allocating.
 Boundary targets without all twelve source samples are rejected because the
 Increment 4 CPU interior does not yet define a boundary algorithm. Wavefield
 ownership and update equations remain outside this interface.
+
+## D025 — Move-only wavefield and split CPU leapfrog updates
+
+**Status:** Accepted and implemented, 2026-09-09
+
+`ElasticWavefield` owns exactly nine zero-initialized padded `float32` SoA
+arrays: three particle velocities and six symmetric stresses. Implicit copies
+are disabled and moves transfer ownership. Wavefield and coefficient layouts,
+exact grid identity, positive finite `dt`, and finite `float32` update results
+are checked before or during the transparent CPU reference operation.
+
+Stress and velocity advancement remain separate calls. Stress uses velocity at
+integer time `n` to advance stress from `n-1/2` to `n+1/2`; velocity then uses
+that half-step stress to advance from `n` to `n+1`. This split reserves the
+specified source and stress-boundary hooks between them and the velocity
+boundary/receiver hooks afterward. Each field updates only its own
+complete-stencil target region. No source, receiver, boundary behavior, or
+multi-step driver is implied by Increment 4c.

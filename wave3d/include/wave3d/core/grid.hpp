@@ -119,4 +119,25 @@ private:
     }
 };
 
+[[nodiscard]] inline bool same_grid_geometry(
+    const Grid3D& first,
+    const Grid3D& second) noexcept {
+    return first.nx == second.nx && first.ny == second.ny &&
+           first.nz == second.nz && first.dx_m == second.dx_m &&
+           first.dy_m == second.dy_m && first.dz_m == second.dz_m &&
+           first.halo == second.halo &&
+           first.x_boundary.lower_absorbing ==
+               second.x_boundary.lower_absorbing &&
+           first.x_boundary.upper_absorbing ==
+               second.x_boundary.upper_absorbing &&
+           first.y_boundary.lower_absorbing ==
+               second.y_boundary.lower_absorbing &&
+           first.y_boundary.upper_absorbing ==
+               second.y_boundary.upper_absorbing &&
+           first.z_boundary.lower_absorbing ==
+               second.z_boundary.lower_absorbing &&
+           first.z_boundary.upper_absorbing ==
+               second.z_boundary.upper_absorbing;
+}
+
 } // namespace wave3d

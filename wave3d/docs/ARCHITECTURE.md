@@ -85,6 +85,11 @@ An owning object manages lifetime. `WavefieldView` provides controlled access
 to operators, diagnostics, checkpoints, and optional imaging without exposing
 ownership.
 
+Increment 4c implements move-only CPU `ElasticWavefield` ownership with nine
+zero-initialized padded `float32` SoA arrays. Layout validation checks every
+component before an update. Non-owning public views remain planned for later
+task, diagnostic, checkpoint, and CUDA interfaces.
+
 ### `numerics`
 
 Defines spatial finite-difference operators, staggering, update ordering, and
@@ -140,6 +145,14 @@ notify diagnostics/output/checkpoint observers
 Initial state is `v^0=0`, `sigma^(-1/2)=0`. This order and the tension-positive
 stress convention are fixed by the numerical specification and must be encoded
 in CPU tests before CUDA kernels are written.
+
+Increment 4c implements the source-free interior portions as two separate CPU
+calls. The stress call maps `sigma^(n-1/2)` and `v^n` to
+`sigma^(n+1/2)`; the velocity call maps `v^n` and `sigma^(n+1/2)` to
+`v^(n+1)`. Keeping them separate preserves the future source and boundary hook
+positions. Each component is updated only where all of its derivative stencils
+are complete; other storage values remain unchanged because no boundary rule
+is yet accepted.
 
 ### `boundary`
 

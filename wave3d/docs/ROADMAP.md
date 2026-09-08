@@ -133,6 +133,14 @@ degrees 0–12, every positive/negative impulse offset, complete-stencil ranges,
 `float32` input, invalid sizes/boundaries, and smooth-wave 12th-order
 convergence pass. No wavefield or time update was added; 4c is next.
 
+**4c status:** Verified on 2026-09-09. Move-only nine-component `float32`
+wavefield ownership and separate source-free stress/velocity updates implement
+all accepted normal and cross derivatives. Manufactured affine fields verify
+six stress and three velocity equations, additive updates, time-step/layout
+rejection, unchanged incomplete-stencil storage, and `float32` overflow
+handling. No source, receiver, boundary hook, or propagation driver was added;
+4d is next.
+
 **Acceptance:** Derivative tests converge at the documented order; homogeneous
 wavefront symmetry and theoretical P/S arrival times meet stated tolerances;
 energy remains stable after the source in a controlled test; update time levels

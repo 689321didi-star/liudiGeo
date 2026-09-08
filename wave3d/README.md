@@ -6,7 +6,7 @@ directory and is used only as a numerical reference.
 
 ## Current foundation
 
-The verified foundation through Increment 4b defines and tests:
+The verified foundation through Increment 4c defines and tests:
 
 - physical and allocated grid dimensions;
 - the `[z][y][x]` storage convention with contiguous `x`;
@@ -30,11 +30,14 @@ The verified foundation through Increment 4b defines and tests:
   and temporal dispersion gates.
 - a checked CPU radius-six staggered derivative for `I->H` and `H->I` mappings
   along all three storage axes.
+- move-only, zero-initialized, nine-component padded `float32` elastic
+  wavefield ownership;
+- separate CPU stress and velocity updates covering the complete 3D isotropic
+  elastic interior equations and leapfrog half steps.
 
 The accepted interior-equation contract and its predeclared validation tests
-are in `docs/ELASTIC_NUMERICAL_SPEC.md`. Wavefield ownership and the first
-manufactured stress/velocity update are the next sub-increment and are not
-implemented yet.
+are in `docs/ELASTIC_NUMERICAL_SPEC.md`. Source injection and component-specific
+receiver interpolation are the next sub-increment and are not implemented yet.
 
 ## Build
 

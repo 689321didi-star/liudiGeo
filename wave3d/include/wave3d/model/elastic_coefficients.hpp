@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <initializer_list>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -35,6 +36,27 @@ struct ElasticCoefficients {
         return lambda_pa.size();
     }
 };
+
+inline void require_valid_elastic_coefficient_layout(
+    const ElasticCoefficients& coefficients) {
+    require_valid_grid_geometry(coefficients.grid);
+    const auto cells = coefficients.grid.allocated_cell_count();
+    for (const auto size : {
+             coefficients.lambda_pa.size(),
+             coefficients.shear_modulus_pa.size(),
+             coefficients.bulk_modulus_pa.size(),
+             coefficients.buoyancy_x_m3_kg.size(),
+             coefficients.buoyancy_y_m3_kg.size(),
+             coefficients.buoyancy_z_m3_kg.size(),
+             coefficients.shear_modulus_xy_pa.size(),
+             coefficients.shear_modulus_xz_pa.size(),
+             coefficients.shear_modulus_yz_pa.size()}) {
+        if (size != cells) {
+            throw std::invalid_argument(
+                "elastic coefficient array size does not match allocated grid");
+        }
+    }
+}
 
 [[nodiscard]] inline ElasticModuli elastic_moduli(
     const ElasticMaterial& material) {

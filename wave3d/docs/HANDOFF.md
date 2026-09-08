@@ -120,7 +120,7 @@ origin https://github.com/689321didi-star/liudiGeo.git
 
 The local `main` branch tracks `origin/main`. The user requested a push after
 Increment 3; `origin/main` remains at `63ecc49`. Local `main` contains the
-scientific reference gate and verified work through Increment 4b after that
+scientific reference gate and verified work through Increment 4c after that
 remote commit. Fetch uses the HTTPS URL and push uses the authenticated SSH
 URL. Never force-push or rewrite shared history. The user authorizes local
 commits; a later push still requires an explicit request.
@@ -465,15 +465,54 @@ before roundoff, inside the predeclared 12th-order regime.
 - Compute Sanitizer memcheck, initcheck, racecheck, and synccheck: zero errors,
   hazards, or warnings.
 
+## Increment 4c implementation
+
+Increment 4c was completed on 2026-09-09 without source injection, receiver
+sampling, a boundary algorithm, a propagation driver, or CUDA propagation:
+
+- `wave/elastic_wavefield.hpp` owns zero-initialized padded `float32` arrays
+  for `vx`, `vy`, `vz`, `sxx`, `syy`, `szz`, `sxy`, `sxz`, and `syz`.
+  Ownership is move-only and all component sizes are checked against the grid.
+- `physics/cpu_elastic_update.hpp` implements separate stress and velocity
+  calls. The first advances `sigma^(n-1/2)` from `v^n`; the second advances
+  `v^n` from `sigma^(n+1/2)`. This preserves the source and boundary hook
+  positions fixed by the numerical specification.
+- Normal stress uses the three `H->I` normal velocity gradients. Each shear
+  stress uses its two `I->H` cross gradients and prepared edge shear modulus.
+  Each velocity uses one `I->H` normal-stress gradient, two `H->I` shear-stress
+  gradients, and its prepared face buoyancy.
+- Updates occur only where every derivative needed by that component has a
+  complete radius-six stencil. Unqualified outer storage remains unchanged.
+  Grid/layout/time-step mismatches and non-finite or overflowing `float32`
+  results fail explicitly.
+
+The manufactured stress test uses independent affine slopes for all nine
+velocity-gradient terms and checks every one of the six constitutive equations.
+The manufactured velocity test uses independent affine slopes for all nine
+stress-divergence terms and checks all three momentum equations. Tests also
+verify zero initialization, move-only ownership, additive rather than replacing
+updates, separation of stress and velocity calls, unchanged outer storage,
+malformed layouts, grid mismatch, invalid `dt`, and overflow rejection.
+
+### Increment 4c verification
+
+- CPU-only Release: 9/9 tests passed without compiler warnings.
+- CUDA-enabled Release: 10/10 tests passed, including the unchanged RTX 5060
+  CUDA foundation regression.
+- AddressSanitizer and UndefinedBehaviorSanitizer: 9/9 CPU tests passed with
+  leak detection disabled for the documented execution constraint.
+- Compute Sanitizer memcheck, initcheck, racecheck, and synccheck: zero errors,
+  hazards, or warnings.
+
 ## Exact next action
 
-Increment 4b is complete. Do not implement the whole CPU propagator in one
+Increment 4c is complete. Do not implement the whole CPU propagator in one
 change.
 
-The exact next action is Increment 4c only: add nine-component `float32`
-wavefield ownership and the transparent one-step CPU stress and velocity
-updates using the accepted leapfrog time levels, prepared coefficients, and
-explicit derivative mappings. Add manufactured affine-field tests covering all
-normal and cross derivatives, compile CPU and CUDA-enabled builds, run
-sanitizers, update this handoff, and commit before source injection or receiver
-interpolation begins in Increment 4d.
+The exact next action is Increment 4d only: prepare component-specific
+trilinear interpolation stencils, inject the normalized tension-positive
+moment-rate source into the six staggered stress fields, sample `vx/vy/vz` at
+their separate staggered locations, and preserve the accepted time labels.
+Add weight-sum, volume-integral, sign, unavailable-support, interpolation, and
+time-label tests; compile CPU and CUDA-enabled builds; run sanitizers; update
+this handoff; and commit before the multi-step physical tests in Increment 4e.
