@@ -156,6 +156,14 @@ times, symmetry, convergence, layered interfaces, boundary reflection,
 long-time stability, and measured performance/memory. A plausible wavefield
 image alone is insufficient.
 
+## D017 — Preserve the remote history
+
+**Status:** Accepted, 2026-09-08
+
+The configured GitHub remote already contains a `main` commit. The new local
+history must be reconciled explicitly. Do not force-push or discard remote
+content merely to publish the local skeleton.
+
 ## D018 — Remove viscoelastic attenuation from scope
 
 **Status:** Accepted, 2026-09-08
@@ -182,10 +190,18 @@ user cannot provide the full PDF, so inaccessible equations or parameters must
 not be invented; use auditable primary sources and label any independent
 derivation explicitly.
 
-## D017 — Preserve the remote history
+## D020 — Optional CUDA foundation and conservative memory gate
 
 **Status:** Accepted, 2026-09-08
 
-The configured GitHub remote already contains a `main` commit. The new local
-history must be reconciled explicitly. Do not force-push or discard remote
-content merely to publish the local skeleton.
+CUDA is enabled only with `WAVE3D_ENABLE_CUDA=ON`; the CPU core and memory-plan
+tests remain buildable without CUDA headers or libraries. The target build uses
+`sm_120` for the RTX 5060. CUDA errors retain the failed operation and runtime
+error code, kernel launches are checked, and device allocations are owned by a
+move-only RAII buffer.
+
+Before allocating production fields, a pure C++ planner compares every named
+allocation plus a runtime reserve against a configurable fraction of current
+free device memory. The initial plan deliberately retains conservative model,
+coefficient, wavefield, sponge, receiver, and workspace allocations. It must be
+revised explicitly as later ownership and boundary designs become concrete.

@@ -70,6 +70,10 @@ allocation and move tests pass under compute-sanitizer; deliberate oversized
 plans fail before allocation; no raw allocation occurs outside the documented
 ownership layer.
 
+**Status:** Verified on the target RTX 5060 on 2026-09-08. CPU-only and CUDA
+builds pass independently; Compute Sanitizer reports no memcheck, initcheck,
+racecheck, or synccheck errors.
+
 ## Increment 3 — Model and acquisition domain objects
 
 **Goal:** Prepare deterministic elastic inputs without external libraries.

@@ -74,6 +74,13 @@ small constant-memory data after validation. The first correct implementation
 may use separate kernels for clarity; fusion is allowed only after reference
 tests pass.
 
+### `cuda`
+
+Owns CUDA runtime interaction: error translation, launch checks, device
+discovery, and move-only RAII `DeviceBuffer<T>`. Raw `cudaMalloc` and
+`cudaFree` calls are confined to this ownership layer. CUDA is an optional
+build feature, so CPU core and memory-plan tests do not include CUDA headers.
+
 ### `physics`
 
 Contains the 3D isotropic elastic constitutive update. Attenuation and
@@ -197,6 +204,14 @@ total and safety margin
 The program must reject a plan that exceeds a configurable fraction of
 currently available VRAM.
 
+The initial conservative elastic plan enumerates three physical model fields
+(`Vp`, `Vs`, density), five derived coefficient fields (`lambda`, `mu`, and
+three staggered inverse-density fields), nine wavefields, one full-volume
+sponge field, three optional receiver-trace arrays, optional workspace, and a
+runtime reserve. Later increments must update the plan when actual ownership or
+the boundary implementation changes; unimplemented CPML state is not silently
+hidden in the current estimate.
+
 ## Build boundaries
 
 The intended CMake options include:
@@ -238,6 +253,7 @@ wave3d/
 │   └── rtm3d.cpp                 # optional, future
 ├── include/wave3d/
 │   ├── core/
+│   ├── cuda/
 │   ├── model/
 │   ├── wave/
 │   ├── physics/

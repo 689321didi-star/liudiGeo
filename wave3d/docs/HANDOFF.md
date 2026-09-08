@@ -187,13 +187,81 @@ Final observed results:
 - Time steps: 4000.
 - Provisional time-step limit: approximately `0.000649519 s`.
 
+## Increment 2 implementation
+
+Increment 2 adds CUDA infrastructure without implementing wave propagation:
+
+- `WAVE3D_ENABLE_CUDA=OFF` by default preserves a CUDA-free CPU build.
+- The target CUDA architecture defaults to `sm_120` when CUDA is enabled.
+- `cuda_error.hpp` translates runtime failures into exceptions that retain the
+  CUDA code and failed-operation context, and provides launch/sync checks.
+- `DeviceBuffer<T>` is non-copyable, move-only, checks byte-count overflow,
+  owns all explicit `cudaMalloc`/`cudaFree` calls, and provides bounded host
+  copies and zeroing.
+- `device_info` queries ordinal, name, compute capability, driver/runtime
+  versions, and CUDA-allocatable total/free memory.
+- The pure C++ elastic memory planner enumerates model, coefficient, wavefield,
+  sponge, receiver, workspace, and runtime-reserve bytes before allocation.
+- `fill_kernel` is a grid-stride smoke kernel used only to validate allocation,
+  launch checking, synchronization, and round-trip copies.
+- `wave3d_cuda_info` prints the device and complete initial memory plan.
+
+The conservative `200^3` example currently budgets 18 padded-volume fields:
+three physical model fields, five derived coefficient fields, nine wavefields,
+and one sponge field. It also budgets 1000 receivers × 4000 samples × three
+components, a 64 MiB workspace, and a 512 MiB runtime reserve. This is a
+planning baseline, not a claim that later CPML or propagator ownership is
+already designed.
+
+## Increment 2 verification
+
+Commands run on 2026-09-08:
+
+```text
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DWAVE3D_ENABLE_CUDA=OFF
+cmake --build build --config Release --parallel
+ctest --test-dir build -C Release --output-on-failure
+
+cmake -S . -B build-cuda -DCMAKE_BUILD_TYPE=Release \
+  -DWAVE3D_ENABLE_CUDA=ON
+cmake --build build-cuda --config Release --parallel
+ctest --test-dir build-cuda -C Release --output-on-failure
+./build-cuda/wave3d_cuda_info
+
+compute-sanitizer --tool memcheck --error-exitcode 1 \
+  ./build-cuda/wave3d_cuda_tests
+compute-sanitizer --tool initcheck --error-exitcode 1 \
+  ./build-cuda/wave3d_cuda_tests
+compute-sanitizer --tool racecheck --error-exitcode 1 \
+  ./build-cuda/wave3d_cuda_tests
+compute-sanitizer --tool synccheck --error-exitcode 1 \
+  ./build-cuda/wave3d_cuda_tests
+```
+
+Observed results:
+
+- CPU-only build: 2/2 tests passed.
+- CUDA build: 3/3 tests passed, including the RTX 5060 allocation/copy/fill and
+  move-ownership test.
+- `cuobjdump --list-elf build-cuda/wave3d_cuda_tests` reports an embedded
+  `sm_120` cubin, confirming the target architecture was generated.
+- Compute Sanitizer: zero memcheck, initcheck, racecheck, and synccheck errors.
+- CUDA Runtime reported 7699.2 MiB allocatable total and 7212.0 MiB free at the
+  sampled moment. This is intentionally distinguished from `nvidia-smi`'s
+  nominal board-memory report.
+- Planned field allocations: approximately 1121.4 MiB.
+- Required including runtime reserve: approximately 1633.4 MiB.
+- Allowed budget at 80% of sampled free memory: approximately 5769.6 MiB.
+- Plan result: fits with approximately 4136.2 MiB budget headroom. Available
+  memory is time-dependent and must be queried for every production run.
+
 ## Exact next action
 
-Increment 1 is complete after reviewing and committing its diff. Do not start
-CUDA propagation. Increment 2 is limited to CUDA error handling, device
-discovery, move-only RAII device buffers, a field-by-field elastic memory plan,
-and a trivial allocation/copy/fill test. CPU-only configuration must continue
-to work.
+Increment 2 is complete after reviewing and committing its diff. Do not start
+propagation equations or CUDA propagation kernels. Increment 3 is limited to
+physical-coordinate/storage mapping, validated `Vp`/`Vs`/density model objects,
+homogeneous/layered generators, Ricker source, symmetric moment tensor, and
+deterministic receiver geometry.
 
 Before Increment 4, complete the scientific reference gate in `ROADMAP.md` and
 obtain reviewable equations, staggering, coefficients, source convention,
