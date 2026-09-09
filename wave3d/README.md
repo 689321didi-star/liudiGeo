@@ -6,7 +6,8 @@ directory and is used only as a numerical reference.
 
 ## Current status
 
-The elastic forward roadmap through Increment 11 is implemented and verified:
+The elastic forward roadmap through the derived-Overthrust Increment 14 is
+implemented and verified:
 
 - physical and allocated grid dimensions;
 - the `[z][y][x]` storage convention with contiguous `x`;
@@ -110,6 +111,8 @@ spacing, precision, or derived extrema, then rereads both outputs and requires
 exact round trips. Source and generated data stay outside Git; provenance and
 expected dataset hashes are in
 [`docs/OVERTHRUST_SOURCE_AUDIT.md`](docs/OVERTHRUST_SOURCE_AUDIT.md).
+The completed CUDA/SEG-Y evidence is in
+[`docs/OVERTHRUST_FORWARD_QUALIFICATION.md`](docs/OVERTHRUST_FORWARD_QUALIFICATION.md).
 
 For the fixed 64-cubed, eight-step CUDA memory-check input, add `--smoke`
 before the MAT path. This is a validation profile, not the production model.
@@ -151,6 +154,14 @@ GPU-memory limits before propagation and writes exactly:
 
 ```text
 <output_directory>/record.sgy
+```
+
+For the fixed production Overthrust configuration, independently check the
+single-file contract, samples, acquisition headers, and conservative travel
+window with:
+
+```text
+python3 tools/verify_overthrust_record.py path/to/overthrust_output
 ```
 
 This is the general HDF5-driven production command. The qualification command

@@ -939,7 +939,22 @@ standard-library verifier aligned coarse `n` to fine `2n+1` under the
 `(n+1)dt` convention and measured all-trace normalized L2
 `0.000433639742266`; VX/VY/VZ were `0.000454674475987`,
 `0.000432879948454`, and `0.000387158120674`. All are far below the fixed 5%
-gate. The full 3 s production run and final regression matrix remain.
+gate. The full 3 s production run and final regression matrix followed.
+
+Increment 14d and the authorized Overthrust work are now complete. The full
+3000-step production run used 2,710,794,920 planned bytes against a live
+6,078,123,212-byte budget and completed in 207.773 s propagation. Its output
+directory contains only a 4,446,720-byte `record.sgy`. The committed independent
+parser verifies 363 receiver-major 14/13/12 Revision 1 IEEE traces, 3000
+samples at exactly 1 ms, all 1,089,000 samples finite, 1,015,337 nonzero,
+positive VX/VY/VZ energy, and 121/121 significant arrivals inside conservative
+travel bounds.
+
+Final all-options Release passed 28/28, focused I/O ASan/UBSan passed 5/5,
+optional-I/O-off CPU Release passed 17/17, and CUDA no-I/O, HDF5-only,
+SEG-Y-only, and all-adapter builds passed. Detailed evidence and reproduction
+commands are in `OVERTHRUST_FORWARD_QUALIFICATION.md`. Stop here unless the
+user explicitly authorizes a new model or research phase.
 
 Observed commands/results:
 

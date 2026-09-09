@@ -651,3 +651,22 @@ headers before computing binary64 normalized L2 error over all traces. The
 accepted threshold remains 5%. The observed all-trace error was
 `0.000433639742266` (0.0434%); VX, VY, and VZ errors were respectively
 `0.000454674475987`, `0.000432879948454`, and `0.000387158120674`.
+
+## D044 — Qualified reduced Overthrust production record
+
+**Status:** Accepted and verified, 2026-09-09
+
+The final production case is the unchanged 200 x 200 x 187 canonical model,
+121-receiver acquisition, and 3000-sample 1 ms configuration from D038 and
+D041. It completed on the target RTX 5060 in 207.773 s of propagation. The
+live preflight allowed 6,078,123,212 bytes and the conservative plan required
+2,710,794,920 bytes.
+
+The output directory contains exactly one 4,446,720-byte `record.sgy`. An
+independent standard-library parser validates all Revision 1, IEEE float,
+sampling, trace-order, component, coordinate, and source headers; all
+1,089,000 samples are finite, 1,015,337 are nonzero, and VX/VY/VZ each have
+positive energy. All 121 first-significant arrivals pass the frozen
+straight-line travel window. Full Release, focused sanitizer, CPU-off-option,
+and adapter-combination regressions pass. This closes only the derived
+Overthrust elastic-forward increment.

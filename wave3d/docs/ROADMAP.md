@@ -407,12 +407,17 @@ dataset hashes exactly matched all three frozen preimplementation oracles;
 orthogonal slices and summaries passed. Increment 14d CUDA propagation is
 next.
 
-**14d status:** In progress. The fixed 64-cubed/eight-step Overthrust smoke
+**14d status:** Verified on 2026-09-09. The fixed 64-cubed/eight-step
+Overthrust smoke
 profile completed normally and under Compute Sanitizer memcheck with zero
 errors. Its one SEG-Y file had 27 receiver-major 14/13/12 traces, 8 samples at
 1 ms, and 216/216 finite samples. Full-model 1 ms versus 0.5 ms refinement
 then passed at 0.0434% normalized L2 against the fixed 5% threshold. The full
-3 s production run is next.
+3000-step run completed in 207.773 s propagation within the live memory gate.
+Its only output was a standard 363-trace SEG-Y with 1,089,000/1,089,000 finite
+samples, positive three-component energy, and 121/121 first arrivals inside
+the conservative travel window. Final regressions passed. Increment 14 is
+complete; stop at this one derived Overthrust benchmark.
 
 ## Deferred research phases
 

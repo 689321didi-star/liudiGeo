@@ -188,5 +188,21 @@ validated 363 IEEE SEG-Y traces and unchanged acquisition headers, and found
 all-trace normalized L2 `0.000433639742266`. Component errors were
 `0.000454674475987` (VX), `0.000432879948454` (VY), and
 `0.000387158120674` (VZ), all far below the unchanged 0.05 gate. The runs took
-55.99 s and 111.63 s of propagation time. Full 3 s propagation remains
-pending.
+55.99 s and 111.63 s of propagation time. Full 3 s propagation was the next
+gate and passed as recorded below.
+
+### 14d full production and regression gates
+
+Passed on 2026-09-09. The 3000-step production run required 2,710,794,920
+planned bytes against a live 6,078,123,212-byte budget and completed in
+207.773 s of propagation without CUDA errors. The output directory contained
+exactly one 4,446,720-byte `record.sgy`. Independent parsing confirmed 363
+receiver-major 14/13/12 Revision 1 IEEE traces, 3000 samples at exactly 1 ms,
+1,089,000/1,089,000 finite samples, 1,015,337 nonzero samples, and positive
+energy in VX, VY, and VZ. All 121 first-significant arrivals passed the
+conservative straight-line bounds.
+
+All-options Release passed 28/28, focused I/O ASan/UBSan passed 5/5, and the
+optional-I/O-off CPU Release suite passed 17/17. CUDA no-I/O, HDF5-only, and
+SEG-Y-only builds passed, as did the all-adapter Overthrust build. Increment 14
+is complete at its stated stop condition.
