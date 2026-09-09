@@ -279,9 +279,15 @@ staggered shear modulus. It is used as a bounded pre-boundary stability metric;
 because velocity and stress occupy different leapfrog time levels, it is not
 claimed as an exact same-time invariant.
 
+Increment 11 adds `IForwardObserver`. It receives validated completed-step
+metadata and nine non-owning const field views after receiver sampling.
+Registration is allowed only before propagation, so the propagator's time loop
+does not resize observer storage.
+
 ### `checkpoint`
 
-Defines an optional interface from the start, with implementations deferred.
+The `ICheckpointStore` and fixed-interval checkpoint observer are compiled only
+when `WAVE3D_ENABLE_RTM=ON`; persistent implementations remain deferred.
 Candidate future strategies are full disk snapshots, sparse checkpoints plus
 recomputation, boundary reconstruction, and tiered GPU/host/NVMe storage. For an
 8 GB RTX 5060, sparse checkpoints plus recomputation are the initial RTM design
@@ -289,20 +295,21 @@ candidate.
 
 ### Optional `imaging` and `rtm`
 
-RTM will depend on interfaces comparable to:
+The finalized extension boundary provides:
 
 ```cpp
-IPropagator
-PropagatorFactory
+IForwardPropagator
+make_forward_propagator
 IReceiverData
 ICheckpointStore
-IImagingCondition
 ```
 
-An imaging condition consumes read-only source and receiver wavefield views and
-accumulates an image. P/S decomposition and illumination compensation are
-optional strategies under this layer. The forward propagator must contain no
-`if (rtm)` behavior.
+The current factory wraps only the transparent CPU interior reference; it does
+not misrepresent the CUDA CPML path as a host-view implementation. A future
+imaging condition may consume read-only source and receiver views and
+accumulate an image. P/S decomposition and illumination compensation remain
+future optional strategies. The forward propagator contains no `if (rtm)`
+behavior.
 
 ## Memory architecture
 
@@ -359,6 +366,12 @@ WAVE3D_ENABLE_RTM
 `WAVE3D_ENABLE_RTM=OFF` must remove RTM and imaging targets without changing the
 forward core. HDF5 and SEG-Y are optional adapters. Early core tests must remain
 buildable without them.
+
+Increment 11 verifies that behavior by configuring and building with the whole
+`optional/rtm` tree temporarily absent. RTM-off exposes only the forward views,
+observer, factory, and receiver reader; RTM-on adds the header-only checkpoint
+interface target and its mock test. There is no RTM executable or imaging
+target.
 
 ## Numerical verification architecture
 

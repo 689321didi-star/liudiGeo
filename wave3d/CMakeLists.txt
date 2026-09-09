@@ -7,6 +7,7 @@ option(WAVE3D_ENABLE_CUDA "Build the Wave3D CUDA foundation" OFF)
 option(WAVE3D_ENABLE_YAML "Build YAML run-configuration adapters" OFF)
 option(WAVE3D_ENABLE_HDF5 "Build HDF5 scientific-data adapters" OFF)
 option(WAVE3D_ENABLE_SEGY "Build SEG-Y trace adapters" OFF)
+option(WAVE3D_ENABLE_RTM "Build removable RTM-ready interfaces only" OFF)
 
 add_library(wave3d_core INTERFACE)
 target_include_directories(wave3d_core INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
@@ -139,6 +140,17 @@ if(WAVE3D_BUILD_TESTS)
     add_test(NAME wave3d_io_core_tests COMMAND wave3d_io_core_tests)
     set_tests_properties(wave3d_io_core_tests PROPERTIES LABELS "io")
 
+    add_executable(
+        wave3d_forward_interface_tests
+        tests/test_forward_interfaces.cpp)
+    target_link_libraries(
+        wave3d_forward_interface_tests PRIVATE wave3d_core)
+    add_test(
+        NAME wave3d_forward_interface_tests
+        COMMAND wave3d_forward_interface_tests)
+    set_tests_properties(
+        wave3d_forward_interface_tests PROPERTIES LABELS "interfaces")
+
     if(WAVE3D_ENABLE_YAML)
         add_executable(wave3d_yaml_io_tests tests/test_yaml_io.cpp)
         target_link_libraries(wave3d_yaml_io_tests PRIVATE wave3d_io_yaml)
@@ -158,6 +170,29 @@ if(WAVE3D_BUILD_TESTS)
         target_link_libraries(wave3d_segy_io_tests PRIVATE wave3d_io_segy)
         add_test(NAME wave3d_segy_io_tests COMMAND wave3d_segy_io_tests)
         set_tests_properties(wave3d_segy_io_tests PROPERTIES LABELS "io")
+    endif()
+endif()
+
+if(WAVE3D_ENABLE_RTM)
+    add_library(wave3d_rtm_interfaces INTERFACE)
+    target_include_directories(
+        wave3d_rtm_interfaces
+        INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/optional/rtm/include")
+    target_link_libraries(wave3d_rtm_interfaces INTERFACE wave3d_core)
+
+    if(WAVE3D_BUILD_TESTS)
+        add_executable(
+            wave3d_checkpoint_interface_tests
+            optional/rtm/tests/test_checkpoint_interfaces.cpp)
+        target_link_libraries(
+            wave3d_checkpoint_interface_tests
+            PRIVATE wave3d_rtm_interfaces)
+        add_test(
+            NAME wave3d_checkpoint_interface_tests
+            COMMAND wave3d_checkpoint_interface_tests)
+        set_tests_properties(
+            wave3d_checkpoint_interface_tests
+            PROPERTIES LABELS "interfaces;rtm")
     endif()
 endif()
 

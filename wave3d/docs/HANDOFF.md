@@ -118,12 +118,12 @@ repository. The root remote is:
 origin https://github.com/689321didi-star/liudiGeo.git
 ```
 
-The local `main` branch tracks `origin/main`. The user requested a push after
-Increment 3; `origin/main` remains at `63ecc49`. Local `main` contains the
-scientific reference gate and verified work through Increment 4e after that
-remote commit. Fetch uses the HTTPS URL and push uses the authenticated SSH
-URL. Never force-push or rewrite shared history. The user authorizes local
-commits; a later push still requires an explicit request.
+The local `main` branch tracks `origin/main`. `origin/main` remains at
+`63ecc49`; local `main` is 13 commits ahead and contains the scientific
+reference gate plus verified work through Increment 11. Fetch uses the HTTPS
+URL and push uses the authenticated SSH URL. Never force-push or rewrite shared
+history. The user authorizes local commits; a later push still requires an
+explicit request.
 
 ## Target environment recorded on 2026-09-08
 
@@ -614,11 +614,11 @@ qualified separately in Increments 8 and 9.
 
 ## Exact next action
 
-Increment 10 is complete. The exact next action is Increment 11 only: finalize
-read-only wavefield views, a propagator factory boundary, receiver-data reader,
-observer hooks, checkpoint-store interface, optional RTM CMake boundary, and a
-deterministic mock checkpoint save/restore test. Do not implement migration,
-imaging, reverse propagation, or P/S decomposition.
+The elastic forward roadmap through Increment 11 is complete. There is no
+automatic next implementation action. Preserve the accepted forward baseline
+and stop unless the user explicitly starts a separate RTM, imaging,
+decomposition, optimization, or deep-learning research phase. Such a phase
+needs its own incremental roadmap and predeclared numerical acceptance gates.
 
 ## Increment 5 implementation and verification
 
@@ -758,3 +758,30 @@ measurements are in `RTX5060_QUALIFICATION.md`. Final CPU Release, CUDA
 Release, and ASan/UBSan suites passed 15/15, 20/20, and 15/15; full
 free-surface memcheck/initcheck and focused racecheck/synccheck reported zero
 errors or hazards.
+
+## Increment 11 implementation and verification
+
+Increment 11 finalized removable RTM-ready seams without implementing RTM on
+2026-09-09:
+
+- `elastic_wavefield_view.hpp` exposes all nine fields as non-owning const
+  ranges with checked indexing and copied grid identity.
+- `IForwardObserver` receives completed-step velocity/stress time levels after
+  sampling. The CPU reference factory owns inputs, state, frame storage, and
+  receiver-major traces; an instrumented test observed zero step allocations
+  and bitwise equality to direct CPU calls.
+- `IReceiverData` and `ThreeComponentReceiverDataReader` provide checked,
+  format-independent component/sample/metadata reads.
+- `WAVE3D_ENABLE_RTM=OFF` is the default. Enabling it adds only the optional
+  `ICheckpointStore`, fixed-interval observer, and mock tests. The mock saved
+  steps 2 and 4, restored nine fields bitwise, rejected absent/wrong-grid
+  requests, and reproduced metadata/state bitwise across runs.
+
+RTM-on Release passed 17/17 and focused ASan/UBSan passed 2/2. With the entire
+`optional/rtm` tree temporarily absent, RTM-off still configured, built, and
+passed. The forward SHA-256 remained
+`f56399fb419e73648db3707cf408823f52e8a6c47ad9cf508e0836f761e106f1`.
+Final RTM-off CPU Release passed 16/16 and CUDA Release passed 21/21. No reverse
+wavefield, image, P/S decomposition, checkpoint persistence, or RTM executable
+exists. The final combined CUDA/YAML/HDF5/SEG-Y/RTM-interface Release build
+passed 25/25 tests.

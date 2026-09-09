@@ -313,6 +313,17 @@ removing optional checkpoint/imaging directories does not break core builds;
 mock save/restore metadata is deterministic. Stop unless the user explicitly
 starts a separate RTM phase.
 
+**Status:** Verified on 2026-09-09. Nine-field const views, deterministic
+completed-step observer metadata, an allocation-free-step CPU reference
+factory, and format-independent receiver reads are now core interfaces. The
+checkpoint store and interval observer exist only under the default-off RTM
+tree. Mock save/restore is bitwise deterministic; removing that whole tree did
+not affect the RTM-off build, and the forward executable hash was unchanged.
+RTM-on Release passed 17/17, interface ASan/UBSan 2/2, final CPU Release 16/16,
+CUDA Release 21/21, and an all-options-on Release build 25/25. The elastic
+forward roadmap is complete; stop here unless the user explicitly authorizes a
+separate research phase.
+
 ## Deferred research phases
 
 After elastic forward qualification, separate future phases may implement

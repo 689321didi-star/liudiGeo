@@ -463,3 +463,23 @@ because it underpins the accepted transparent CPU/GPU comparisons. A later
 optimization may change precision, register pressure, fusion, or CPML layout
 only behind a new numerical gate. Increment 10 therefore qualifies the
 accuracy-first reference path without silently trading accuracy for speed.
+
+## D034 — Read-only extension seam and removable checkpoint boundary
+
+**Status:** Accepted and implemented, 2026-09-09
+
+Extension consumers receive non-owning const views of all nine elastic fields
+plus explicit completed-step metadata. They cannot obtain mutable pointers or
+control the time-step order. Observer registration closes before the first
+step; the transparent CPU reference factory owns all state, preallocates
+receiver-major output, and performs no dynamic allocation while stepping.
+`IReceiverData` similarly separates component/sample access from any HDF5 or
+SEG-Y implementation.
+
+Checkpoint storage is not a forward dependency. `ICheckpointStore` and its
+interval observer live under `optional/rtm`, reachable only through the
+default-off `WAVE3D_ENABLE_RTM` interface target. Save accepts a const view;
+restore requires an explicit mutable destination and exact grid identity.
+Removing the entire optional tree leaves the forward build and binary
+unchanged. This seam authorizes no RTM, imaging, reverse, or decomposition
+implementation.
