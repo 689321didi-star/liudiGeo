@@ -169,3 +169,12 @@ The 1 ms configuration passed CFL/dispersion validation at a 0.65487 CFL
 fraction and 6.27582 minimum S-wave points per design wavelength. The complete
 real-source preparation path also passed ASan/UBSan. Increment 14d propagation
 remains pending.
+
+### 14d smoke sub-gate
+
+Passed on 2026-09-09. The fixed 64-cubed Overthrust profile exercised eight
+steps through the production HDF5/YAML-to-CUDA-to-single-SEG-Y command.
+Compute Sanitizer memcheck reported zero errors. The 10,944-byte record had 27
+receiver-major traces with repeated 14/13/12 component codes, 8 samples at
+exactly 1 ms, and 216/216 finite samples, 55 of them nonzero. Time refinement
+and full-model propagation remain pending.

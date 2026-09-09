@@ -27,6 +27,14 @@ constexpr wave3d::PhysicalVolumeWindow3D audited_crop{
 constexpr wave3d::OutputStorageGeometry production_storage{
     6, {20, 20}, {20, 20}, {0, 20}};
 
+// A fixed subset of the accepted crop, centered horizontally on the
+// production source area and retaining the free surface.
+constexpr wave3d::PhysicalVolumeWindow3D smoke_crop{
+    222, 221, 0, 64, 64, 64};
+
+constexpr wave3d::OutputStorageGeometry smoke_storage{
+    6, {10, 10}, {10, 10}, {0, 10}};
+
 [[nodiscard]] std::filesystem::path normalized_absolute(
     const std::filesystem::path& path) {
     std::error_code error;
@@ -99,23 +107,28 @@ void require_audited_extrema(const wave3d::MaterialExtrema& extrema) {
 [[nodiscard]] wave3d::io::ForwardRunConfiguration make_configuration(
     const wave3d::PhysicalModel& model,
     const std::filesystem::path& hdf5_path,
-    const std::filesystem::path& yaml_path) {
+    const std::filesystem::path& yaml_path,
+    bool smoke) {
     wave3d::SimulationConfig simulation{};
     simulation.grid = model.grid;
-    simulation.time = {0.001, 3.0};
+    simulation.time = {0.001, smoke ? 0.008 : 3.0};
     simulation.material = extrema_for(model);
     simulation.top_boundary = wave3d::TopBoundary::FreeSurface;
     simulation.numerics = {0.85, 9.0};
 
     const auto source = wave3d::prepare_moment_tensor_source(
         simulation.grid,
-        {2500.0, 2500.0, 1100.0},
+        smoke ? wave3d::PhysicalPoint3D{800.0, 800.0, 600.0}
+              : wave3d::PhysicalPoint3D{2500.0, 2500.0, 1100.0},
         0.0,
         {0.0, 0.0, 0.0, 1.0e12, 0.0, 0.0},
         {3.0, 1.0 / 3.0, 1.0});
     const auto prepared_receivers = wave3d::make_regular_surface_receivers(
         simulation.grid,
-        {500.0, 500.0, 400.0, 400.0, 11, 11});
+        smoke ? wave3d::RegularSurfaceReceiverGrid{
+                    400.0, 400.0, 400.0, 400.0, 3, 3}
+              : wave3d::RegularSurfaceReceiverGrid{
+                    500.0, 500.0, 400.0, 400.0, 11, 11});
     std::vector<wave3d::PhysicalPoint3D> receivers;
     receivers.reserve(prepared_receivers.receivers.size());
     for (const auto& receiver : prepared_receivers.receivers) {
@@ -127,7 +140,7 @@ void require_audited_extrema(const wave3d::MaterialExtrema& extrema) {
         source,
         std::move(receivers),
         model_path_from_yaml(hdf5_path, yaml_path),
-        "overthrust_output"};
+        smoke ? "overthrust_smoke_output" : "overthrust_output"};
     wave3d::io::require_valid_run_configuration(configuration);
     return configuration;
 }
@@ -216,28 +229,34 @@ void create_parent(const std::filesystem::path& path) {
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 4) {
-        std::cerr << "usage: wave3d_prepare_overthrust "
+    const bool smoke = argc == 5 && std::string(argv[1]) == "--smoke";
+    if ((!smoke && argc != 4) || (argc == 5 && !smoke)) {
+        std::cerr << "usage: wave3d_prepare_overthrust [--smoke] "
                      "INPUT.mat OUTPUT.h5 OUTPUT.yaml\n";
         return 2;
     }
     try {
-        const std::filesystem::path input_path(argv[1]);
-        const std::filesystem::path hdf5_path(argv[2]);
-        const std::filesystem::path yaml_path(argv[3]);
+        const int path_offset = smoke ? 2 : 1;
+        const std::filesystem::path input_path(argv[path_offset]);
+        const std::filesystem::path hdf5_path(argv[path_offset + 1]);
+        const std::filesystem::path yaml_path(argv[path_offset + 2]);
         require_distinct_paths(input_path, hdf5_path, yaml_path);
 
         const auto decoded = wave3d::io::read_overthrust_mat_v5_vp_crop(
-            input_path.string(), audited_source_grid, audited_crop);
+            input_path.string(),
+            audited_source_grid,
+            smoke ? smoke_crop : audited_crop);
         const auto model = wave3d::make_derived_overthrust_elastic_model(
             decoded.grid,
             decoded.vp_m_s,
             {0, 0, 0, decoded.grid.nx, decoded.grid.ny, decoded.grid.nz},
-            production_storage);
+            smoke ? smoke_storage : production_storage);
         const auto extrema = extrema_for(model);
-        require_audited_extrema(extrema);
+        if (!smoke) {
+            require_audited_extrema(extrema);
+        }
         const auto configuration =
-            make_configuration(model, hdf5_path, yaml_path);
+            make_configuration(model, hdf5_path, yaml_path, smoke);
         const auto numerical =
             wave3d::elastic_numerical_report(configuration.simulation);
 
@@ -255,7 +274,8 @@ int main(int argc, char** argv) {
             wave3d::io::load_yaml_run_configuration(yaml_path.string()));
 
         std::cout << std::setprecision(12)
-                  << "prepared derived SEG/EAGE 3-D Overthrust benchmark\n"
+                  << "prepared derived SEG/EAGE 3-D Overthrust "
+                  << (smoke ? "smoke" : "production") << " benchmark\n"
                   << "shape_zyx=" << model.grid.nz << ',' << model.grid.ny
                   << ',' << model.grid.nx << '\n'
                   << "spacing_m=" << model.grid.dz_m << ',' << model.grid.dy_m

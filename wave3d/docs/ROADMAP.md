@@ -407,8 +407,11 @@ dataset hashes exactly matched all three frozen preimplementation oracles;
 orthogonal slices and summaries passed. Increment 14d CUDA propagation is
 next.
 
-**14d status:** Pending. Run the small/refined and full CUDA/SEG-Y validation
-gates.
+**14d status:** In progress. The fixed 64-cubed/eight-step Overthrust smoke
+profile completed normally and under Compute Sanitizer memcheck with zero
+errors. Its one SEG-Y file had 27 receiver-major 14/13/12 traces, 8 samples at
+1 ms, and 216/216 finite samples. Time refinement and the full production run
+are next.
 
 ## Deferred research phases
 

@@ -926,6 +926,13 @@ minimum S-wave points per design wavelength. The complete real-source
 preparation path also passed ASan/UBSan. Increment 14d CUDA smoke, refinement,
 full propagation, and SEG-Y checks are next.
 
+The first 14d gate now passes. The fixed 64-cubed/eight-step Overthrust smoke
+profile completed through `wave3d_run` and Compute Sanitizer memcheck reported
+zero errors. Its only output was a 10,944-byte `record.sgy` containing 27
+receiver-major 14/13/12 traces, 8 samples per trace at exactly 1 ms, and
+216/216 finite values (55 nonzero). Time refinement and the full production
+run remain.
+
 Observed commands/results:
 
 ```text

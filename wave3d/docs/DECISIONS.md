@@ -615,3 +615,20 @@ surface array spans 500-4500 m on x and y at 400 m spacing. The 3 s record
 window exceeds the conservative farthest-receiver distance/minimum-Vs time
 plus source delay. Increment 14d must still qualify the actual CUDA record and
 time refinement; this decision does not claim propagation success in advance.
+
+## D042 — Fixed Overthrust CUDA smoke profile
+
+**Status:** Accepted and implemented, 2026-09-09
+
+`wave3d_prepare_overthrust --smoke` exists only as the first Increment 14d
+execution gate. It takes the fixed 64-cubed source window beginning at original
+`[z,y,x]=[0,221,222]`, retains 25 m sampling and the free surface, uses
+10-point CPML on the other five sides, and runs eight 1 ms steps with a 3 x 3
+surface receiver grid. Its source is an `Mxy` double couple at
+`(800,800,600) m`.
+
+This profile is deliberately not a substitute for the accepted 200 x 200 x
+187 model or 3 s record. It exists to exercise real Overthrust MAT decoding,
+HDF5/YAML I/O, coefficient preparation, CPML, the free surface, source,
+receivers, CUDA kernels, and the single-file SEG-Y writer cheaply under
+Compute Sanitizer before larger runs.

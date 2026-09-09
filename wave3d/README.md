@@ -111,6 +111,9 @@ exact round trips. Source and generated data stay outside Git; provenance and
 expected dataset hashes are in
 [`docs/OVERTHRUST_SOURCE_AUDIT.md`](docs/OVERTHRUST_SOURCE_AUDIT.md).
 
+For the fixed 64-cubed, eight-step CUDA memory-check input, add `--smoke`
+before the MAT path. This is a validation profile, not the production model.
+
 ## HDF5 model to one SEG-Y record
 
 Build the general GPU runner with all four required adapters:
