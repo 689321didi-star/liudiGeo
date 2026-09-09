@@ -147,3 +147,12 @@ Passed on 2026-09-09. `derived_overthrust.hpp` keeps container parsing outside
 the model layer and implements the direct crop plus approved elastic mapping.
 The focused Release and ASan/UBSan tests passed. The complete dependency-free
 CPU Release suite passed 17/17. No MAT or HDF5 adapter was added in this gate.
+
+### 14c adapter sub-gate
+
+Passed on 2026-09-09. The optional MatIO adapter validates the audited MATLAB
+v5 variable contract, reads only the requested crop hyperslab, and performs an
+explicit tested MATLAB-column-major to Wave3D-x-fastest reorder. Synthetic
+Release and ASan/UBSan tests passed for valid unique-index data and malformed
+spacing, dimensions, precision, and missing-variable cases. Canonical HDF5
+and YAML generation remains pending within 14c.

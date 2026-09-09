@@ -581,3 +581,19 @@ must satisfy `Vp^2 > (4/3)Vs^2` before coefficients or propagation are
 created. The production runner also requires exact agreement between the YAML
 extrema and those validated HDF5 cells. This preserves material safety while
 allowing valid broad-range heterogeneous models such as derived Overthrust.
+
+## D040 — Optional audited MATLAB v5 Overthrust adapter
+
+**Status:** Accepted and implemented, 2026-09-09
+
+The benchmark converter uses MatIO only behind the default-off
+`WAVE3D_ENABLE_OVERTHRUST` option. Enabling it requires the already optional
+HDF5 and YAML adapters; ordinary CPU, CUDA, and production builds do not gain
+a MATLAB dependency.
+
+The adapter accepts only the audited real-double MATLAB v5 contract:
+`d=[dz,dy,dx]`, `n=[nz,ny,nx]`, and `data[nz,ny,nx]`. It reads only the fixed
+crop hyperslab, converts MATLAB column-major data explicitly to Wave3D
+`[z][y][x]` x-fastest order, and rejects non-positive, non-finite, or
+non-binary32-exact Vp. Container parsing remains separate from the pure
+elastic derivation.

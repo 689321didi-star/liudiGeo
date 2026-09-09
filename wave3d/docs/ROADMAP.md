@@ -397,9 +397,11 @@ ASan/UBSan passed, and the optional-I/O-off CPU Release suite passed 17/17.
 
 **14c status:** In progress. The prerequisite extrema-semantics gate now
 avoids pairing independent global minimum Vp and maximum Vs as if they were
-one cell; actual HDF5 materials remain strictly validated cell by cell. Add
-the audited container adapter next, then generate and independently verify
-canonical HDF5 and matching YAML artifacts.
+one cell; actual HDF5 materials remain strictly validated cell by cell. The
+default-off MatIO adapter now validates the audited v5 variables, reads only
+the selected hyperslab, and explicitly changes MATLAB column-major order to
+Wave3D x-fastest order. Generate and independently verify canonical HDF5 and
+matching YAML artifacts next.
 
 **14d status:** Pending. Run the small/refined and full CUDA/SEG-Y validation
 gates.

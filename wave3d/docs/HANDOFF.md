@@ -906,6 +906,14 @@ and global maximum Vs into a material that may not exist. Exact extrema
 identity is still checked by the production task, and the loaded HDF5 model
 still enforces positive bulk modulus at every physical cell.
 
+The next 14c sub-gate added a default-off MatIO adapter. It strictly checks
+the audited MATLAB v5 `d`, `n`, and `data` contract, decodes only the requested
+hyperslab, and reorders MATLAB column-major `[z,y,x]` values to Wave3D
+x-fastest storage. Synthetic unique-index tests prove the mapping and reject
+spacing/shape mismatches, non-binary32 data, and missing data. Focused Release
+and ASan/UBSan tests both passed. The real converter/HDF5/YAML generation is
+the next action.
+
 Observed commands/results:
 
 ```text

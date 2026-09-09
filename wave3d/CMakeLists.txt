@@ -8,6 +8,10 @@ option(WAVE3D_ENABLE_YAML "Build YAML run-configuration adapters" OFF)
 option(WAVE3D_ENABLE_HDF5 "Build HDF5 scientific-data adapters" OFF)
 option(WAVE3D_ENABLE_SEGY "Build SEG-Y trace adapters" OFF)
 option(WAVE3D_ENABLE_RTM "Build removable RTM-ready interfaces only" OFF)
+option(
+    WAVE3D_ENABLE_OVERTHRUST
+    "Build the optional SEG/EAGE Overthrust MAT converter"
+    OFF)
 
 add_library(wave3d_core INTERFACE)
 target_include_directories(wave3d_core INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
@@ -35,6 +39,19 @@ endif()
 if(WAVE3D_ENABLE_SEGY)
     add_library(wave3d_io_segy STATIC src/io/segy.cpp)
     target_link_libraries(wave3d_io_segy PUBLIC wave3d_core)
+endif()
+
+if(WAVE3D_ENABLE_OVERTHRUST)
+    if(NOT WAVE3D_ENABLE_HDF5 OR NOT WAVE3D_ENABLE_YAML)
+        message(FATAL_ERROR
+            "WAVE3D_ENABLE_OVERTHRUST requires HDF5 and YAML adapters")
+    endif()
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(MATIO REQUIRED IMPORTED_TARGET matio)
+    add_library(
+        wave3d_io_overthrust_mat STATIC src/io/overthrust_mat.cpp)
+    target_link_libraries(
+        wave3d_io_overthrust_mat PUBLIC wave3d_core PkgConfig::MATIO)
 endif()
 
 add_executable(wave3d_forward apps/forward3d.cpp)
@@ -181,6 +198,18 @@ if(WAVE3D_BUILD_TESTS)
         target_link_libraries(wave3d_segy_io_tests PRIVATE wave3d_io_segy)
         add_test(NAME wave3d_segy_io_tests COMMAND wave3d_segy_io_tests)
         set_tests_properties(wave3d_segy_io_tests PROPERTIES LABELS "io")
+    endif()
+
+    if(WAVE3D_ENABLE_OVERTHRUST)
+        add_executable(
+            wave3d_overthrust_mat_tests tests/test_overthrust_mat.cpp)
+        target_link_libraries(
+            wave3d_overthrust_mat_tests PRIVATE wave3d_io_overthrust_mat)
+        add_test(
+            NAME wave3d_overthrust_mat_tests
+            COMMAND wave3d_overthrust_mat_tests)
+        set_tests_properties(
+            wave3d_overthrust_mat_tests PROPERTIES LABELS "io;model")
     endif()
 endif()
 
