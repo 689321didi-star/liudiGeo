@@ -267,6 +267,14 @@ void test_fractional_microsecond_interval_rejected() {
     expect(
         !std::filesystem::exists(path),
         "invalid SEG-Y interval left a partial output file");
+
+    bool count_threw = false;
+    try {
+        wave3d::io::require_segy_rev1_sample_axis(65536, 0.0005);
+    } catch (const std::invalid_argument&) {
+        count_threw = true;
+    }
+    expect(count_threw, "oversized Rev1 sample axis must fail before writing");
 }
 
 } // namespace

@@ -522,3 +522,21 @@ The YAML adapter remains independent of HDF5 and validates the declared
 bounds. The production task must separately calculate extrema from the loaded
 HDF5 cells and require exact binary32 agreement before propagation. Missing,
 old, or unknown YAML schemas fail rather than being guessed.
+
+## D037 — Optional HDF5-to-SEG-Y CUDA production task
+
+**Status:** Accepted and implemented, 2026-09-09
+
+`wave3d_run CONFIG.yaml` is the general single-source forward command and is
+built only when CUDA, YAML, HDF5, and SEG-Y are all enabled. Relative paths are
+resolved against the YAML location. The command accepts only canonical Wave3D
+HDF5 models, requires exact grid and declared/calculated material-extrema
+agreement, validates the SEG-Y sample axis and the current-memory plan before
+device allocation, and writes exactly `<output_directory>/record.sgy`.
+
+The task composes existing prepared coefficients, source and receiver
+stencils, CPML, optional traction-free top, CUDA kernels, and the single-file
+SEG-Y writer. It introduces no propagation equation or kernel. CPML uses the
+accepted target reflection `1e-3`, power 2, and `kappa_max=1`, with actual
+maximum model Vp and the source dominant frequency. A free surface disables
+z-min CPML; an absorbing top enables all six sides.

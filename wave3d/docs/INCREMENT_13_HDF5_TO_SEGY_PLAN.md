@@ -1,6 +1,7 @@
 # Increment 13 HDF5-to-SEG-Y Production Pipeline Plan
 
-Status: fixed before implementation on 2026-09-09.
+Status: passed on 2026-09-09. Fixed before implementation; no contract or
+acceptance criterion was relaxed after testing began.
 
 ## Goal
 
@@ -64,3 +65,19 @@ only z-min CPML; an absorbing top enables all six sides.
 - Grid or extrema mismatches fail before propagation and leave no SEG-Y file.
 - The all-options Release suite, focused I/O sanitizer suite, optional-I/O-off
   CPU suite, and supported build-option combinations remain green.
+
+## Observed result
+
+- YAML v2 round-trip and schema rejection passed before runner work began.
+- The end-to-end test loaded a two-layer `9 x 9 x 9` canonical HDF5 model,
+  resolved relative paths, ran 40 free-surface/five-side-CPML CUDA steps, and
+  wrote one SEG-Y file for three receivers. Its nine traces were finite,
+  contained a nonzero propagated signal, and repeated codes 14/13/12.
+- Deliberate grid and material-extrema mismatches failed before propagation and
+  left no SEG-Y file.
+- The all-options Release suite passed 26/26. Compute Sanitizer memcheck of the
+  complete pipeline reported zero errors. Focused I/O ASan/UBSan passed 4/4
+  with leak detection disabled, and optional-I/O-off CPU Release passed 16/16.
+- CUDA builds without adapters, with HDF5 only, and with SEG-Y only remained
+  successful; the production runner is present only when all four required
+  features are enabled.

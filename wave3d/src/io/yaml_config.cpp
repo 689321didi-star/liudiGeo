@@ -34,6 +34,14 @@ ForwardRunConfiguration load_yaml_run_configuration(const std::string& path) {
             throw std::invalid_argument(
                 "YAML run configuration schema must be wave3d.forward.v2");
         }
+        if (!root["coordinate_convention"] ||
+            root["coordinate_convention"].as<std::string>() !=
+                coordinate_convention() ||
+            !root["volume_axes"] ||
+            root["volume_axes"].as<std::string>() != "z,y,x") {
+            throw std::invalid_argument(
+                "YAML coordinate convention or volume axes are unsupported");
+        }
         const auto grid_node = root["grid"];
         Grid3D grid{
             grid_node["nx"].as<std::size_t>(),

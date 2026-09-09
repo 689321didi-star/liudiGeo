@@ -299,3 +299,35 @@ if(WAVE3D_ENABLE_CUDA)
             PROPERTIES LABELS "boundary;cuda;physics")
     endif()
 endif()
+
+if(WAVE3D_ENABLE_CUDA AND WAVE3D_ENABLE_YAML AND WAVE3D_ENABLE_HDF5 AND
+   WAVE3D_ENABLE_SEGY)
+    add_library(
+        wave3d_forward_run
+        STATIC
+            src/task/cuda_forward_run.cpp)
+    target_link_libraries(
+        wave3d_forward_run
+        PUBLIC
+            wave3d_cuda
+            wave3d_io_yaml
+            wave3d_io_hdf5
+            wave3d_io_segy)
+
+    add_executable(wave3d_run apps/run_forward.cpp)
+    target_link_libraries(wave3d_run PRIVATE wave3d_forward_run)
+
+    if(WAVE3D_BUILD_TESTS)
+        add_executable(
+            wave3d_cuda_forward_run_tests
+            tests/test_cuda_forward_run.cpp)
+        target_link_libraries(
+            wave3d_cuda_forward_run_tests PRIVATE wave3d_forward_run)
+        add_test(
+            NAME wave3d_cuda_forward_run_tests
+            COMMAND wave3d_cuda_forward_run_tests)
+        set_tests_properties(
+            wave3d_cuda_forward_run_tests
+            PROPERTIES LABELS "cuda;io;pipeline")
+    endif()
+endif()

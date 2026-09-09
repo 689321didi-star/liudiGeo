@@ -357,9 +357,18 @@ YAML configuration and write one combined standard SEG-Y receiver record.
 **13a status:** Verified on 2026-09-09. YAML schema
 `wave3d.forward.v2` replaces the misleading homogeneous-material triple with
 six declared heterogeneous model extrema. The focused round trip and old-
-schema rejection test pass. Increment 13b production orchestration is next.
+schema rejection test pass; Increment 13b production orchestration is now
+complete as recorded below.
 
-**13b status:** Pending.
+**13b status:** Verified on 2026-09-09. `wave3d_run CONFIG.yaml` now resolves
+configuration-relative paths, validates a canonical heterogeneous HDF5 model
+against the YAML grid/extrema, applies the live GPU memory gate, executes the
+existing CUDA CPML/free-surface solver, and writes only
+`<output_directory>/record.sgy`. A small heterogeneous end-to-end case produced
+finite nonzero traces with the correct 14/13/12 component sequence; grid and
+extrema mismatches failed before output. All-options Release passed 26/26 and
+pipeline memcheck reported zero errors. Focused I/O ASan/UBSan passed 4/4 and
+optional-I/O-off CPU Release passed 16/16.
 
 ## Deferred research phases
 

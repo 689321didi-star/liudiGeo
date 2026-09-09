@@ -98,6 +98,8 @@ radius-six spectral bound and independent design-band accuracy checks.
   sparse snapshots.
 - CSV for irregular receiver geometry.
 - One standards-based three-component SEG-Y file for external trace exchange.
+- `wave3d_run CONFIG.yaml` for the validated canonical-HDF5-to-CUDA-to-SEG-Y
+  production path.
 - Raw binary/CSV/JSON only for small early diagnostics.
 
 The propagator must not parse file formats. I/O adapters produce validated
@@ -119,9 +121,9 @@ origin https://github.com/689321didi-star/liudiGeo.git
 ```
 
 The local `main` branch tracks `origin/main`. `origin/main` remains at
-`63ecc49`; after the Increment 12 commit, local `main` is 14 commits ahead and
-contains the scientific reference gate plus verified work through the
-single-file SEG-Y output amendment. Fetch uses the HTTPS URL and push uses the
+`63ecc49`; after the Increment 13b commit, local `main` is 16 commits ahead and
+contains the scientific reference gate plus verified work through the general
+HDF5-to-SEG-Y production pipeline. Fetch uses the HTTPS URL and push uses the
 authenticated SSH URL. Never force-push or rewrite shared history. The user
 authorizes local commits; a later push still requires an explicit request.
 
@@ -614,15 +616,13 @@ qualified separately in Increments 8 and 9.
 
 ## Exact next action
 
-The elastic forward roadmap through Increment 11 and the user-requested
-single-file SEG-Y output amendment in Increment 12 are complete. There is no
-automatic next implementation action. A general YAML/HDF5-input production
-driver remains a separate integration increment and must not be confused with
-the fixed target qualification executable. Preserve the accepted forward
-baseline and stop unless the user explicitly requests that integration or
-starts a separate RTM, imaging, decomposition, optimization, or deep-learning
-research phase. Such a phase needs its own incremental roadmap and predeclared
-acceptance gates.
+The elastic forward roadmap, single-file SEG-Y amendment, and general
+YAML/HDF5-input production driver are complete through Increment 13. There is
+no automatic next implementation action. Preserve the accepted forward
+baseline and stop unless the user requests a concrete production dataset run
+or starts a separate RTM, imaging, decomposition, optimization, or deep-
+learning research phase. Such a phase needs its own incremental roadmap and
+predeclared acceptance gates.
 
 ## Increment 5 implementation and verification
 
@@ -822,7 +822,7 @@ the optional-I/O-off CPU Release suite passed 16/16. The qualification
 executable also compiled in no-output, HDF5-only, SEG-Y-only, and combined
 adapter configurations.
 
-## Increment 13a implementation and verification
+## Increment 13 implementation and verification
 
 Increment 13a established model-bound configuration metadata on 2026-09-09:
 
@@ -833,6 +833,23 @@ Increment 13a established model-bound configuration metadata on 2026-09-09:
 - The focused YAML Release test preserves six deliberately distinct extrema
   through a write/read round trip and passes malformed and old-schema cases.
 
-This is an interface gate only. Increment 13b must compare the declarations
-against extrema calculated from the HDF5 cells before launching the new
-production runner.
+Increment 13b then added the production pipeline:
+
+- `wave3d_run CONFIG.yaml` is built only when CUDA, YAML, HDF5, and SEG-Y are
+  enabled. Relative input/output paths are resolved from the YAML directory.
+- It reads a canonical Wave3D HDF5 model, checks exact grid and declared versus
+  calculated extrema, validates the Rev1 sample axis and live 80%-plus-reserve
+  memory plan before allocation, and prepares the accepted CUDA propagation
+  objects.
+- Free-surface configurations use five-side CPML; absorbing-top configurations
+  use six-side CPML. Accepted CPML constants remain fixed and its velocity and
+  frequency come from actual model/source metadata.
+- After all configured steps, the program downloads three-component receiver
+  data and creates only `<output_directory>/record.sgy`.
+
+The heterogeneous `9^3`, 40-step end-to-end case produced finite nonzero
+samples and the expected 14/13/12 trace sequence. Deliberate grid and extrema
+mismatches failed before propagation and left no SEG-Y. All-options Release
+passed 26/26, full-pipeline Compute Sanitizer memcheck reported zero errors,
+focused I/O ASan/UBSan passed 4/4, and optional-I/O-off CPU Release passed
+16/16. No-adapter, HDF5-only, and SEG-Y-only CUDA builds also remained green.

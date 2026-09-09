@@ -1,0 +1,54 @@
+schema: wave3d.forward.v2
+coordinate_convention: x=east, y=north, z=down, units=metres, surface_z=0
+volume_axes: z,y,x
+grid:
+  nx: 200
+  ny: 200
+  nz: 200
+  dx_m: 10
+  dy_m: 10
+  dz_m: 10
+  halo: 6
+  x_boundary:
+    lower_absorbing: 20
+    upper_absorbing: 20
+  y_boundary:
+    lower_absorbing: 20
+    upper_absorbing: 20
+  z_boundary:
+    lower_absorbing: 0
+    upper_absorbing: 20
+time:
+  dt_s: 0.0005
+  total_time_s: 2
+numerics:
+  cfl_safety_factor: 0.85
+  design_frequency_hz: 30
+top_boundary: free_surface
+material_extrema:
+  min_vp_m_s: 3200
+  max_vp_m_s: 3200
+  min_vs_m_s: 2200
+  max_vs_m_s: 2200
+  min_density_kg_m3: 2500
+  max_density_kg_m3: 2500
+source:
+  location_m: [995, 995, 600]
+  origin_time_s: 0
+  moment_tensor_nm: [1.0e12, 1.0e12, 1.0e12, 0, 0, 0]
+  ricker:
+    dominant_frequency_hz: 30
+    peak_delay_s: 0.04
+    peak_rate_s_inv: 1
+receivers_m:
+  - [500, 500, 0]
+  - [995, 500, 0]
+  - [1490, 500, 0]
+  - [500, 995, 0]
+  - [995, 995, 0]
+  - [1490, 995, 0]
+  - [500, 1490, 0]
+  - [995, 1490, 0]
+  - [1490, 1490, 0]
+model_hdf5_path: ../model.h5
+output_directory: ../output

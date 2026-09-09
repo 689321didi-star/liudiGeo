@@ -212,9 +212,7 @@ struct ComponentDescription {
 void write_three_component_record(
     const std::string& path,
     const ThreeComponentTraces& traces) {
-    if (traces.sample_count > 65535) {
-        throw std::invalid_argument("SEG-Y trace sample count exceeds uint16");
-    }
+    require_segy_rev1_sample_axis(traces.sample_count, traces.dt_s);
     const auto interval_us = segy_interval_us(traces.dt_s);
     const auto trace_count = detail::checked_size_product(
         traces.receiver_count,
@@ -335,6 +333,16 @@ void write_three_component_record(
 }
 
 } // namespace
+
+void require_segy_rev1_sample_axis(
+    std::size_t sample_count,
+    double dt_s) {
+    if (sample_count == 0 || sample_count > 65535) {
+        throw std::invalid_argument(
+            "SEG-Y Revision 1 sample count must be in [1,65535]");
+    }
+    static_cast<void>(segy_interval_us(dt_s));
+}
 
 void write_segy(
     const std::string& path,

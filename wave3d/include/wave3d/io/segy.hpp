@@ -8,6 +8,10 @@
 
 namespace wave3d::io {
 
+void require_segy_rev1_sample_axis(
+    std::size_t sample_count,
+    double dt_s);
+
 void write_segy(
     const std::string& path,
     const ThreeComponentTraces& traces);

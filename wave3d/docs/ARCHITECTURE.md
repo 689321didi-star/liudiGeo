@@ -10,10 +10,10 @@ a mode flag spread throughout the solver.
 ## Dependency direction
 
 ```text
-apps: forward3d              optional app: rtm3d
-        |                              |
-        v                              v
-ForwardTask                       RtmTask
+apps: forward3d / wave3d_run   optional app: rtm3d
+              |                         |
+              v                         v
+         ForwardTask                  RtmTask
         |                    /         |         \
         v                   v          v          v
 Propagator3D          PropagatorFactory  Checkpoints  ImagingCondition
@@ -269,6 +269,14 @@ be exactly representable in Revision 1's integer-microsecond field. The
 separate model converter accepts only fixed-length IEEE-float volumes and
 reorders trace-major input into canonical `[z][y][x]` HDF5.
 
+The optional production task is built only when CUDA, YAML, HDF5, and SEG-Y
+are all enabled. `wave3d_run CONFIG.yaml` resolves relative paths against the
+configuration directory, reads a canonical HDF5 model, requires exact grid and
+declared/calculated extrema agreement, applies the existing memory gate, runs
+the accepted CUDA CPML/free-surface composition, and writes
+`<output_directory>/record.sgy`. This orchestration owns no numerical kernel
+and does not add file-format knowledge to propagation.
+
 ### `diagnostics`
 
 Provides resolved configuration, environment and Git metadata, NaN/Inf checks,
@@ -371,6 +379,11 @@ WAVE3D_ENABLE_RTM
 forward core. HDF5 and SEG-Y are optional adapters. Early core tests must remain
 buildable without them.
 
+The `wave3d_forward_run` task library and `wave3d_run` executable require all
+of CUDA, YAML, HDF5, and SEG-Y. Omitting any one removes only those production
+targets and leaves the independently useful core, adapter, and qualification
+targets intact.
+
 Increment 11 verifies that behavior by configuring and building with the whole
 `optional/rtm` tree temporarily absent. RTM-off exposes only the forward views,
 observer, factory, and receiver reader; RTM-on adds the header-only checkpoint
@@ -405,6 +418,7 @@ wave3d/
 ├── CMakeLists.txt
 ├── apps/
 │   ├── forward3d.cpp
+│   ├── run_forward.cpp
 │   └── rtm3d.cpp                 # optional, future
 ├── include/wave3d/
 │   ├── core/
