@@ -222,6 +222,16 @@ the planner.
 tolerances; long elastic runs remain stable; turning CPML off does not alter
 core propagation interfaces.
 
+**Status:** Verified on the target RTX 5060 on 2026-09-09. The unsplit
+convolutional recurrence has separately prepared integer/half-axis
+coefficients and 18 explicit derivative-memory fields. CPU/GPU fields, state,
+and traces matched bitwise; normal reflected amplitude was `0.02238%` of the
+undamped return and the near-grazing translated-reference residual was
+`2.27e-6`, both below fixed limits. The 800-step case remained finite and the
+unchanged boundary-free interface remains available. CPU/CUDA Release,
+ASan/UBSan, and all four Compute Sanitizer gates pass. Increment 8 replaces
+top CPML with a traction-free surface.
+
 ## Increment 8 — Traction-free top
 
 **Goal:** Support the intended surface-acquisition physics.

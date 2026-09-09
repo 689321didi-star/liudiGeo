@@ -390,3 +390,21 @@ finite-domain baseline but is not called CPML, does not change the interior
 operator, and does not define a traction-free surface.  The predeclared
 reflection experiment reduced the first-return peak to `1.0851%` of the
 undamped result while preserving the pre-boundary record exactly.
+
+## D030 — Unsplit CPML with explicit derivative state
+
+**Status:** Accepted and implemented, 2026-09-09
+
+Wave3D adopts the Komatitsch–Martin unsplit convolutional recurrence described
+in `CPML_NUMERICAL_SPEC.md`.  Integer and half positions have independent
+one-dimensional `a`, `b`, and inverse-`kappa` arrays.  The first implementation
+uses `m=2`, `kappa_max=1`, `alpha_max=pi*f0`, and a declared target reflection
+to calculate each side's `sigma_max`.  Disabled sides are exact identity.
+
+All 18 elastic derivative histories are explicit full-volume `float32` state.
+This costs about `1011.647 MiB` for the initial target allocation but keeps
+ownership, validation, CPU comparison, and removal simple.  Compaction to PML
+slabs is a future measured optimization, not an implicit layout change.  CPML
+has its own stress/velocity calls, while the accepted boundary-free calls stay
+unchanged.  Increment 8 may disable only `z_min` and compose the CPML with a
+traction-free top without changing the CPML recurrence.

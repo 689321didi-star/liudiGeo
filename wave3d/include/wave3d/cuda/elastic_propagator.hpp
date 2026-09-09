@@ -17,6 +17,8 @@
 namespace wave3d::cuda {
 
 class DeviceSpongeProfile;
+class DeviceCpmlProfile;
+class DeviceCpmlState;
 
 class DeviceElasticWavefield {
 public:
@@ -108,6 +110,16 @@ private:
         DeviceElasticWavefield&, const DeviceSpongeProfile&);
     friend void apply_sponge_to_velocities(
         DeviceElasticWavefield&, const DeviceSpongeProfile&);
+    friend void update_elastic_stresses_cpml(
+        DeviceElasticWavefield&,
+        const class DeviceElasticCoefficients&,
+        const DeviceCpmlProfile&,
+        DeviceCpmlState&);
+    friend void update_elastic_velocities_cpml(
+        DeviceElasticWavefield&,
+        const class DeviceElasticCoefficients&,
+        const DeviceCpmlProfile&,
+        DeviceCpmlState&);
 
     [[nodiscard]] static std::size_t validated_cell_count(const Grid3D& grid) {
         require_valid_grid_geometry(grid);
@@ -187,6 +199,16 @@ private:
         DeviceElasticWavefield&, const DeviceElasticCoefficients&, double);
     friend void update_elastic_velocities(
         DeviceElasticWavefield&, const DeviceElasticCoefficients&, double);
+    friend void update_elastic_stresses_cpml(
+        DeviceElasticWavefield&,
+        const DeviceElasticCoefficients&,
+        const DeviceCpmlProfile&,
+        DeviceCpmlState&);
+    friend void update_elastic_velocities_cpml(
+        DeviceElasticWavefield&,
+        const DeviceElasticCoefficients&,
+        const DeviceCpmlProfile&,
+        DeviceCpmlState&);
 
     [[nodiscard]] static std::size_t validated_cell_count(
         const ElasticCoefficients& host) {

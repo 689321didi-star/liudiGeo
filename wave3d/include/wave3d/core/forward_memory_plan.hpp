@@ -93,6 +93,12 @@ struct ForwardMemoryPlan {
 };
 
 struct ForwardMemoryPlanRequest {
+    enum class BoundaryKind {
+        None,
+        Sponge,
+        Cpml,
+    };
+
     Grid3D grid{};
     std::size_t receiver_count{0};
     std::size_t time_step_count{0};
@@ -100,6 +106,7 @@ struct ForwardMemoryPlanRequest {
     std::size_t runtime_reserve_bytes{512ULL * 1024ULL * 1024ULL};
     std::size_t available_device_bytes{0};
     double max_available_fraction{0.80};
+    BoundaryKind boundary_kind{BoundaryKind::Sponge};
 };
 
 [[nodiscard]] inline ForwardMemoryPlan make_elastic_forward_memory_plan(
@@ -166,7 +173,34 @@ struct ForwardMemoryPlanRequest {
              "vx", "vy", "vz", "sxx", "syy", "szz", "sxy", "sxz", "syz"}) {
         add_field(name, MemoryCategory::Wavefield, cells, scalar_bytes);
     }
-    add_field("sponge", MemoryCategory::Boundary, cells, scalar_bytes);
+    if (request.boundary_kind == ForwardMemoryPlanRequest::BoundaryKind::Sponge) {
+        add_field("sponge", MemoryCategory::Boundary, cells, scalar_bytes);
+    } else if (
+        request.boundary_kind == ForwardMemoryPlanRequest::BoundaryKind::Cpml) {
+        for (const char* name : {
+                 "cpml_dvx_dx", "cpml_dvy_dy", "cpml_dvz_dz",
+                 "cpml_dvx_dy", "cpml_dvy_dx", "cpml_dvx_dz",
+                 "cpml_dvz_dx", "cpml_dvy_dz", "cpml_dvz_dy",
+                 "cpml_dsxx_dx", "cpml_dsxy_dy", "cpml_dsxz_dz",
+                 "cpml_dsxy_dx", "cpml_dsyy_dy", "cpml_dsyz_dz",
+                 "cpml_dsxz_dx", "cpml_dsyz_dy", "cpml_dszz_dz"}) {
+            add_field(name, MemoryCategory::Boundary, cells, scalar_bytes);
+        }
+        const auto axis_entries = detail::checked_size_add(
+            detail::checked_size_add(
+                request.grid.allocated_nx(),
+                request.grid.allocated_ny(),
+                "CPML profile size overflows size_t"),
+            request.grid.allocated_nz(),
+            "CPML profile size overflows size_t");
+        for (const char* name : {
+                 "cpml_a_integer", "cpml_b_integer",
+                 "cpml_inverse_kappa_integer", "cpml_a_half",
+                 "cpml_b_half", "cpml_inverse_kappa_half"}) {
+            add_field(
+                name, MemoryCategory::Boundary, axis_entries, scalar_bytes);
+        }
+    }
 
     if (request.receiver_count != 0) {
         const auto trace_samples = detail::checked_size_product(

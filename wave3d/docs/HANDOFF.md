@@ -614,11 +614,11 @@ output remains Increment 9.
 
 ## Exact next action
 
-Increment 6 is complete. The exact next action is Increment 7 only: specify and
-implement six-sided CPML coefficient/state ownership and separate derivative
-correction hooks, update the memory plan with the actual auxiliary arrays, and
-measure normal and grazing-incidence reflection plus long-time stability. Do
-not add a traction-free top until Increment 8.
+Increment 7 is complete. The exact next action is Increment 8 only: disable
+top (`z_min`) CPML, add a separately testable traction-free surface at the
+accepted staggered locations, compose it with five-side CPML, and validate
+surface traction, reflected polarity/timing, surface acquisition placement,
+and long-time stability.
 
 ## Increment 5 implementation and verification
 
@@ -663,3 +663,25 @@ Compute Sanitizer memcheck/initcheck covered the full long physics case;
 racecheck/synccheck covered the focused CUDA sponge kernels. All reported zero
 errors, hazards, or warnings. This is not CPML and does not qualify a free
 surface.
+
+## Increment 7 implementation and verification
+
+Increment 7 added six-sided unsplit CPML on 2026-09-09:
+
+- `CPML_NUMERICAL_SPEC.md` records the audited Komatitsch–Martin recurrence,
+  coefficient profiles, staggering mapping, sources, and independent reuse
+  boundary.
+- `boundary/cpml.hpp` prepares integer/half axis coefficients, owns 18 CPU
+  derivative memories, and provides transparent CPU stress/velocity updates.
+- `cuda/cpml.cu` and `cuda/cpml.hpp` own the compact device coefficients and 18
+  move-only state arrays and apply the same recurrence in separate CUDA
+  kernels. The no-boundary Increment 5 calls remain unchanged.
+- The memory planner now selects none, sponge, or CPML. The target CPML boundary
+  allocation is `1,060,788,480 bytes`.
+
+The CPU/GPU comparison had zero error across nine fields, 18 states, and three
+trace arrays. The normal reflection ratio was `0.0002237981069` (limit
+`0.005`); the 68-degree proxy residual ratio was `2.265134082e-6` (limit
+`0.02`); the 800-step run stayed finite. CPU Release passed 13/13, CUDA Release
+17/17, ASan/UBSan 13/13, and all four focused Compute Sanitizer tools reported
+zero errors or hazards.

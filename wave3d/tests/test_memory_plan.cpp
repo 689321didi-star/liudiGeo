@@ -101,6 +101,26 @@ void test_budget_rejection() {
     expect(threw, "oversized plan must report a length error");
 }
 
+void test_cpml_memory_plan() {
+    auto request = typical_request();
+    request.boundary_kind =
+        wave3d::ForwardMemoryPlanRequest::BoundaryKind::Cpml;
+    const auto plan = wave3d::make_elastic_forward_memory_plan(request);
+    const auto cells = request.grid.allocated_cell_count();
+    const auto axis_entries = request.grid.allocated_nx() +
+                              request.grid.allocated_ny() +
+                              request.grid.allocated_nz();
+    const auto expected =
+        (18 * cells + 6 * axis_entries) * sizeof(float);
+    expect(
+        plan.category_bytes(wave3d::MemoryCategory::Boundary) == expected,
+        "CPML plan must contain 18 state fields and six compact triples");
+    expect(
+        plan.fields.size() == 49,
+        "CPML plan must enumerate actual model, propagation, boundary, trace, and workspace ownership");
+    expect(plan.fits(), "target CPML plan must fit the 8 GiB budget");
+}
+
 void test_invalid_and_overflowing_requests() {
     auto request = typical_request();
     request.max_available_fraction = std::numeric_limits<double>::quiet_NaN();
@@ -138,6 +158,7 @@ void test_invalid_and_overflowing_requests() {
 
 int main() {
     test_field_by_field_plan();
+    test_cpml_memory_plan();
     test_budget_rejection();
     test_invalid_and_overflowing_requests();
 

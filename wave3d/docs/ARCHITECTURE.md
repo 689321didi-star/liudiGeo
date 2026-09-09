@@ -195,6 +195,15 @@ edges and corners.  The CUDA owner uploads the profile once; neither hook
 allocates or transfers a volume.  This component remains replaceable and has
 no auxiliary state, so it does not stand in for CPML.
 
+Increment 7 adds an optional unsplit CPML path.  Six one-dimensional
+integer/half coefficient groups hold `a`, `b`, and `1/kappa`; 18 independently
+owned `float32` volumes retain one recurrence memory for every Cartesian
+derivative in the elastic equations.  CPML-specific stress and velocity
+kernels consume the same wavefield/coefficient objects as the interior path,
+so turning CPML off selects the unchanged Increment 5 calls.  Six-side, edge,
+and corner behavior follows from correcting each directional derivative
+independently rather than special corner code.
+
 ### `acquisition`
 
 `SourceSet` accepts physical coordinates, origin times, source-time functions,
@@ -315,6 +324,12 @@ sponge field, three optional receiver-trace arrays, optional workspace, and a
 runtime reserve. Later increments must update the plan when actual ownership or
 the boundary implementation changes; unimplemented CPML state is not silently
 hidden in the current estimate.
+
+The planner now selects `None`, `Sponge`, or `Cpml`.  CPML explicitly adds 18
+full padded state fields and six compact groups spanning the three allocated
+axis lengths.  For the target `252 x 252 x 232` allocation this boundary state
+is `1,060,788,480 bytes`; it is never included when another boundary is
+selected.
 
 ## Build boundaries
 
