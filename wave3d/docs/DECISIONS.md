@@ -408,3 +408,21 @@ slabs is a future measured optimization, not an implicit layout change.  CPML
 has its own stress/velocity calls, while the accepted boundary-free calls stay
 unchanged.  Increment 8 may disable only `z_min` and compose the CPML with a
 traction-free top without changing the CPML recurrence.
+
+## D031 — Explicit radius-six traction-free ghost projection
+
+**Status:** Accepted and implemented, 2026-09-09
+
+The production top boundary is a separate projection at physical `z=0`, with
+top CPML disabled and CPML retained on the other five sides.  It requires six
+upper ghost layers: integer `szz` is odd and exactly zero on the surface;
+z-half `sxz`/`syz` are odd about the surface; tangential stresses and the
+required velocity ghosts use even continuation.  Projection occurs at the two
+boundary hook locations and neither changes subsurface values nor owns another
+volume.
+
+This implementation is directly qualified for exact traction, normal-incidence
+timing/polarity/velocity doubling, surface interpolation, and 600-step
+stability.  Oblique mode-conversion benchmarks remain a desirable later
+physics extension; they are not silently inferred from the normal-incidence
+result.

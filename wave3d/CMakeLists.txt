@@ -103,6 +103,16 @@ if(WAVE3D_BUILD_TESTS)
     target_link_libraries(wave3d_cpml_tests PRIVATE wave3d_core)
     add_test(NAME wave3d_cpml_tests COMMAND wave3d_cpml_tests)
     set_tests_properties(wave3d_cpml_tests PROPERTIES LABELS "boundary")
+
+    add_executable(
+        wave3d_free_surface_tests
+        tests/test_free_surface.cpp)
+    target_link_libraries(wave3d_free_surface_tests PRIVATE wave3d_core)
+    add_test(
+        NAME wave3d_free_surface_tests
+        COMMAND wave3d_free_surface_tests)
+    set_tests_properties(
+        wave3d_free_surface_tests PROPERTIES LABELS "boundary;physics")
 endif()
 
 if(WAVE3D_ENABLE_CUDA)
@@ -119,7 +129,8 @@ if(WAVE3D_ENABLE_CUDA)
             cuda/fill.cu
             cuda/elastic_propagator.cu
             cuda/sponge.cu
-            cuda/cpml.cu)
+            cuda/cpml.cu
+            cuda/free_surface.cu)
     target_link_libraries(wave3d_cuda PUBLIC wave3d_core CUDA::cudart)
     set_target_properties(
         wave3d_cuda
@@ -169,5 +180,17 @@ if(WAVE3D_ENABLE_CUDA)
             COMMAND wave3d_cuda_cpml_tests)
         set_tests_properties(
             wave3d_cuda_cpml_tests PROPERTIES LABELS "boundary;cuda;physics")
+
+        add_executable(
+            wave3d_cuda_free_surface_tests
+            tests/test_cuda_free_surface.cpp)
+        target_link_libraries(
+            wave3d_cuda_free_surface_tests PRIVATE wave3d_cuda)
+        add_test(
+            NAME wave3d_cuda_free_surface_tests
+            COMMAND wave3d_cuda_free_surface_tests)
+        set_tests_properties(
+            wave3d_cuda_free_surface_tests
+            PROPERTIES LABELS "boundary;cuda;physics")
     endif()
 endif()

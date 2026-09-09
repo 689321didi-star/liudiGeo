@@ -19,6 +19,7 @@ namespace wave3d::cuda {
 class DeviceSpongeProfile;
 class DeviceCpmlProfile;
 class DeviceCpmlState;
+class DeviceTractionFreeSurface;
 
 class DeviceElasticWavefield {
 public:
@@ -120,6 +121,10 @@ private:
         const class DeviceElasticCoefficients&,
         const DeviceCpmlProfile&,
         DeviceCpmlState&);
+    friend void apply_traction_free_stresses(
+        DeviceElasticWavefield&, const DeviceTractionFreeSurface&);
+    friend void apply_traction_free_velocities(
+        DeviceElasticWavefield&, const DeviceTractionFreeSurface&);
 
     [[nodiscard]] static std::size_t validated_cell_count(const Grid3D& grid) {
         require_valid_grid_geometry(grid);

@@ -26,6 +26,7 @@ public:
     explicit DeviceCpmlProfile(const CpmlProfile& host)
         : grid_(host.grid),
           dt_s_(host.parameters.dt_s),
+          sides_(host.parameters.sides),
           coefficients_(validated_element_count(host)) {
         std::vector<float> flattened(coefficients_.size());
         std::size_t offset = 0;
@@ -58,6 +59,7 @@ public:
 
     [[nodiscard]] const Grid3D& grid() const noexcept { return grid_; }
     [[nodiscard]] double dt_s() const noexcept { return dt_s_; }
+    [[nodiscard]] const CpmlSides& sides() const noexcept { return sides_; }
     [[nodiscard]] std::size_t bytes() const { return coefficients_.bytes(); }
     [[nodiscard]] DeviceCpmlAxisView axis(std::size_t axis_number) const {
         if (axis_number >= 3) {
@@ -90,6 +92,7 @@ private:
 
     Grid3D grid_{};
     double dt_s_{0.0};
+    CpmlSides sides_{};
     std::array<std::size_t, 18> offsets_{};
     DeviceBuffer<float> coefficients_;
 };

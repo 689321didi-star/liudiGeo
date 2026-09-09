@@ -244,6 +244,15 @@ consistently relative to the surface.
 polarities and arrival times agree with reference cases; no surface instability
 appears in long runs.
 
+**Status:** Verified on the target RTX 5060 on 2026-09-09. Radius-six
+integer/half-z ghost projection enforces exact normal and interpolated shear
+traction while five-side CPML remains active. CPU/CUDA projection matched
+bitwise. The normal-incidence surface velocity retained upward polarity,
+arrived within one sample of the full-space reference, correlated `0.98922`,
+and had amplitude ratio `2.05877`; 600 steps remained finite. CPU/CUDA
+Release, ASan/UBSan, and all focused Compute Sanitizer gates pass. Increment 9
+production I/O is next.
+
 ## Increment 9 — Production input/output
 
 **Goal:** Add file formats without coupling them to propagation.

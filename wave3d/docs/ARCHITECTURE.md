@@ -204,6 +204,13 @@ so turning CPML off selects the unchanged Increment 5 calls.  Six-side, edge,
 and corner behavior follows from correcting each directional derivative
 independently rather than special corner code.
 
+Increment 8 composes five-side CPML with a separate horizontal traction-free
+surface.  The surface object fixes `z=0` at padded integer plane `halo`,
+requires no top absorbing cells, and fills six ghost layers after each stress
+or velocity operation.  `szz` is zero on the plane; z-half `sxz`/`syz` are odd
+across it; the remaining required ghosts use the documented parity.  Surface
+receivers continue through the ordinary component-specific interpolation API.
+
 ### `acquisition`
 
 `SourceSet` accepts physical coordinates, origin times, source-time functions,

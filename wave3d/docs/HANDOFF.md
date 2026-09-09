@@ -614,11 +614,10 @@ output remains Increment 9.
 
 ## Exact next action
 
-Increment 7 is complete. The exact next action is Increment 8 only: disable
-top (`z_min`) CPML, add a separately testable traction-free surface at the
-accepted staggered locations, compose it with five-side CPML, and validate
-surface traction, reflected polarity/timing, surface acquisition placement,
-and long-time stability.
+Increment 8 is complete. The exact next action is Increment 9 only: add
+optional, propagation-independent YAML, HDF5, CSV, and SEG-Y adapters with
+resolved metadata and round-trip tests. Keep all file libraries outside the
+physics/CUDA targets and do not store generated scientific outputs in Git.
 
 ## Increment 5 implementation and verification
 
@@ -685,3 +684,23 @@ trace arrays. The normal reflection ratio was `0.0002237981069` (limit
 `0.02`); the 800-step run stayed finite. CPU Release passed 13/13, CUDA Release
 17/17, ASan/UBSan 13/13, and all four focused Compute Sanitizer tools reported
 zero errors or hazards.
+
+## Increment 8 implementation and verification
+
+Increment 8 added the traction-free top/five-side-CPML composition on
+2026-09-09:
+
+- `boundary/free_surface.hpp` fixes the surface plane, validates top geometry,
+  and applies radius-six stress and velocity ghost projection.
+- `cuda/free_surface.cu` provides allocation-free projection kernels and the
+  full stress/source/surface/velocity/surface/sample step order. It rejects a
+  CPML profile whose top side is enabled.
+- Surface receivers use the existing three-component staggered interpolator;
+  no acquisition-specific sampling path was added.
+
+Final normal and interpolated shear traction was exactly zero and CPU/CUDA
+projection was bitwise equal. Surface/reference peaks occurred one sample
+apart, retained upward polarity, correlated `0.9892208823`, and had amplitude
+ratio `2.0587715`. All fields, CPML states, and traces stayed finite for 600
+steps. CPU Release passed 14/14, CUDA Release 19/19, ASan/UBSan 14/14, and all
+four focused Compute Sanitizer tools reported zero errors or hazards.
