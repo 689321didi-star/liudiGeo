@@ -911,8 +911,20 @@ the audited MATLAB v5 `d`, `n`, and `data` contract, decodes only the requested
 hyperslab, and reorders MATLAB column-major `[z,y,x]` values to Wave3D
 x-fastest storage. Synthetic unique-index tests prove the mapping and reject
 spacing/shape mismatches, non-binary32 data, and missing data. Focused Release
-and ASan/UBSan tests both passed. The real converter/HDF5/YAML generation is
-the next action.
+and ASan/UBSan tests both passed. At that point, real converter/HDF5/YAML
+generation was the next action.
+
+Increment 14c then completed canonical artifact generation. The real audited
+MAT file produced an ignored 89,768,192-byte `overthrust_small.h5` and a
+3,373-byte matching YAML. Immediate HDF5/YAML rereads were exact. Independent
+`h5dump` little-endian extraction matched the three frozen dataset SHA-256
+oracles exactly. All 7,480,000 values per property were finite; independently
+recomputed Vs/rho matched every float; every cell had positive bulk modulus;
+and inspected horizontal/x-z/y-z slices retained consistent complex structure
+and depth direction. The 1 ms configuration passed at 65.49% of CFL and 6.28
+minimum S-wave points per design wavelength. The complete real-source
+preparation path also passed ASan/UBSan. Increment 14d CUDA smoke, refinement,
+full propagation, and SEG-Y checks are next.
 
 Observed commands/results:
 

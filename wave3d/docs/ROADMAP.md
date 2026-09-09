@@ -395,13 +395,17 @@ determinism checks, and rejection of truncated, non-finite, non-positive,
 underflowing, out-of-range, and overflowing inputs pass. Focused Release and
 ASan/UBSan passed, and the optional-I/O-off CPU Release suite passed 17/17.
 
-**14c status:** In progress. The prerequisite extrema-semantics gate now
+**14c status:** Verified on 2026-09-09. The prerequisite extrema-semantics gate
+now
 avoids pairing independent global minimum Vp and maximum Vs as if they were
 one cell; actual HDF5 materials remain strictly validated cell by cell. The
 default-off MatIO adapter now validates the audited v5 variables, reads only
 the selected hyperslab, and explicitly changes MATLAB column-major order to
-Wave3D x-fastest order. Generate and independently verify canonical HDF5 and
-matching YAML artifacts next.
+Wave3D x-fastest order. The real source generated a canonical
+`187 x 200 x 200` HDF5 model and matching validated YAML. Independent raw
+dataset hashes exactly matched all three frozen preimplementation oracles;
+orthogonal slices and summaries passed. Increment 14d CUDA propagation is
+next.
 
 **14d status:** Pending. Run the small/refined and full CUDA/SEG-Y validation
 gates.

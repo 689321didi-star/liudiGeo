@@ -597,3 +597,21 @@ crop hyperslab, converts MATLAB column-major data explicitly to Wave3D
 `[z][y][x]` x-fastest order, and rejects non-positive, non-finite, or
 non-binary32-exact Vp. Container parsing remains separate from the pure
 elastic derivation.
+
+## D041 — Fixed Overthrust forward-acquisition configuration
+
+**Status:** Accepted and implemented, 2026-09-09
+
+The preparation command emits one deterministic validation configuration, not
+a family of tunable benchmarks. Its 200 x 200 x 187 physical grid retains 25 m
+sampling, uses radius-six halo storage, 20-point CPML on x/y and z-max, and a
+traction-free z-min surface. The time axis is 3000 samples at exactly 1 ms;
+the accepted 9 Hz design band has at least 6.2758 points per minimum-S-wave
+wavelength and the step occupies about 65.49% of the accepted CFL limit.
+
+An `Mxy=1e12 N*m` double-couple at `(2500,2500,1100) m` with a 3 Hz Ricker
+moment-rate and one-period peak delay excites both P and S motion. A 121-point
+surface array spans 500-4500 m on x and y at 400 m spacing. The 3 s record
+window exceeds the conservative farthest-receiver distance/minimum-Vs time
+plus source delay. Increment 14d must still qualify the actual CUDA record and
+time refinement; this decision does not claim propagation success in advance.

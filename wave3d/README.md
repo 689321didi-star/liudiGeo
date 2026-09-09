@@ -39,6 +39,7 @@ The elastic forward roadmap through Increment 11 is implemented and verified:
 - typed optional YAML, CSV, HDF5, and single-file three-component SEG-Y
   production I/O;
 - a general YAML/HDF5-to-CUDA-to-single-SEG-Y production command;
+- a reproducible reduced SEG/EAGE 3-D Overthrust Vp-to-Vp/Vs/rho converter;
 - a qualified `200^3`, 4000-step RTX 5060 envelope;
 - const wavefield views, observer/factory/receiver interfaces, and a removable
   default-off checkpoint interface for a possible future RTM phase.
@@ -83,6 +84,32 @@ Production I/O and RTM-ready checkpoint interfaces are independently opt-in:
 
 `WAVE3D_ENABLE_RTM` adds interfaces and mock tests only; it does not build an
 RTM executable.
+
+## Prepare the derived Overthrust benchmark
+
+The optional converter requires MatIO, HDF5, and yaml-cpp. It accepts the
+audited MATLAB v5 Overthrust volume and creates a canonical 200 x 200 x 187
+Wave3D elastic model plus its validated production configuration:
+
+```text
+cmake -S . -B build-overthrust -DCMAKE_BUILD_TYPE=Release \
+  -DWAVE3D_ENABLE_CUDA=OFF \
+  -DWAVE3D_ENABLE_YAML=ON \
+  -DWAVE3D_ENABLE_HDF5=ON \
+  -DWAVE3D_ENABLE_OVERTHRUST=ON
+cmake --build build-overthrust --target wave3d_prepare_overthrust --parallel
+./build-overthrust/wave3d_prepare_overthrust \
+  path/to/overthrust_3d_vp.mat \
+  path/to/overthrust_small.h5 \
+  path/to/overthrust_small.yaml
+```
+
+The fixed crop, derivation, acquisition, and numerical settings are not CLI
+knobs. The command rejects a source that differs from the audited dimensions,
+spacing, precision, or derived extrema, then rereads both outputs and requires
+exact round trips. Source and generated data stay outside Git; provenance and
+expected dataset hashes are in
+[`docs/OVERTHRUST_SOURCE_AUDIT.md`](docs/OVERTHRUST_SOURCE_AUDIT.md).
 
 ## HDF5 model to one SEG-Y record
 

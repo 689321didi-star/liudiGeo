@@ -77,8 +77,11 @@ It accepts a validated source Vp volume in canonical `[z][y][x]` order, an
 explicit physical crop, and separate output halo/absorbing geometry. It copies
 Vp exactly, derives `Vs=Vp/sqrt(3)` and Gardner density in binary64, converts
 once to binary32, and returns the same validated `PhysicalModel` consumed by
-generated and HDF5-loaded paths. MATLAB decoding and HDF5 writing remain
-outside this model function.
+generated and HDF5-loaded paths. The default-off MatIO adapter reads only the
+audited crop hyperslab and explicitly changes MATLAB column-major order to
+Wave3D x-fastest order. The preparation CLI composes that adapter with the
+pure transform and existing HDF5/YAML writers; MATLAB decoding and HDF5
+writing remain outside the model function.
 
 ### `wave`
 
@@ -263,6 +266,8 @@ Implemented roles:
 - SEG-Y: external three-component seismic trace exchange. Write one file that
   contains all VX, VY, and VZ traces and carries its required interpretation in
   standard textual, binary, and trace headers.
+- MATLAB v5 Overthrust: a default-off, benchmark-specific input adapter that
+  validates `d`, `n`, and `data` and reads only the accepted crop.
 
 Canonical HDF5 model datasets are shaped `[nz, ny, nx]` and contain
 `/vp`, `/vs`, and `/rho` with units and coordinate attributes.

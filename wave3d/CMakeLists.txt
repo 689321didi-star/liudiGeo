@@ -52,6 +52,15 @@ if(WAVE3D_ENABLE_OVERTHRUST)
         wave3d_io_overthrust_mat STATIC src/io/overthrust_mat.cpp)
     target_link_libraries(
         wave3d_io_overthrust_mat PUBLIC wave3d_core PkgConfig::MATIO)
+
+    add_executable(
+        wave3d_prepare_overthrust apps/prepare_overthrust.cpp)
+    target_link_libraries(
+        wave3d_prepare_overthrust
+        PRIVATE
+            wave3d_io_overthrust_mat
+            wave3d_io_hdf5
+            wave3d_io_yaml)
 endif()
 
 add_executable(wave3d_forward apps/forward3d.cpp)

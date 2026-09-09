@@ -129,3 +129,33 @@ rho       2180.043212890625    2728.346435546875 ba34f51ca8c63683511c847e11fe4f2
 Every derived value is finite and positive, and every cell passes
 `Vp^2 > (4/3)Vs^2`. These hashes and extrema are acceptance oracles for the
 production converter; they were calculated before that converter was written.
+
+## Canonical conversion verification
+
+The production converter ran on the audited source on 2026-09-09 and wrote an
+ignored 89,768,192-byte `overthrust_small.h5`. Its own immediate HDF5 reread
+preserved grid geometry and every binary32 cell exactly. An independent
+`h5dump -b LE` extraction produced three 29,920,000-byte raw arrays whose
+SHA-256 values exactly matched the precomputed Vp, Vs, and density oracles
+above.
+
+Independent array inspection reported:
+
+```text
+property  cells    finite   mean
+Vp        7480000  7480000  4614.87442134 m/s
+Vs        7480000  7480000  2664.39897970 m/s
+rho       7480000  7480000  2544.17252773 kg/m3
+```
+
+Recomputing the approved formulas from the extracted Vp matched every Vs and
+density float exactly, and all 7,480,000 cells had positive bulk modulus.
+Horizontal, x-z, and y-z slices of all three properties were inspected: the
+same folds, dipping contacts, discontinuities, and basement appear at the same
+coordinates, with z increasing downward and no transposition or reversal.
+
+The matching ignored 3,373-byte YAML has 121 surface receivers, 3000 samples
+at 1 ms, and exact HDF5 extrema. Its write/read round trip passed the existing
+run validator. The numerical report gives a 0.00152702393047 s CFL limit, a
+0.654868584601 CFL fraction, and 6.27582139757 minimum shear points per design
+wavelength.

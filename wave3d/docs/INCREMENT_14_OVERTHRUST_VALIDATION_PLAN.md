@@ -155,4 +155,17 @@ v5 variable contract, reads only the requested crop hyperslab, and performs an
 explicit tested MATLAB-column-major to Wave3D-x-fastest reorder. Synthetic
 Release and ASan/UBSan tests passed for valid unique-index data and malformed
 spacing, dimensions, precision, and missing-variable cases. Canonical HDF5
-and YAML generation remains pending within 14c.
+and YAML generation was completed by the following sub-gate.
+
+### 14c canonical artifacts
+
+Passed on 2026-09-09. The audited MAT source produced an ignored canonical
+`[187,200,200]` HDF5 model and a matching `wave3d.forward.v2` YAML. Immediate
+HDF5 and YAML rereads were exact. Independent little-endian dataset extraction
+matched all three frozen SHA-256 oracles, found 7,480,000 finite cells per
+property, reproduced every derived Vs/rho float, and confirmed positive bulk
+modulus everywhere. Orthogonal slices showed consistent structures and axes.
+The 1 ms configuration passed CFL/dispersion validation at a 0.65487 CFL
+fraction and 6.27582 minimum S-wave points per design wavelength. The complete
+real-source preparation path also passed ASan/UBSan. Increment 14d propagation
+remains pending.
