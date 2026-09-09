@@ -90,7 +90,7 @@ Do not fill missing kernels by guesswork or copy the monolithic structure.
 Increment 4a replaced the preliminary CFL hook with the accepted exact
 radius-six spectral bound and independent design-band accuracy checks.
 
-## Planned I/O
+## Production I/O
 
 - Generated homogeneous and layered models for early deterministic tests.
 - YAML run configuration and resolved configuration metadata.
@@ -597,8 +597,8 @@ Observed physical metrics:
   every instrumented time loop: zero.
 
 These are interior homogeneous validation records, not surface seismic records
-and not persistent files. Surface physics remains Increment 8; HDF5/SEG-Y
-output remains Increment 9.
+and not persistent files. Surface physics and persistent production I/O were
+qualified separately in Increments 8 and 9.
 
 ### Increment 4e verification
 
@@ -614,10 +614,11 @@ output remains Increment 9.
 
 ## Exact next action
 
-Increment 8 is complete. The exact next action is Increment 9 only: add
-optional, propagation-independent YAML, HDF5, CSV, and SEG-Y adapters with
-resolved metadata and round-trip tests. Keep all file libraries outside the
-physics/CUDA targets and do not store generated scientific outputs in Git.
+Increment 9 is complete. The exact next action is Increment 10 only: qualify
+the `200^3` elastic five-side-CPML/free-surface case on the RTX 5060, recording
+actual peak device ownership, time per step, throughput, output overhead,
+finite-state checks, tool availability, and reproducible commands. Do not add
+RTM implementation or optimize without a measured bottleneck.
 
 ## Increment 5 implementation and verification
 
@@ -704,3 +705,26 @@ apart, retained upward polarity, correlated `0.9892208823`, and had amplitude
 ratio `2.0587715`. All fields, CPML states, and traces stayed finite for 600
 steps. CPU Release passed 14/14, CUDA Release 19/19, ASan/UBSan 14/14, and all
 four focused Compute Sanitizer tools reported zero errors or hazards.
+
+## Increment 9 implementation and verification
+
+Increment 9 added production I/O without adding any file dependency to the
+propagator on 2026-09-09:
+
+- `WAVE3D_ENABLE_YAML`, `WAVE3D_ENABLE_HDF5`, and `WAVE3D_ENABLE_SEGY` are
+  independent and default off. Ubuntu `libyaml-cpp-dev` and `libhdf5-dev` were
+  installed for the enabled qualification build.
+- YAML loads and emits a resolved typed forward configuration; strict CSV
+  preserves irregular binary64 receiver coordinates and order.
+- HDF5 stores model volumes as `[z,y,x]`, one-source three-component records as
+  `[source,receiver,time]`, and sparse velocity snapshots with explicit storage
+  indices. Schemas, units, axes, coordinates, source metadata, and exact
+  binary64 time values are checked during reads.
+- SEG-Y writes separate VX/VY/VZ Rev-1, big-endian IEEE-float files and JSON
+  sidecars containing semantics that integer trace headers cannot preserve.
+  The standalone converter rejects mismatched or unsupported external model
+  volumes before producing canonical HDF5.
+
+Enabled-I/O Release passed 18/18 tests and focused ASan/UBSan passed 4/4.
+With every optional I/O adapter disabled, CPU Release passed 15/15 and CUDA
+Release passed 20/20, demonstrating that propagation remains independent.

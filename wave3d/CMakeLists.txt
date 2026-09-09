@@ -4,6 +4,9 @@ project(wave3d VERSION 0.1.0 LANGUAGES CXX)
 
 option(WAVE3D_BUILD_TESTS "Build Wave3D tests" ON)
 option(WAVE3D_ENABLE_CUDA "Build the Wave3D CUDA foundation" OFF)
+option(WAVE3D_ENABLE_YAML "Build YAML run-configuration adapters" OFF)
+option(WAVE3D_ENABLE_HDF5 "Build HDF5 scientific-data adapters" OFF)
+option(WAVE3D_ENABLE_SEGY "Build SEG-Y trace adapters" OFF)
 
 add_library(wave3d_core INTERFACE)
 target_include_directories(wave3d_core INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
@@ -15,6 +18,23 @@ target_compile_options(
         $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/W4;/permissive->
         $<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang>:-Wall;-Wextra;-Wpedantic>
         $<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:-Xcompiler=-Wall,-Wextra>)
+
+if(WAVE3D_ENABLE_YAML)
+    find_package(yaml-cpp CONFIG REQUIRED)
+    add_library(wave3d_io_yaml STATIC src/io/yaml_config.cpp)
+    target_link_libraries(wave3d_io_yaml PUBLIC wave3d_core yaml-cpp::yaml-cpp)
+endif()
+
+if(WAVE3D_ENABLE_HDF5)
+    find_package(HDF5 REQUIRED COMPONENTS CXX)
+    add_library(wave3d_io_hdf5 STATIC src/io/hdf5.cpp)
+    target_link_libraries(wave3d_io_hdf5 PUBLIC wave3d_core HDF5::HDF5)
+endif()
+
+if(WAVE3D_ENABLE_SEGY)
+    add_library(wave3d_io_segy STATIC src/io/segy.cpp)
+    target_link_libraries(wave3d_io_segy PUBLIC wave3d_core)
+endif()
 
 add_executable(wave3d_forward apps/forward3d.cpp)
 target_link_libraries(wave3d_forward PRIVATE wave3d_core)
@@ -113,6 +133,41 @@ if(WAVE3D_BUILD_TESTS)
         COMMAND wave3d_free_surface_tests)
     set_tests_properties(
         wave3d_free_surface_tests PROPERTIES LABELS "boundary;physics")
+
+    add_executable(wave3d_io_core_tests tests/test_io_core.cpp)
+    target_link_libraries(wave3d_io_core_tests PRIVATE wave3d_core)
+    add_test(NAME wave3d_io_core_tests COMMAND wave3d_io_core_tests)
+    set_tests_properties(wave3d_io_core_tests PROPERTIES LABELS "io")
+
+    if(WAVE3D_ENABLE_YAML)
+        add_executable(wave3d_yaml_io_tests tests/test_yaml_io.cpp)
+        target_link_libraries(wave3d_yaml_io_tests PRIVATE wave3d_io_yaml)
+        add_test(NAME wave3d_yaml_io_tests COMMAND wave3d_yaml_io_tests)
+        set_tests_properties(wave3d_yaml_io_tests PROPERTIES LABELS "io")
+    endif()
+
+    if(WAVE3D_ENABLE_HDF5)
+        add_executable(wave3d_hdf5_io_tests tests/test_hdf5_io.cpp)
+        target_link_libraries(wave3d_hdf5_io_tests PRIVATE wave3d_io_hdf5)
+        add_test(NAME wave3d_hdf5_io_tests COMMAND wave3d_hdf5_io_tests)
+        set_tests_properties(wave3d_hdf5_io_tests PROPERTIES LABELS "io")
+    endif()
+
+    if(WAVE3D_ENABLE_SEGY)
+        add_executable(wave3d_segy_io_tests tests/test_segy_io.cpp)
+        target_link_libraries(wave3d_segy_io_tests PRIVATE wave3d_io_segy)
+        add_test(NAME wave3d_segy_io_tests COMMAND wave3d_segy_io_tests)
+        set_tests_properties(wave3d_segy_io_tests PROPERTIES LABELS "io")
+    endif()
+endif()
+
+if(WAVE3D_ENABLE_HDF5 AND WAVE3D_ENABLE_SEGY)
+    add_executable(
+        wave3d_segy_model_to_hdf5
+        apps/segy_model_to_hdf5.cpp)
+    target_link_libraries(
+        wave3d_segy_model_to_hdf5
+        PRIVATE wave3d_io_segy wave3d_io_hdf5)
 endif()
 
 if(WAVE3D_ENABLE_CUDA)

@@ -426,3 +426,22 @@ timing/polarity/velocity doubling, surface interpolation, and 600-step
 stability.  Oblique mode-conversion benchmarks remain a desirable later
 physics extension; they are not silently inferred from the normal-incidence
 result.
+
+## D032 — Typed, optional, propagation-independent production I/O
+
+**Status:** Accepted and implemented, 2026-09-09
+
+File formats terminate at validated domain objects and are never parsed by the
+elastic propagator. YAML, HDF5, and SEG-Y each have an independent, default-off
+CMake option; strict receiver CSV and shared typed I/O data remain dependency-
+free. This preserves useful CPU/CUDA builds on machines without scientific I/O
+libraries.
+
+HDF5 is the canonical lossless internal representation: model axes are
+`[z,y,x]`, single-source trace axes are `[source,receiver,time]`, and sparse
+snapshots carry explicit storage indices. SEG-Y is an exchange format only:
+VX/VY/VZ are separate big-endian Rev-1 IEEE-float files, coordinates use a
+millimetre scalar, and exact binary64 sampling/source/component semantics are
+recorded in a JSON sidecar without normalizing samples. External SEG-Y model
+volumes are converted by a separate executable and must declare matching fixed
+trace/sample dimensions.

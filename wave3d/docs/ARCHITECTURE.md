@@ -244,22 +244,26 @@ until the traction-free boundary in Increment 8.
 I/O adapters convert external representations into validated domain objects.
 Propagation code never opens YAML, HDF5, SEG-Y, CSV, or raw binary files.
 
-Planned roles:
+Implemented roles:
 
 - YAML: human-readable run configuration and source definitions.
 - Generated models: initial deterministic debugging.
 - CSV: receiver geometry during early development.
-- Raw binary plus JSON metadata: minimal early trace/slice output.
 - HDF5: canonical internal 3D model, trace, snapshot, and future checkpoint
   format.
 - SEG-Y: external three-component seismic trace exchange. Initially write one
   file per component and include a metadata sidecar where SEG-Y headers cannot
   represent exact semantics safely.
 
-Canonical HDF5 model datasets will be shaped `[nz, ny, nx]` and contain
+Canonical HDF5 model datasets are shaped `[nz, ny, nx]` and contain
 `/vp`, `/vs`, and `/rho` with units and coordinate attributes.
-Canonical trace datasets will be shaped `[nsource, nreceiver, nt]` for each
-component.
+Canonical trace datasets are shaped `[1, nreceiver, nt]` for each component in
+the single-source forward format. Sparse snapshots store explicit padded-grid
+indices rather than silently implying a dense volume. SEG-Y is IEEE float32,
+big-endian Rev 1, one file per velocity component; exact sampling and source
+semantics that do not fit safely in its integer headers live in a JSON sidecar.
+The separate model converter accepts only fixed-length IEEE-float volumes and
+reorders trace-major input into canonical `[z][y][x]` HDF5.
 
 ### `diagnostics`
 
@@ -346,6 +350,7 @@ The intended CMake options include:
 WAVE3D_ENABLE_CUDA
 WAVE3D_BUILD_TESTS
 WAVE3D_BUILD_CPU_REFERENCE
+WAVE3D_ENABLE_YAML
 WAVE3D_ENABLE_HDF5
 WAVE3D_ENABLE_SEGY
 WAVE3D_ENABLE_RTM

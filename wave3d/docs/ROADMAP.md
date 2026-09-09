@@ -270,6 +270,14 @@ production I/O is next.
 `dt`, coordinates, source metadata, and component orientations; propagator tests
 run without enabling HDF5 or SEG-Y.
 
+**Status:** Verified on 2026-09-09. Independent CMake options now expose typed
+YAML configuration, strict receiver CSV, canonical HDF5 model/trace/sparse-
+snapshot storage, three IEEE-float SEG-Y component writers with exact JSON
+sidecars, and an optional fixed-layout SEG-Y-model-to-HDF5 converter. Enabled
+Release round trips passed 18/18 tests and focused ASan/UBSan passed 4/4; with
+all optional I/O disabled, CPU Release passed 15/15 and CUDA Release passed
+20/20. Increment 10 target qualification is next.
+
 ## Increment 10 — RTX 5060 `200^3` qualification
 
 **Goal:** Establish the supported elastic production envelope.
