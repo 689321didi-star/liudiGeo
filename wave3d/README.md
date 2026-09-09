@@ -36,7 +36,8 @@ The elastic forward roadmap through Increment 11 is implemented and verified:
 - transparent CPU and CUDA stress/velocity propagation;
 - replaceable sponge, six-side CPML, and the production traction-free top plus
   five-side CPML boundary;
-- typed optional YAML, CSV, HDF5, and SEG-Y production I/O;
+- typed optional YAML, CSV, HDF5, and single-file three-component SEG-Y
+  production I/O;
 - a qualified `200^3`, 4000-step RTX 5060 envelope;
 - const wavefield views, observer/factory/receiver interfaces, and a removable
   default-off checkpoint interface for a possible future RTM phase.
@@ -81,3 +82,16 @@ Production I/O and RTM-ready checkpoint interfaces are independently opt-in:
 
 `WAVE3D_ENABLE_RTM` adds interfaces and mock tests only; it does not build an
 RTM executable.
+
+With CUDA and SEG-Y enabled, the qualified target case can write its complete
+three-component record directly to one SEG-Y file:
+
+```text
+./build-all/wave3d_qualify_rtx5060 4000 record.sgy
+```
+
+The output is big-endian SEG-Y Revision 1 with IEEE `float32` samples.  Every
+receiver contributes VX/in-line, VY/cross-line, and VZ/vertical traces to that
+single file; no per-component files or JSON sidecars are created.  This
+qualification executable uses its fixed documented model and geometry; a
+general YAML/HDF5-driven production executable is a separate integration step.

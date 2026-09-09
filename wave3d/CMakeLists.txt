@@ -240,6 +240,12 @@ if(WAVE3D_ENABLE_CUDA)
         target_compile_definitions(
             wave3d_qualify_rtx5060 PRIVATE WAVE3D_QUALIFY_HDF5=1)
     endif()
+    if(WAVE3D_ENABLE_SEGY)
+        target_link_libraries(
+            wave3d_qualify_rtx5060 PRIVATE wave3d_io_segy)
+        target_compile_definitions(
+            wave3d_qualify_rtx5060 PRIVATE WAVE3D_QUALIFY_SEGY=1)
+    endif()
 
     if(WAVE3D_BUILD_TESTS)
         add_executable(wave3d_cuda_tests tests/test_cuda.cpp)

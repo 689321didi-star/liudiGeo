@@ -1,7 +1,9 @@
 # Increment 9 Predeclared Production-I/O Validation Plan
 
 Status: passed on 2026-09-09. Fixed before the first production-I/O round
-trip; no threshold or contract was relaxed after testing began.
+trip; no threshold or contract was relaxed after testing began. Its original
+three-file SEG-Y contract was superseded by the user-requested single-file
+contract in Increment 12.
 
 All adapters are outside propagation and controlled through independent CMake
 options.  The existing CPU and CUDA suites must build with every optional I/O

@@ -97,7 +97,7 @@ radius-six spectral bound and independent design-band accuracy checks.
 - HDF5 as the canonical internal format for `Vp`, `Vs`, density, traces, and
   sparse snapshots.
 - CSV for irregular receiver geometry.
-- Separate VX, VY, and VZ SEG-Y files for external trace exchange.
+- One standards-based three-component SEG-Y file for external trace exchange.
 - Raw binary/CSV/JSON only for small early diagnostics.
 
 The propagator must not parse file formats. I/O adapters produce validated
@@ -119,11 +119,11 @@ origin https://github.com/689321didi-star/liudiGeo.git
 ```
 
 The local `main` branch tracks `origin/main`. `origin/main` remains at
-`63ecc49`; local `main` is 13 commits ahead and contains the scientific
-reference gate plus verified work through Increment 11. Fetch uses the HTTPS
-URL and push uses the authenticated SSH URL. Never force-push or rewrite shared
-history. The user authorizes local commits; a later push still requires an
-explicit request.
+`63ecc49`; after the Increment 12 commit, local `main` is 14 commits ahead and
+contains the scientific reference gate plus verified work through the
+single-file SEG-Y output amendment. Fetch uses the HTTPS URL and push uses the
+authenticated SSH URL. Never force-push or rewrite shared history. The user
+authorizes local commits; a later push still requires an explicit request.
 
 ## Target environment recorded on 2026-09-08
 
@@ -614,11 +614,15 @@ qualified separately in Increments 8 and 9.
 
 ## Exact next action
 
-The elastic forward roadmap through Increment 11 is complete. There is no
-automatic next implementation action. Preserve the accepted forward baseline
-and stop unless the user explicitly starts a separate RTM, imaging,
-decomposition, optimization, or deep-learning research phase. Such a phase
-needs its own incremental roadmap and predeclared numerical acceptance gates.
+The elastic forward roadmap through Increment 11 and the user-requested
+single-file SEG-Y output amendment in Increment 12 are complete. There is no
+automatic next implementation action. A general YAML/HDF5-input production
+driver remains a separate integration increment and must not be confused with
+the fixed target qualification executable. Preserve the accepted forward
+baseline and stop unless the user explicitly requests that integration or
+starts a separate RTM, imaging, decomposition, optimization, or deep-learning
+research phase. Such a phase needs its own incremental roadmap and predeclared
+acceptance gates.
 
 ## Increment 5 implementation and verification
 
@@ -720,8 +724,9 @@ propagator on 2026-09-09:
   `[source,receiver,time]`, and sparse velocity snapshots with explicit storage
   indices. Schemas, units, axes, coordinates, source metadata, and exact
   binary64 time values are checked during reads.
-- SEG-Y writes separate VX/VY/VZ Rev-1, big-endian IEEE-float files and JSON
-  sidecars containing semantics that integer trace headers cannot preserve.
+- Increment 9 originally wrote separate VX/VY/VZ Rev-1, big-endian IEEE-float
+  files and JSON sidecars. Increment 12 supersedes only that organization with
+  one self-describing three-component file.
   The standalone converter rejects mismatched or unsupported external model
   volumes before producing canonical HDF5.
 
@@ -736,7 +741,8 @@ Increment 10 qualified the full target forward envelope on 2026-09-09:
 - `wave3d_qualify_rtx5060` fixes the production `200^3` grid, five-side CPML,
   traction-free top, homogeneous elastic material, source, nine receivers, and
   exact numerical validation. It replans against current free memory before
-  allocating and can optionally measure canonical HDF5 trace output.
+  allocating. Increment 10 added optional canonical HDF5 trace output;
+  Increment 12 also permits a single SEG-Y output selected by file extension.
 - The `252 x 252 x 232` allocation ran 4000 steps in `292785.148 ms`, or
   `73.196287 ms/step` and `201.279718` million allocated-cell steps/s.
 - Owned device objects used `2023.692627 MiB`; CUDA free memory fell by
@@ -785,3 +791,33 @@ Final RTM-off CPU Release passed 16/16 and CUDA Release passed 21/21. No reverse
 wavefield, image, P/S decomposition, checkpoint persistence, or RTM executable
 exists. The final combined CUDA/YAML/HDF5/SEG-Y/RTM-interface Release build
 passed 25/25 tests.
+
+## Increment 12 implementation and verification
+
+Increment 12 changed only the optional external trace output on 2026-09-09:
+
+- `write_segy(path, traces)` now creates exactly one big-endian SEG-Y Revision
+  1 file and no per-component files or JSON sidecars.
+- Each receiver contributes three consecutive traces: VX/in-line code 14,
+  VY/cross-line code 13, and VZ/vertical code 12. The file is marked as one
+  fixed-length common-source ensemble with IEEE `float32` sample format 5.
+- The writer now sets both `SCALCO` and `SCALEL` to `-1000`, writes source and
+  receiver horizontal coordinates in millimetres, maps receiver z/down to
+  negative elevation, and writes source z/down as positive source depth.
+- The ASCII textual header records axes, component mapping, trace order, SI
+  units, lack of normalization, source metadata, and the `(n+1)*dt` first-
+  sample convention. Fractional-microsecond Revision 1 sampling is rejected
+  rather than silently rounded.
+- `wave3d_qualify_rtx5060 STEPS output.sgy` now writes this single file when
+  CUDA and SEG-Y are enabled. HDF5 output remains selected by `.h5`/`.hdf5`.
+
+The focused test independently parsed the raw file bytes and checked file
+size, all relevant textual/binary/trace headers, component order and codes,
+coordinate/depth/elevation scaling, every IEEE sample, truncation rejection,
+and absence of legacy outputs. A one-step target GPU integration run produced
+one 10,188-byte file with 27 traces for nine receivers and component codes
+`14,13,12` repeated per receiver. The all-options Release suite passed 25/25,
+the focused ASan/UBSan I/O suite passed 4/4 with leak detection disabled, and
+the optional-I/O-off CPU Release suite passed 16/16. The qualification
+executable also compiled in no-output, HDF5-only, SEG-Y-only, and combined
+adapter configurations.

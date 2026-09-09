@@ -251,18 +251,21 @@ Implemented roles:
 - CSV: receiver geometry during early development.
 - HDF5: canonical internal 3D model, trace, snapshot, and future checkpoint
   format.
-- SEG-Y: external three-component seismic trace exchange. Initially write one
-  file per component and include a metadata sidecar where SEG-Y headers cannot
-  represent exact semantics safely.
+- SEG-Y: external three-component seismic trace exchange. Write one file that
+  contains all VX, VY, and VZ traces and carries its required interpretation in
+  standard textual, binary, and trace headers.
 
 Canonical HDF5 model datasets are shaped `[nz, ny, nx]` and contain
 `/vp`, `/vs`, and `/rho` with units and coordinate attributes.
 Canonical trace datasets are shaped `[1, nreceiver, nt]` for each component in
 the single-source forward format. Sparse snapshots store explicit padded-grid
-indices rather than silently implying a dense volume. SEG-Y is IEEE float32,
-big-endian Rev 1, one file per velocity component; exact sampling and source
-semantics that do not fit safely in its integer headers live in a JSON sidecar.
-The separate model converter accepts only fixed-length IEEE-float volumes and
+indices rather than silently implying a dense volume. SEG-Y is one big-endian
+Revision 1 IEEE-float common-source file. Its traces are receiver-major and
+component-interleaved as VX/in-line code 14, VY/cross-line code 13, and
+VZ/vertical code 12. Standard headers declare SI units, axes, ordering,
+coordinates, source metadata, and the first-sample convention. Sampling must
+be exactly representable in Revision 1's integer-microsecond field. The
+separate model converter accepts only fixed-length IEEE-float volumes and
 reorders trace-major input into canonical `[z][y][x]` HDF5.
 
 ### `diagnostics`

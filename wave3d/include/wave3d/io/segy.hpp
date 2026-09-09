@@ -2,23 +2,14 @@
 
 #include "wave3d/io/data.hpp"
 
-#include <array>
 #include <cstddef>
 #include <string>
 #include <vector>
 
 namespace wave3d::io {
 
-enum class TraceComponent {
-    Vx,
-    Vy,
-    Vz,
-};
-
-[[nodiscard]] const char* trace_component_name(TraceComponent component);
-
-[[nodiscard]] std::array<std::string, 3> write_segy_components(
-    const std::string& path_prefix,
+void write_segy(
+    const std::string& path,
     const ThreeComponentTraces& traces);
 
 [[nodiscard]] std::vector<float> read_ieee_segy_samples(

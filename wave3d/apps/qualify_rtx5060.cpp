@@ -16,6 +16,9 @@
 #ifdef WAVE3D_QUALIFY_HDF5
 #include "wave3d/io/hdf5.hpp"
 #endif
+#ifdef WAVE3D_QUALIFY_SEGY
+#include "wave3d/io/segy.hpp"
+#endif
 
 #include <algorithm>
 #include <array>
@@ -77,15 +80,15 @@ template <typename Container>
 int main(int argc, char** argv) {
     if (argc > 3) {
         std::cerr << "usage: wave3d_qualify_rtx5060 [STEPS<=4000] "
-                     "[TRACE_OUTPUT.h5]\n";
+                     "[TRACE_OUTPUT.h5|TRACE_OUTPUT.sgy]\n";
         return 2;
     }
     try {
         const std::size_t steps = argc >= 2 ? parse_steps(argv[1]) : 4000;
-#ifndef WAVE3D_QUALIFY_HDF5
+#if !defined(WAVE3D_QUALIFY_HDF5) && !defined(WAVE3D_QUALIFY_SEGY)
         if (argc == 3) {
             throw std::invalid_argument(
-                "this build has no HDF5 output adapter");
+                "this build has no trace-output adapter");
         }
 #endif
         const wave3d::Grid3D grid{
@@ -250,9 +253,10 @@ int main(int argc, char** argv) {
             }
         }
 
-        double hdf5_write_ms = 0.0;
-        std::uintmax_t hdf5_bytes = 0;
-#ifdef WAVE3D_QUALIFY_HDF5
+        double trace_output_write_ms = 0.0;
+        std::uintmax_t trace_output_bytes = 0;
+        std::string trace_output_format = "none";
+#if defined(WAVE3D_QUALIFY_HDF5) || defined(WAVE3D_QUALIFY_SEGY)
         if (argc == 3) {
             const wave3d::io::ThreeComponentTraces host_traces{
                 receiver_points.size(),
@@ -263,11 +267,28 @@ int main(int argc, char** argv) {
                 vx,
                 vy,
                 vz};
+            const std::filesystem::path output_path(argv[2]);
+            const auto extension = output_path.extension().string();
             const auto output_start = Clock::now();
-            wave3d::io::write_hdf5_traces(argv[2], host_traces);
+#ifdef WAVE3D_QUALIFY_HDF5
+            if (extension == ".h5" || extension == ".hdf5") {
+                wave3d::io::write_hdf5_traces(argv[2], host_traces);
+                trace_output_format = "hdf5";
+            } else
+#endif
+#ifdef WAVE3D_QUALIFY_SEGY
+            if (extension == ".sgy" || extension == ".segy") {
+                wave3d::io::write_segy(argv[2], host_traces);
+                trace_output_format = "segy-rev1";
+            } else
+#endif
+            {
+                throw std::invalid_argument(
+                    "trace output extension is unsupported by this build");
+            }
             const auto output_end = Clock::now();
-            hdf5_write_ms = milliseconds(output_end - output_start);
-            hdf5_bytes = std::filesystem::file_size(argv[2]);
+            trace_output_write_ms = milliseconds(output_end - output_start);
+            trace_output_bytes = std::filesystem::file_size(argv[2]);
         }
 #endif
 
@@ -309,8 +330,9 @@ int main(int argc, char** argv) {
                   << "trace_download_ms="
                   << milliseconds(trace_download_end - trace_download_start)
                   << '\n'
-                  << "hdf5_write_ms=" << hdf5_write_ms << '\n'
-                  << "hdf5_bytes=" << hdf5_bytes << '\n'
+                  << "trace_output_format=" << trace_output_format << '\n'
+                  << "trace_output_write_ms=" << trace_output_write_ms << '\n'
+                  << "trace_output_bytes=" << trace_output_bytes << '\n'
                   << "max_surface_traction_pa="
                   << maximum_surface_traction_pa << '\n'
                   << "all_finite=" << (finite ? "true" : "false") << '\n';

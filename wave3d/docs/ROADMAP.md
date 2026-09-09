@@ -276,7 +276,9 @@ snapshot storage, three IEEE-float SEG-Y component writers with exact JSON
 sidecars, and an optional fixed-layout SEG-Y-model-to-HDF5 converter. Enabled
 Release round trips passed 18/18 tests and focused ASan/UBSan passed 4/4; with
 all optional I/O disabled, CPU Release passed 15/15 and CUDA Release passed
-20/20. Increment 10 target qualification is next.
+20/20. Increment 10 target qualification is next. Increment 12 later
+superseded the three-file SEG-Y output contract without changing the other
+Increment 9 adapters.
 
 ## Increment 10 — RTX 5060 `200^3` qualification
 
@@ -323,6 +325,29 @@ RTM-on Release passed 17/17, interface ASan/UBSan 2/2, final CPU Release 16/16,
 CUDA Release 21/21, and an all-options-on Release build 25/25. The elastic
 forward roadmap is complete; stop here unless the user explicitly authorizes a
 separate research phase.
+
+## Increment 12 — Single-file standard SEG-Y output
+
+**Goal:** Make one standards-based SEG-Y file the external output for a
+complete three-component synthetic receiver record.
+
+**Work:** Replace the separate component writers and JSON sidecars with one
+big-endian Revision 1 IEEE-float file; interleave VX, VY, and VZ per receiver;
+correct the component, coordinate-scalar, elevation, depth, ensemble, and
+sampling headers; embed the interpretation in the textual header; and expose
+`.sgy` output from the qualified GPU executable.
+
+**Acceptance:** Independently parsed raw bytes prove the standard header
+layout, trace order and component codes, coordinates, sampling, and sample
+values; invalid fractional-microsecond sampling and truncation fail; the
+focused sanitizer and enabled/disabled-I/O regression suites pass.
+
+**Status:** Verified on 2026-09-09. The raw-byte focused test passed; a one-step
+target GPU run wrote exactly one 10,188-byte, 27-trace file for nine receivers.
+The all-options Release suite passed 25/25, the focused ASan/UBSan I/O suite
+passed 4/4, and the optional-I/O-off CPU Release suite passed 16/16. Builds of
+the qualified executable also passed with no trace output, HDF5 only, SEG-Y
+only, and both adapters enabled.
 
 ## Deferred research phases
 

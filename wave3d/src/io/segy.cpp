@@ -66,29 +66,123 @@ void put_i32(std::vector<unsigned char>& bytes, std::size_t offset, std::int32_t
 }
 
 [[nodiscard]] std::uint16_t segy_interval_us(double dt_s) {
-    const double microseconds = std::round(dt_s * 1.0e6);
-    if (!std::isfinite(microseconds) || microseconds < 1.0 ||
-        microseconds > 65535.0) {
+    const double exact_microseconds = dt_s * 1.0e6;
+    const double rounded_microseconds = std::round(exact_microseconds);
+    const double tolerance = 1.0e-9 * std::max(1.0, std::abs(exact_microseconds));
+    if (!std::isfinite(exact_microseconds) || exact_microseconds < 1.0 ||
+        exact_microseconds > 65535.0 ||
+        std::abs(exact_microseconds - rounded_microseconds) > tolerance) {
         throw std::invalid_argument(
-            "SEG-Y rounded sample interval must fit unsigned 16-bit microseconds");
+            "SEG-Y Revision 1 sample interval must be an integer number of "
+            "microseconds in [1,65535]");
     }
-    return static_cast<std::uint16_t>(microseconds);
+    return static_cast<std::uint16_t>(rounded_microseconds);
 }
 
-void write_text_header(std::ofstream& output, TraceComponent component) {
+void put_text_card(
+    std::string& header,
+    std::size_t card,
+    const std::string& body) {
+    std::ostringstream prefix;
+    prefix << 'C' << std::setw(2) << card + 1 << ' ';
+    const auto line_start = card * 80;
+    const auto prefix_text = prefix.str();
+    std::copy(prefix_text.begin(), prefix_text.end(), header.begin() + line_start);
+    const auto body_size = std::min<std::size_t>(body.size(), 80 - prefix_text.size());
+    std::copy_n(
+        body.begin(),
+        body_size,
+        header.begin() + line_start + prefix_text.size());
+}
+
+[[nodiscard]] std::string scientific_value(double value) {
+    std::ostringstream output;
+    output << std::scientific << std::setprecision(9) << value;
+    return output.str();
+}
+
+void write_text_header(
+    std::ofstream& output,
+    const ThreeComponentTraces& traces,
+    std::uint16_t interval_us,
+    std::size_t trace_count) {
     std::string header(3200, ' ');
     for (std::size_t card = 0; card < 40; ++card) {
-        std::ostringstream prefix;
-        prefix << 'C' << std::setw(2) << std::setfill('0') << card + 1 << ' ';
-        const auto text = prefix.str();
-        std::copy(text.begin(), text.end(), header.begin() + card * 80);
+        put_text_card(header, card, "");
     }
-    const std::string title =
-        std::string("WAVE3D ELASTIC PARTICLE VELOCITY COMPONENT ") +
-        trace_component_name(component) + " SI M/S IEEE FLOAT32";
-    std::copy(title.begin(), title.end(), header.begin() + 4);
-    const std::string final_card = "C40 END TEXTUAL HEADER";
-    std::copy(final_card.begin(), final_card.end(), header.begin() + 39 * 80);
+    put_text_card(header, 0, "WAVE3D THREE-COMPONENT PARTICLE-VELOCITY RECEIVER RECORD");
+    put_text_card(
+        header,
+        1,
+        "SEG-Y REVISION 1, BIG-ENDIAN, IEEE FLOAT32 SAMPLE FORMAT CODE 5");
+    put_text_card(header, 2, "ONE FILE; TRACE ORDER: RECEIVER-MAJOR, THEN VX,VY,VZ");
+    put_text_card(header, 3, "VX = IN-LINE/EAST (TRACE IDENTIFICATION CODE 14)");
+    put_text_card(header, 4, "VY = CROSS-LINE/NORTH (TRACE IDENTIFICATION CODE 13)");
+    put_text_card(header, 5, "VZ = VERTICAL/DOWN (TRACE IDENTIFICATION CODE 12)");
+    put_text_card(
+        header,
+        6,
+        "COORDINATES: X EAST, Y NORTH, Z POSITIVE DOWN; LENGTH UNIT METRE");
+    put_text_card(
+        header,
+        7,
+        "SCALCO=-1000 AND SCALEL=-1000; INTEGER COORDINATES ARE MILLIMETRES");
+    put_text_card(
+        header,
+        8,
+        "TRACE SAMPLES: PARTICLE VELOCITY M/S; NORMALIZATION NONE");
+    put_text_card(
+        header,
+        9,
+        "SAMPLE INTERVAL US=" + std::to_string(interval_us) +
+            "; SAMPLES/TRACE=" + std::to_string(traces.sample_count));
+    put_text_card(
+        header,
+        10,
+        "RECEIVERS=" + std::to_string(traces.receiver_count) +
+            "; DATA TRACES=" + std::to_string(trace_count) +
+            "; ONE COMMON-SOURCE ENSEMBLE");
+    put_text_card(
+        header,
+        11,
+        "SOURCE LOCATION M: X=" +
+            scientific_value(traces.source.physical_location.x_m) + " Y=" +
+            scientific_value(traces.source.physical_location.y_m) + " Z=" +
+            scientific_value(traces.source.physical_location.z_m));
+    put_text_card(
+        header,
+        12,
+        "SOURCE ORIGIN TIME S=" +
+            scientific_value(traces.source.origin_time_s));
+    put_text_card(
+        header,
+        13,
+        "MOMENT TENSOR ORDER: MXX,MYY,MZZ,MXY,MXZ,MYZ; UNIT N*M");
+    put_text_card(
+        header,
+        14,
+        "MXX=" + scientific_value(traces.source.moment.m_xx_nm) +
+            " MYY=" + scientific_value(traces.source.moment.m_yy_nm) +
+            " MZZ=" + scientific_value(traces.source.moment.m_zz_nm));
+    put_text_card(
+        header,
+        15,
+        "MXY=" + scientific_value(traces.source.moment.m_xy_nm) +
+            " MXZ=" + scientific_value(traces.source.moment.m_xz_nm) +
+            " MYZ=" + scientific_value(traces.source.moment.m_yz_nm));
+    put_text_card(
+        header,
+        16,
+        "RICKER FREQ HZ=" +
+            scientific_value(traces.source.wavelet.dominant_frequency_hz) +
+            " PEAK DELAY S=" +
+            scientific_value(traces.source.wavelet.peak_delay_s));
+    put_text_card(
+        header,
+        17,
+        "FIRST STORED SAMPLE TIME=DT; TIME AXIS IS (N+1)*DT");
+    put_text_card(header, 18, "FIXED-LENGTH TRACES; NO EXTENDED TEXTUAL HEADERS");
+    put_text_card(header, 39, "END TEXTUAL HEADER");
     output.write(header.data(), static_cast<std::streamsize>(header.size()));
 }
 
@@ -104,143 +198,149 @@ void write_float_be(std::ofstream& output, float value) {
     output.write(bytes.data(), bytes.size());
 }
 
-void write_sidecar(
-    const std::string& path,
-    const ThreeComponentTraces& traces,
-    TraceComponent component,
-    std::uint16_t interval_us) {
-    std::ofstream output(path, std::ios::binary | std::ios::trunc);
-    if (!output) {
-        throw std::runtime_error("cannot open SEG-Y sidecar: " + path);
-    }
-    output << std::setprecision(17)
-           << "{\n"
-           << "  \"schema\": \"wave3d.segy-sidecar.v1\",\n"
-           << "  \"component\": \"" << trace_component_name(component)
-           << "\",\n"
-           << "  \"orientation\": \"x=east,y=north,z=down\",\n"
-           << "  \"trace_axes\": \"receiver,time\",\n"
-           << "  \"units\": \"m/s\",\n"
-           << "  \"normalization\": \"none\",\n"
-           << "  \"dt_s_exact\": " << traces.dt_s << ",\n"
-           << "  \"dt_us_header_rounded\": " << interval_us << ",\n"
-           << "  \"receiver_count\": " << traces.receiver_count << ",\n"
-           << "  \"sample_count\": " << traces.sample_count << ",\n"
-           << "  \"source_location_m\": ["
-           << traces.source.physical_location.x_m << ','
-           << traces.source.physical_location.y_m << ','
-           << traces.source.physical_location.z_m << "],\n"
-           << "  \"source_origin_time_s\": " << traces.source.origin_time_s
-           << ",\n"
-           << "  \"moment_tensor_order\": \"Mxx,Myy,Mzz,Mxy,Mxz,Myz\",\n"
-           << "  \"moment_tensor_nm\": ["
-           << traces.source.moment.m_xx_nm << ','
-           << traces.source.moment.m_yy_nm << ','
-           << traces.source.moment.m_zz_nm << ','
-           << traces.source.moment.m_xy_nm << ','
-           << traces.source.moment.m_xz_nm << ','
-           << traces.source.moment.m_yz_nm << "],\n"
-           << "  \"receiver_coordinates_m\": [";
-    for (std::size_t receiver = 0; receiver < traces.receiver_count; ++receiver) {
-        const auto& point = traces.receiver_coordinates_m[receiver];
-        if (receiver != 0) {
-            output << ',';
-        }
-        output << '[' << point.x_m << ',' << point.y_m << ',' << point.z_m << ']';
-    }
-    output << "]\n}\n";
-    if (!output) {
-        throw std::runtime_error("failed while writing SEG-Y sidecar: " + path);
-    }
-}
+struct ScaledReceiverCoordinates {
+    std::int32_t x_mm{0};
+    std::int32_t y_mm{0};
+    std::int32_t elevation_mm{0};
+};
 
-void write_component(
+struct ComponentDescription {
+    std::int16_t trace_identification_code;
+    const std::vector<float>* samples;
+};
+
+void write_three_component_record(
     const std::string& path,
-    const ThreeComponentTraces& traces,
-    TraceComponent component,
-    const std::vector<float>& samples) {
+    const ThreeComponentTraces& traces) {
     if (traces.sample_count > 65535) {
         throw std::invalid_argument("SEG-Y trace sample count exceeds uint16");
     }
     const auto interval_us = segy_interval_us(traces.dt_s);
+    const auto trace_count = detail::checked_size_product(
+        traces.receiver_count,
+        std::size_t{3},
+        "SEG-Y three-component trace count overflow");
+    if (trace_count > static_cast<std::size_t>(
+                          std::numeric_limits<std::int32_t>::max())) {
+        throw std::invalid_argument("SEG-Y trace count exceeds int32 sequence range");
+    }
+    const std::int32_t source_x_mm =
+        scaled_coordinate(traces.source.physical_location.x_m);
+    const std::int32_t source_y_mm =
+        scaled_coordinate(traces.source.physical_location.y_m);
+    const std::int32_t source_depth_mm =
+        scaled_coordinate(traces.source.physical_location.z_m);
+    std::vector<ScaledReceiverCoordinates> receiver_coordinates;
+    receiver_coordinates.reserve(traces.receiver_count);
+    for (const auto& receiver : traces.receiver_coordinates_m) {
+        receiver_coordinates.push_back({
+            scaled_coordinate(receiver.x_m),
+            scaled_coordinate(receiver.y_m),
+            scaled_coordinate(-receiver.z_m)});
+    }
+
     std::ofstream output(path, std::ios::binary | std::ios::trunc);
     if (!output) {
         throw std::runtime_error("cannot open SEG-Y output: " + path);
     }
-    write_text_header(output, component);
+    write_text_header(output, traces, interval_us, trace_count);
     std::vector<unsigned char> binary_header(400);
-    put_u16(binary_header, 12, static_cast<std::uint16_t>(
-        std::min<std::size_t>(traces.receiver_count, 65535)));
+    put_i32(binary_header, 0, 1);
+    put_i32(binary_header, 4, 1);
+    put_i32(binary_header, 8, 1);
+    put_i16(
+        binary_header,
+        12,
+        trace_count <= static_cast<std::size_t>(
+                           std::numeric_limits<std::int16_t>::max())
+            ? static_cast<std::int16_t>(trace_count)
+            : 0);
     put_u16(binary_header, 16, interval_us);
+    put_u16(binary_header, 18, interval_us);
     put_u16(binary_header, 20, static_cast<std::uint16_t>(traces.sample_count));
+    put_u16(binary_header, 22, static_cast<std::uint16_t>(traces.sample_count));
     put_u16(binary_header, 24, 5);
+    put_i16(binary_header, 28, 5);
     put_u16(binary_header, 54, 1);
     put_u16(binary_header, 300, 0x0100);
     put_u16(binary_header, 302, 1);
+    put_i16(binary_header, 304, 0);
     output.write(
         reinterpret_cast<const char*>(binary_header.data()),
         static_cast<std::streamsize>(binary_header.size()));
 
+    const std::array<ComponentDescription, 3> components{{
+        {14, &traces.vx_m_s},
+        {13, &traces.vy_m_s},
+        {12, &traces.vz_m_s}}};
     for (std::size_t receiver = 0; receiver < traces.receiver_count; ++receiver) {
-        std::vector<unsigned char> trace_header(240);
-        put_u32(trace_header, 0, static_cast<std::uint32_t>(receiver + 1));
-        put_u32(trace_header, 4, static_cast<std::uint32_t>(receiver + 1));
-        put_u32(trace_header, 8, 1);
-        put_u32(trace_header, 12, static_cast<std::uint32_t>(receiver + 1));
-        put_i16(trace_header, 28, 12);
-        put_i16(trace_header, 68, -1000);
-        put_i32(trace_header, 72, scaled_coordinate(
-            traces.source.physical_location.x_m));
-        put_i32(trace_header, 76, scaled_coordinate(
-            traces.source.physical_location.y_m));
-        put_i32(trace_header, 80, scaled_coordinate(
-            traces.receiver_coordinates_m[receiver].x_m));
-        put_i32(trace_header, 84, scaled_coordinate(
-            traces.receiver_coordinates_m[receiver].y_m));
-        put_i16(trace_header, 88, 1);
-        put_u16(trace_header, 114, static_cast<std::uint16_t>(traces.sample_count));
-        put_u16(trace_header, 116, interval_us);
-        output.write(
-            reinterpret_cast<const char*>(trace_header.data()),
-            static_cast<std::streamsize>(trace_header.size()));
-        for (std::size_t sample = 0; sample < traces.sample_count; ++sample) {
-            write_float_be(
-                output,
-                samples[receiver * traces.sample_count + sample]);
+        for (std::size_t component = 0; component < components.size(); ++component) {
+            const auto trace_index = receiver * components.size() + component;
+            const auto trace_number = static_cast<std::int32_t>(trace_index + 1);
+            std::vector<unsigned char> trace_header(240);
+            put_i32(trace_header, 0, trace_number);
+            put_i32(trace_header, 4, trace_number);
+            put_i32(trace_header, 8, 1);
+            put_i32(trace_header, 12, trace_number);
+            put_i32(trace_header, 16, 1);
+            put_i32(trace_header, 20, 1);
+            put_i32(trace_header, 24, trace_number);
+            put_i16(
+                trace_header,
+                28,
+                components[component].trace_identification_code);
+            put_i16(trace_header, 30, 1);
+            put_i16(trace_header, 32, 1);
+            put_i16(trace_header, 34, 1);
+            put_i32(
+                trace_header,
+                40,
+                receiver_coordinates[receiver].elevation_mm);
+            put_i32(trace_header, 44, 0);
+            put_i32(trace_header, 48, source_depth_mm);
+            put_i16(trace_header, 68, -1000);
+            put_i16(trace_header, 70, -1000);
+            put_i32(trace_header, 72, source_x_mm);
+            put_i32(trace_header, 76, source_y_mm);
+            put_i32(
+                trace_header,
+                80,
+                receiver_coordinates[receiver].x_mm);
+            put_i32(
+                trace_header,
+                84,
+                receiver_coordinates[receiver].y_mm);
+            put_i16(trace_header, 88, 1);
+            put_u16(
+                trace_header,
+                114,
+                static_cast<std::uint16_t>(traces.sample_count));
+            put_u16(trace_header, 116, interval_us);
+            put_i32(trace_header, 196, 1);
+            put_i16(trace_header, 200, 1);
+            output.write(
+                reinterpret_cast<const char*>(trace_header.data()),
+                static_cast<std::streamsize>(trace_header.size()));
+            for (std::size_t sample = 0; sample < traces.sample_count; ++sample) {
+                write_float_be(
+                    output,
+                    (*components[component].samples)[
+                        receiver * traces.sample_count + sample]);
+            }
         }
     }
     if (!output) {
         throw std::runtime_error("failed while writing SEG-Y output: " + path);
     }
-    write_sidecar(path + ".json", traces, component, interval_us);
 }
 
 } // namespace
 
-const char* trace_component_name(TraceComponent component) {
-    switch (component) {
-    case TraceComponent::Vx:
-        return "VX";
-    case TraceComponent::Vy:
-        return "VY";
-    case TraceComponent::Vz:
-        return "VZ";
-    }
-    throw std::invalid_argument("unknown trace component");
-}
-
-std::array<std::string, 3> write_segy_components(
-    const std::string& path_prefix,
+void write_segy(
+    const std::string& path,
     const ThreeComponentTraces& traces) {
     require_valid_traces(traces);
-    const std::array<std::string, 3> paths{{
-        path_prefix + "_vx.sgy",
-        path_prefix + "_vy.sgy",
-        path_prefix + "_vz.sgy"}};
-    write_component(paths[0], traces, TraceComponent::Vx, traces.vx_m_s);
-    write_component(paths[1], traces, TraceComponent::Vy, traces.vy_m_s);
-    write_component(paths[2], traces, TraceComponent::Vz, traces.vz_m_s);
-    return paths;
+    write_three_component_record(path, traces);
 }
 
 std::vector<float> read_ieee_segy_samples(

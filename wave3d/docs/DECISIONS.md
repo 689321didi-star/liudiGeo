@@ -103,7 +103,7 @@ precedes CPML as a debugging boundary.
 
 ## D011 — Layered file formats
 
-**Status:** Accepted, 2026-09-07
+**Status:** Accepted, 2026-09-07; SEG-Y file organization superseded by D035
 
 Generated models and raw binary/CSV/JSON support the earliest tests. YAML is the
 planned human-readable configuration. HDF5 is the canonical internal scientific
@@ -140,7 +140,7 @@ this remains unimplemented and subject to measurement.
 
 ## D015 — Preserve reproducibility metadata
 
-**Status:** Accepted, 2026-09-07
+**Status:** Accepted, 2026-09-07; SEG-Y sidecar policy superseded by D035
 
 Runs will record resolved configuration, code revision, compiler/CUDA/GPU
 environment, dimensions, units, time convention, source/receiver definitions,
@@ -429,7 +429,7 @@ result.
 
 ## D032 — Typed, optional, propagation-independent production I/O
 
-**Status:** Accepted and implemented, 2026-09-09
+**Status:** Accepted and implemented, 2026-09-09; SEG-Y output superseded by D035
 
 File formats terminate at validated domain objects and are never parsed by the
 elastic propagator. YAML, HDF5, and SEG-Y each have an independent, default-off
@@ -483,3 +483,27 @@ restore requires an explicit mutable destination and exact grid identity.
 Removing the entire optional tree leaves the forward build and binary
 unchanged. This seam authorizes no RTM, imaging, reverse, or decomposition
 implementation.
+
+## D035 — One self-describing three-component SEG-Y output
+
+**Status:** Accepted and implemented, 2026-09-09
+
+At the user's request, the external seismic record is one SEG-Y file rather
+than three per-component files plus JSON sidecars. The output remains the
+widely interoperable big-endian SEG-Y Revision 1 core with fixed-length IEEE
+`float32` traces. It contains one common-source ensemble ordered by receiver,
+then VX, VY, and VZ.
+
+For this synthetic survey, x/east is declared in-line and uses trace
+identification code 14; y/north is cross-line and uses code 13; z/down is the
+vertical component and uses code 12. Both coordinate and elevation scalars are
+`-1000`, horizontal coordinates are millimetres, receiver z becomes elevation
+`-z`, and source z becomes positive depth below the z=0 surface. The 3200-byte
+ASCII textual header declares ordering, axes, units, lack of normalization,
+source metadata, and the `(n+1)*dt` first-sample convention.
+
+No JSON sidecar is emitted. Consequently, a sample interval not exactly
+representable as an integer number of microseconds in Revision 1 is rejected
+instead of rounded. D035 supersedes only the SEG-Y organization and sidecar
+clauses of D011, D015, and D032; HDF5 remains the lossless canonical internal
+format and the propagator remains independent of all file adapters.
