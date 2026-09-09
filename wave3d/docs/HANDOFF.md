@@ -614,11 +614,11 @@ qualified separately in Increments 8 and 9.
 
 ## Exact next action
 
-Increment 9 is complete. The exact next action is Increment 10 only: qualify
-the `200^3` elastic five-side-CPML/free-surface case on the RTX 5060, recording
-actual peak device ownership, time per step, throughput, output overhead,
-finite-state checks, tool availability, and reproducible commands. Do not add
-RTM implementation or optimize without a measured bottleneck.
+Increment 10 is complete. The exact next action is Increment 11 only: finalize
+read-only wavefield views, a propagator factory boundary, receiver-data reader,
+observer hooks, checkpoint-store interface, optional RTM CMake boundary, and a
+deterministic mock checkpoint save/restore test. Do not implement migration,
+imaging, reverse propagation, or P/S decomposition.
 
 ## Increment 5 implementation and verification
 
@@ -728,3 +728,33 @@ propagator on 2026-09-09:
 Enabled-I/O Release passed 18/18 tests and focused ASan/UBSan passed 4/4.
 With every optional I/O adapter disabled, CPU Release passed 15/15 and CUDA
 Release passed 20/20, demonstrating that propagation remains independent.
+
+## Increment 10 implementation and verification
+
+Increment 10 qualified the full target forward envelope on 2026-09-09:
+
+- `wave3d_qualify_rtx5060` fixes the production `200^3` grid, five-side CPML,
+  traction-free top, homogeneous elastic material, source, nine receivers, and
+  exact numerical validation. It replans against current free memory before
+  allocating and can optionally measure canonical HDF5 trace output.
+- The `252 x 252 x 232` allocation ran 4000 steps in `292785.148 ms`, or
+  `73.196287 ms/step` and `201.279718` million allocated-cell steps/s.
+- Owned device objects used `2023.692627 MiB`; CUDA free memory fell by
+  `2090.25 MiB`. The conservative allocation plus 512 MiB reserve was
+  `2704.293579 MiB`, safely below the contemporaneous `5885.849999 MiB`
+  configured budget.
+- Final exhaustive downloads found no NaN/Inf in nine wavefields, 18 CPML
+  states, or three-component traces. Surface traction was exactly zero.
+  Target-size one-step Compute Sanitizer memcheck reported zero errors.
+- Trace download took `0.090972 ms`; writing the 440,408-byte HDF5 record took
+  `0.645352 ms`. Generated traces and profiler reports were removed.
+
+Nsight Systems attributed 99.8% of GPU kernel time to the two CPML main
+kernels. Nsight Compute measured the stress kernel at 87.54% compute and
+13.41% memory throughput, with FP64 the dominant pipeline. The accepted double
+accumulation remains unchanged; any precision, register-pressure, or fusion
+optimization requires a separate numerical gate. Full commands and all
+measurements are in `RTX5060_QUALIFICATION.md`. Final CPU Release, CUDA
+Release, and ASan/UBSan suites passed 15/15, 20/20, and 15/15; full
+free-surface memcheck/initcheck and focused racecheck/synccheck reported zero
+errors or hazards.

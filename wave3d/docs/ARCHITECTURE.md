@@ -373,6 +373,13 @@ tiles where beneficial, kernel fusion, asynchronous output staging, and reduced
 temporary storage. Each optimization must preserve a reference path and error
 tolerance.
 
+Increment 10 profiling narrows that list: on the target `200^3` case, the two
+CPML main kernels consume 99.8% of kernel time and the stress kernel reaches
+87.54% compute versus 13.41% memory throughput, dominated by deliberate FP64
+accumulation. Output, source, receiver, and free-surface optimization would not
+materially improve the current run. Any precision/register/fusion change is a
+future measured numerical increment, not part of interface finalization.
+
 ## Proposed final source tree
 
 ```text

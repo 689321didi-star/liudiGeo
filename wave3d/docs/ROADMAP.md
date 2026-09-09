@@ -291,6 +291,15 @@ margin with no invalid accesses or NaNs; physics regressions still pass after
 optimization; a reproducible performance report is committed without large
 generated data.
 
+**Status:** Verified on the target RTX 5060 on 2026-09-09. The actual
+`200^3`, 4000-step five-side-CPML/free-surface case completed in `292.785 s`
+at `73.196 ms/step`, used `2023.693 MiB` of owned device memory, stayed inside
+the conservative 80% plan by over 3 GiB, retained exact final surface
+traction, and contained no non-finite values. Target-size memcheck reported
+zero errors. Nsight identified deliberate FP64 work in the two CPML main
+kernels as the bottleneck; no accuracy-changing optimization was made.
+Increment 11 interface finalization is next.
+
 ## Increment 11 — RTM-ready interfaces only
 
 **Goal:** Prove RTM can be added and removed cleanly without implementing it.

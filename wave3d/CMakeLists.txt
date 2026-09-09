@@ -197,6 +197,15 @@ if(WAVE3D_ENABLE_CUDA)
     add_executable(wave3d_cuda_info apps/cuda_info.cpp)
     target_link_libraries(wave3d_cuda_info PRIVATE wave3d_cuda)
 
+    add_executable(wave3d_qualify_rtx5060 apps/qualify_rtx5060.cpp)
+    target_link_libraries(wave3d_qualify_rtx5060 PRIVATE wave3d_cuda)
+    if(WAVE3D_ENABLE_HDF5)
+        target_link_libraries(
+            wave3d_qualify_rtx5060 PRIVATE wave3d_io_hdf5)
+        target_compile_definitions(
+            wave3d_qualify_rtx5060 PRIVATE WAVE3D_QUALIFY_HDF5=1)
+    endif()
+
     if(WAVE3D_BUILD_TESTS)
         add_executable(wave3d_cuda_tests tests/test_cuda.cpp)
         target_link_libraries(wave3d_cuda_tests PRIVATE wave3d_cuda)

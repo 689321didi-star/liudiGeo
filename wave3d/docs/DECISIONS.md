@@ -445,3 +445,21 @@ millimetre scalar, and exact binary64 sampling/source/component semantics are
 recorded in a JSON sidecar without normalizing samples. External SEG-Y model
 volumes are converted by a separate executable and must declare matching fixed
 trace/sample dimensions.
+
+## D033 — Accuracy-first RTX 5060 production envelope
+
+**Status:** Accepted and measured, 2026-09-09
+
+The supported baseline is one RTX 5060, a `200^3` physical grid with the
+documented padding, five-side CPML, a traction-free top, 4000 samples, and
+sparse surface receiver output. Every invocation must plan against currently
+free CUDA memory and keep the 80% budget plus 512 MiB reserve rule; the
+qualification measurement is evidence, not a future allocation guarantee.
+
+Nsight shows the separate CPML stress and velocity kernels consume 99.8% of
+GPU kernel time and that double-precision arithmetic, not device memory or
+output, is the limiting resource. Double accumulation remains intentional
+because it underpins the accepted transparent CPU/GPU comparisons. A later
+optimization may change precision, register pressure, fusion, or CPML layout
+only behind a new numerical gate. Increment 10 therefore qualifies the
+accuracy-first reference path without silently trading accuracy for speed.
