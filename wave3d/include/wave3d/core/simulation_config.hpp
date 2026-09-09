@@ -93,16 +93,6 @@ struct SimulationConfig {
         !(material.max_vs_m_s >= material.min_vs_m_s)) {
         errors.emplace_back("Vs bounds are invalid");
     }
-    const double minimum_vp_squared =
-        static_cast<double>(material.min_vp_m_s) * material.min_vp_m_s;
-    const double maximum_vs_squared =
-        static_cast<double>(material.max_vs_m_s) * material.max_vs_m_s;
-    if (std::isfinite(minimum_vp_squared) &&
-        std::isfinite(maximum_vs_squared) &&
-        !(minimum_vp_squared > (4.0 / 3.0) * maximum_vs_squared)) {
-        errors.emplace_back(
-            "material bounds do not guarantee a positive bulk modulus");
-    }
     if (!std::isfinite(material.min_density_kg_m3) ||
         !std::isfinite(material.max_density_kg_m3) ||
         !(material.min_density_kg_m3 > 0.0F) ||

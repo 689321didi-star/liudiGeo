@@ -900,6 +900,12 @@ transformation:
   geometry. Truncation, NaN, zero Vp, float32 underflow, zero/out-of-range crop,
   crop-range overflow, and allocated-grid overflow all fail explicitly.
 
+Increment 14c began with a prerequisite correction for heterogeneous model
+metadata. The configuration validator no longer combines global minimum Vp
+and global maximum Vs into a material that may not exist. Exact extrema
+identity is still checked by the production task, and the loaded HDF5 model
+still enforces positive bulk modulus at every physical cell.
+
 Observed commands/results:
 
 ```text

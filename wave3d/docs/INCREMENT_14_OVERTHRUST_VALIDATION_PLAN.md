@@ -102,6 +102,10 @@ Acceptance:
   numerical validator accepts its grid, time step, design frequency, source,
   receivers, and five-side-CPML/free-surface geometry.
 
+Prerequisite passed on 2026-09-09: structural validation no longer pairs
+independent extrema into a nonexistent material. Positive bulk modulus remains
+enforced cell by cell when the canonical HDF5 model is read.
+
 ### 14d — Incremental CUDA propagation
 
 Run a small crop/small-step smoke case first, then the accepted reduced model.

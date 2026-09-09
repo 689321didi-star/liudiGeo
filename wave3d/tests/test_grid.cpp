@@ -83,11 +83,11 @@ void test_validation() {
     expect(!wave3d::validate(config).empty(), "zero Vs is outside solid scope");
 
     config = valid_config();
-    config.material.min_vp_m_s = 2000.0F;
-    config.material.max_vs_m_s = 1800.0F;
+    config.material = {
+        2445.0F, 6000.0F, 1412.0F, 3464.0F, 2180.0F, 2729.0F};
     expect(
-        !wave3d::validate(config).empty(),
-        "material extrema must guarantee positive bulk modulus");
+        wave3d::validate(config).empty(),
+        "independent extrema must not imply a nonexistent Vp/Vs cell pair");
 
     config = valid_config();
     config.grid.z_boundary.lower_absorbing = 20;

@@ -395,8 +395,11 @@ determinism checks, and rejection of truncated, non-finite, non-positive,
 underflowing, out-of-range, and overflowing inputs pass. Focused Release and
 ASan/UBSan passed, and the optional-I/O-off CPU Release suite passed 17/17.
 
-**14c status:** Pending. Add the audited container adapter, then generate and
-independently verify canonical HDF5 and matching YAML artifacts.
+**14c status:** In progress. The prerequisite extrema-semantics gate now
+avoids pairing independent global minimum Vp and maximum Vs as if they were
+one cell; actual HDF5 materials remain strictly validated cell by cell. Add
+the audited container adapter next, then generate and independently verify
+canonical HDF5 and matching YAML artifacts.
 
 **14d status:** Pending. Run the small/refined and full CUDA/SEG-Y validation
 gates.

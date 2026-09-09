@@ -564,3 +564,20 @@ depth-integrated horizontal absolute-gradient score and confirmed on
 orthogonal slices. Large source, HDF5, SEG-Y, images, and run artifacts remain
 outside Git; code, checksums, configuration, attribution, and results remain
 reproducible in the repository.
+
+## D039 — Cellwise elasticity is not inferred from independent extrema
+
+**Status:** Accepted and implemented, 2026-09-09
+
+`MaterialExtrema` stores six independent global bounds for CFL, dispersion,
+and model-identity checks. Pairing global minimum Vp with global maximum Vs
+constructs a material that may not occur in a heterogeneous volume, so that
+pair cannot soundly prove a non-positive bulk modulus. The structural
+configuration validator therefore validates each bound and its ordering but
+does not infer a cellwise Vp/Vs relation from unrelated extrema.
+
+The physical-model boundary remains strict: every HDF5 cell is validated and
+must satisfy `Vp^2 > (4/3)Vs^2` before coefficients or propagation are
+created. The production runner also requires exact agreement between the YAML
+extrema and those validated HDF5 cells. This preserves material safety while
+allowing valid broad-range heterogeneous models such as derived Overthrust.
