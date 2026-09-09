@@ -129,3 +129,17 @@ Increment 14 ends after this one derived Overthrust benchmark and its single
 SEG-Y validation record are reproducible and documented. Do not continue to
 Salt, SEAM, fluid-solid coupling, anisotropy, or RTM without a new user request
 and a new acceptance plan.
+
+## Gate results
+
+### 14a
+
+Passed on 2026-09-09. Full evidence and the precomputed conversion oracles are
+recorded in `OVERTHRUST_SOURCE_AUDIT.md`.
+
+### 14b
+
+Passed on 2026-09-09. `derived_overthrust.hpp` keeps container parsing outside
+the model layer and implements the direct crop plus approved elastic mapping.
+The focused Release and ASan/UBSan tests passed. The complete dependency-free
+CPU Release suite passed 17/17. No MAT or HDF5 adapter was added in this gate.

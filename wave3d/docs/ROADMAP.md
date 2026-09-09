@@ -386,10 +386,17 @@ descriptions. A fixed maximum-horizontal-gradient window selects source
 `187 x 200 x 200` crop. Expected Vp/Vs/density extrema and binary32 hashes are
 frozen before converter implementation. Increment 14b conversion is next.
 
-**14b status:** Pending. Implement and test the pure crop/elastic derivation.
+**14b status:** Verified on 2026-09-09. A dependency-free pure model
+transformation now accepts canonical source Vp, an explicit crop, and output
+storage geometry. It preserves Vp exactly, derives Vs and density using the
+frozen binary64 formulas followed by one binary32 conversion, and returns a
+validated `PhysicalModel`. Unique-index axis/crop checks, exact formula and
+determinism checks, and rejection of truncated, non-finite, non-positive,
+underflowing, out-of-range, and overflowing inputs pass. Focused Release and
+ASan/UBSan passed, and the optional-I/O-off CPU Release suite passed 17/17.
 
-**14c status:** Pending. Generate and independently verify canonical HDF5 and
-matching YAML artifacts.
+**14c status:** Pending. Add the audited container adapter, then generate and
+independently verify canonical HDF5 and matching YAML artifacts.
 
 **14d status:** Pending. Run the small/refined and full CUDA/SEG-Y validation
 gates.

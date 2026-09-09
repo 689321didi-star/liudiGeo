@@ -72,6 +72,14 @@ buoyancies and four-point harmonic edge shear moduli are calculated in double
 precision. Values that overflow or underflow their required nonzero `float32`
 representation are rejected.
 
+Increment 14b adds a file-format-independent derived-Overthrust transformation.
+It accepts a validated source Vp volume in canonical `[z][y][x]` order, an
+explicit physical crop, and separate output halo/absorbing geometry. It copies
+Vp exactly, derives `Vs=Vp/sqrt(3)` and Gardner density in binary64, converts
+once to binary32, and returns the same validated `PhysicalModel` consumed by
+generated and HDF5-loaded paths. MATLAB decoding and HDF5 writing remain
+outside this model function.
+
 ### `wave`
 
 Owns velocity and stress state. Production layout is SoA:

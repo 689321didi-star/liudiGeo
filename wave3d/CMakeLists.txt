@@ -58,6 +58,17 @@ if(WAVE3D_BUILD_TESTS)
     target_link_libraries(wave3d_model_tests PRIVATE wave3d_core)
     add_test(NAME wave3d_model_tests COMMAND wave3d_model_tests)
 
+    add_executable(
+        wave3d_derived_overthrust_tests
+        tests/test_derived_overthrust.cpp)
+    target_link_libraries(
+        wave3d_derived_overthrust_tests PRIVATE wave3d_core)
+    add_test(
+        NAME wave3d_derived_overthrust_tests
+        COMMAND wave3d_derived_overthrust_tests)
+    set_tests_properties(
+        wave3d_derived_overthrust_tests PROPERTIES LABELS "model")
+
     add_executable(wave3d_acquisition_tests tests/test_acquisition.cpp)
     target_link_libraries(wave3d_acquisition_tests PRIVATE wave3d_core)
     add_test(NAME wave3d_acquisition_tests COMMAND wave3d_acquisition_tests)

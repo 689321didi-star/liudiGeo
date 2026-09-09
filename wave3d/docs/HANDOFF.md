@@ -121,11 +121,12 @@ origin https://github.com/689321didi-star/liudiGeo.git
 ```
 
 The local `main` branch tracks `origin/main`. `origin/main` remains at
-`63ecc49`; after the Increment 14a commit, local `main` is 17 commits ahead and
+`63ecc49`; after the Increment 14b commit, local `main` is 18 commits ahead and
 contains the scientific reference gate, the general HDF5-to-SEG-Y production
-pipeline, and the Overthrust source audit. Fetch uses the HTTPS URL and push
-uses the authenticated SSH URL. Never force-push or rewrite shared history. The user
-authorizes local commits; a later push still requires an explicit request.
+pipeline, and verified Overthrust work through the pure model transformation.
+Fetch uses the HTTPS URL and push uses the authenticated SSH URL. Never
+force-push or rewrite shared history. The user authorizes local commits; a
+later push still requires an explicit request.
 
 ## Target environment recorded on 2026-09-08
 
@@ -619,9 +620,10 @@ qualified separately in Increments 8 and 9.
 The elastic forward roadmap, single-file SEG-Y amendment, and general
 YAML/HDF5-input production driver are complete through Increment 13. The user
 authorized only the reduced derived-isotropic SEG/EAGE Overthrust benchmark in
-Increment 14. Increment 14a source audit is complete; implement the pure
-crop/elastic derivation and its focused tests in Increment 14b next. Do not
-start Salt, SEAM, fluid-solid, anisotropic, viscoelastic, RTM, imaging,
+Increment 14. Increment 14b pure model transformation is complete; add the
+audited source-container adapter and generate/verify HDF5 and YAML artifacts
+in Increment 14c next. Do not start Salt, SEAM, fluid-solid, anisotropic,
+viscoelastic, RTM, imaging,
 decomposition, optimization, or deep-learning work.
 
 ## Increment 5 implementation and verification
@@ -881,3 +883,41 @@ source without changing production or test code:
 This documentation-only gate required no compilation. `git diff --check`
 passed. Downloaded MATLAB data and generated audit images remain under the
 ignored `data/` directory and are not committed.
+
+## Increment 14b implementation and verification
+
+Increment 14b added only the file-format-independent Overthrust model
+transformation:
+
+- `model/derived_overthrust.hpp` validates source shape, crop arithmetic and
+  bounds, output storage geometry, and every selected Vp before mutation of any
+  caller-owned state.
+- It directly copies canonical `[z,y,x]` Vp, calculates `Vs=Vp/sqrt(3)` and
+  `rho=1000*0.31*Vp^(1/4)` in binary64, converts once to binary32, and validates
+  every elastic material and the complete returned `PhysicalModel`.
+- The unique-index test proves x-fastest output, z/y/x crop offsets, unchanged
+  Vp, exact formulas, deterministic output, and retained 25 m/output-boundary
+  geometry. Truncation, NaN, zero Vp, float32 underflow, zero/out-of-range crop,
+  crop-range overflow, and allocated-grid overflow all fail explicitly.
+
+Observed commands/results:
+
+```text
+cmake -S . -B build-cpu -DCMAKE_BUILD_TYPE=Release \
+  -DWAVE3D_ENABLE_CUDA=OFF -DWAVE3D_ENABLE_YAML=OFF \
+  -DWAVE3D_ENABLE_HDF5=OFF -DWAVE3D_ENABLE_SEGY=OFF
+cmake --build build-cpu --parallel 2
+ctest --test-dir build-cpu --output-on-failure
+# 17/17 passed
+
+cmake -S . -B build-derived-sanitize -DCMAKE_BUILD_TYPE=Debug \
+  -DWAVE3D_ENABLE_CUDA=OFF -DWAVE3D_ENABLE_YAML=OFF \
+  -DWAVE3D_ENABLE_HDF5=OFF -DWAVE3D_ENABLE_SEGY=OFF \
+  -DCMAKE_CXX_FLAGS=-fsanitize=address,undefined \
+  -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined
+cmake --build build-derived-sanitize \
+  --target wave3d_derived_overthrust_tests --parallel 2
+ASAN_OPTIONS=detect_leaks=0 ctest --test-dir build-derived-sanitize \
+  -R '^wave3d_derived_overthrust_tests$' --output-on-failure
+# 1/1 passed
+```
