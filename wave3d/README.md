@@ -113,6 +113,14 @@ expected dataset hashes are in
 
 For the fixed 64-cubed, eight-step CUDA memory-check input, add `--smoke`
 before the MAT path. This is a validation profile, not the production model.
+The fixed `--refinement-coarse` and `--refinement-fine` profiles use the full
+model for 0.8 s at 1 ms and 0.5 ms, respectively; they exist only to reproduce
+the Increment 14 time-step convergence gate. Compare their `record.sgy` files
+at exact common `(n+1)dt` times with:
+
+```text
+python3 tools/verify_overthrust_refinement.py COARSE.sgy FINE.sgy
+```
 
 ## HDF5 model to one SEG-Y record
 

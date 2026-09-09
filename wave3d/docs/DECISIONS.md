@@ -632,3 +632,22 @@ This profile is deliberately not a substitute for the accepted 200 x 200 x
 HDF5/YAML I/O, coefficient preparation, CPML, the free surface, source,
 receivers, CUDA kernels, and the single-file SEG-Y writer cheaply under
 Compute Sanitizer before larger runs.
+
+## D043 — Full-model Overthrust time-refinement gate
+
+**Status:** Accepted and verified, 2026-09-09
+
+The fixed refinement profiles use the accepted full model and acquisition for
+a nominal 0.8 s window. The coarse record has 800 samples at 1 ms and the fine
+record has 1600 samples at 0.5 ms. Because `TimeConfig` defines step count by
+ceiling division, the serialized end-time request is the immediately lower
+binary64 neighbor of 0.8; both resulting `(n+1)dt` records end exactly at
+0.8 s without an unintended extra step.
+
+Comparison pairs coarse sample `n` with fine sample `2n+1`, which represents
+the same physical `(n+1)dt` time. The independent standard-library verifier
+checks IEEE SEG-Y, finite data, receiver/component order, and unchanged trace
+headers before computing binary64 normalized L2 error over all traces. The
+accepted threshold remains 5%. The observed all-trace error was
+`0.000433639742266` (0.0434%); VX, VY, and VZ errors were respectively
+`0.000454674475987`, `0.000432879948454`, and `0.000387158120674`.

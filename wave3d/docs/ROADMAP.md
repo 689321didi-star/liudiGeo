@@ -410,8 +410,9 @@ next.
 **14d status:** In progress. The fixed 64-cubed/eight-step Overthrust smoke
 profile completed normally and under Compute Sanitizer memcheck with zero
 errors. Its one SEG-Y file had 27 receiver-major 14/13/12 traces, 8 samples at
-1 ms, and 216/216 finite samples. Time refinement and the full production run
-are next.
+1 ms, and 216/216 finite samples. Full-model 1 ms versus 0.5 ms refinement
+then passed at 0.0434% normalized L2 against the fixed 5% threshold. The full
+3 s production run is next.
 
 ## Deferred research phases
 

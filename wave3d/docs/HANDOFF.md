@@ -933,6 +933,14 @@ receiver-major 14/13/12 traces, 8 samples per trace at exactly 1 ms, and
 216/216 finite values (55 nonzero). Time refinement and the full production
 run remain.
 
+The second 14d gate also passes. Full-model 1 ms/800-sample and
+0.5 ms/1600-sample runs took 55.99 s and 111.63 s of propagation. The committed
+standard-library verifier aligned coarse `n` to fine `2n+1` under the
+`(n+1)dt` convention and measured all-trace normalized L2
+`0.000433639742266`; VX/VY/VZ were `0.000454674475987`,
+`0.000432879948454`, and `0.000387158120674`. All are far below the fixed 5%
+gate. The full 3 s production run and final regression matrix remain.
+
 Observed commands/results:
 
 ```text

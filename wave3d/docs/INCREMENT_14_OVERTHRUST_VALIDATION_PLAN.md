@@ -178,3 +178,15 @@ Compute Sanitizer memcheck reported zero errors. The 10,944-byte record had 27
 receiver-major traces with repeated 14/13/12 component codes, 8 samples at
 exactly 1 ms, and 216/216 finite samples, 55 of them nonzero. Time refinement
 and full-model propagation remain pending.
+
+### 14d time-refinement sub-gate
+
+Passed on 2026-09-09. The accepted full model/acquisition ran for 800 samples
+at 1 ms and 1600 samples at 0.5 ms. The standalone standard-library verifier
+matched coarse sample `n` with fine sample `2n+1` at common `(n+1)dt` times,
+validated 363 IEEE SEG-Y traces and unchanged acquisition headers, and found
+all-trace normalized L2 `0.000433639742266`. Component errors were
+`0.000454674475987` (VX), `0.000432879948454` (VY), and
+`0.000387158120674` (VZ), all far below the unchanged 0.05 gate. The runs took
+55.99 s and 111.63 s of propagation time. Full 3 s propagation remains
+pending.

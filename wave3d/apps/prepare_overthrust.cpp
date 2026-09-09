@@ -8,6 +8,7 @@
 #include "wave3d/numerics/elastic_validation.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
@@ -34,6 +35,31 @@ constexpr wave3d::PhysicalVolumeWindow3D smoke_crop{
 
 constexpr wave3d::OutputStorageGeometry smoke_storage{
     6, {10, 10}, {10, 10}, {0, 10}};
+
+enum class Profile {
+    Production,
+    Smoke,
+    RefinementCoarse,
+    RefinementFine,
+};
+
+[[nodiscard]] bool is_smoke(Profile profile) {
+    return profile == Profile::Smoke;
+}
+
+[[nodiscard]] const char* profile_name(Profile profile) {
+    switch (profile) {
+    case Profile::Production:
+        return "production";
+    case Profile::Smoke:
+        return "smoke";
+    case Profile::RefinementCoarse:
+        return "refinement-coarse";
+    case Profile::RefinementFine:
+        return "refinement-fine";
+    }
+    throw std::logic_error("unknown Overthrust preparation profile");
+}
 
 [[nodiscard]] std::filesystem::path normalized_absolute(
     const std::filesystem::path& path) {
@@ -108,10 +134,16 @@ void require_audited_extrema(const wave3d::MaterialExtrema& extrema) {
     const wave3d::PhysicalModel& model,
     const std::filesystem::path& hdf5_path,
     const std::filesystem::path& yaml_path,
-    bool smoke) {
+    Profile profile) {
+    const bool smoke = is_smoke(profile);
+    const bool refinement = profile == Profile::RefinementCoarse ||
+                            profile == Profile::RefinementFine;
+    const double refinement_end_s = std::nextafter(0.8, 0.0);
     wave3d::SimulationConfig simulation{};
     simulation.grid = model.grid;
-    simulation.time = {0.001, smoke ? 0.008 : 3.0};
+    simulation.time = {
+        profile == Profile::RefinementFine ? 0.0005 : 0.001,
+        smoke ? 0.008 : (refinement ? refinement_end_s : 3.0)};
     simulation.material = extrema_for(model);
     simulation.top_boundary = wave3d::TopBoundary::FreeSurface;
     simulation.numerics = {0.85, 9.0};
@@ -140,7 +172,12 @@ void require_audited_extrema(const wave3d::MaterialExtrema& extrema) {
         source,
         std::move(receivers),
         model_path_from_yaml(hdf5_path, yaml_path),
-        smoke ? "overthrust_smoke_output" : "overthrust_output"};
+        smoke ? "overthrust_smoke_output"
+              : (profile == Profile::RefinementCoarse
+                     ? "overthrust_refinement_coarse_output"
+                     : (profile == Profile::RefinementFine
+                            ? "overthrust_refinement_fine_output"
+                            : "overthrust_output"))};
     wave3d::io::require_valid_run_configuration(configuration);
     return configuration;
 }
@@ -229,14 +266,28 @@ void create_parent(const std::filesystem::path& path) {
 } // namespace
 
 int main(int argc, char** argv) {
-    const bool smoke = argc == 5 && std::string(argv[1]) == "--smoke";
-    if ((!smoke && argc != 4) || (argc == 5 && !smoke)) {
-        std::cerr << "usage: wave3d_prepare_overthrust [--smoke] "
+    Profile profile = Profile::Production;
+    if (argc == 5) {
+        const std::string option(argv[1]);
+        if (option == "--smoke") {
+            profile = Profile::Smoke;
+        } else if (option == "--refinement-coarse") {
+            profile = Profile::RefinementCoarse;
+        } else if (option == "--refinement-fine") {
+            profile = Profile::RefinementFine;
+        } else {
+            std::cerr << "unknown preparation profile: " << option << '\n';
+            return 2;
+        }
+    } else if (argc != 4) {
+        std::cerr << "usage: wave3d_prepare_overthrust "
+                     "[--smoke|--refinement-coarse|--refinement-fine] "
                      "INPUT.mat OUTPUT.h5 OUTPUT.yaml\n";
         return 2;
     }
     try {
-        const int path_offset = smoke ? 2 : 1;
+        const bool smoke = is_smoke(profile);
+        const int path_offset = argc == 5 ? 2 : 1;
         const std::filesystem::path input_path(argv[path_offset]);
         const std::filesystem::path hdf5_path(argv[path_offset + 1]);
         const std::filesystem::path yaml_path(argv[path_offset + 2]);
@@ -256,7 +307,7 @@ int main(int argc, char** argv) {
             require_audited_extrema(extrema);
         }
         const auto configuration =
-            make_configuration(model, hdf5_path, yaml_path, smoke);
+            make_configuration(model, hdf5_path, yaml_path, profile);
         const auto numerical =
             wave3d::elastic_numerical_report(configuration.simulation);
 
@@ -275,7 +326,7 @@ int main(int argc, char** argv) {
 
         std::cout << std::setprecision(12)
                   << "prepared derived SEG/EAGE 3-D Overthrust "
-                  << (smoke ? "smoke" : "production") << " benchmark\n"
+                  << profile_name(profile) << " benchmark\n"
                   << "shape_zyx=" << model.grid.nz << ',' << model.grid.ny
                   << ',' << model.grid.nx << '\n'
                   << "spacing_m=" << model.grid.dz_m << ',' << model.grid.dy_m
