@@ -614,12 +614,11 @@ output remains Increment 9.
 
 ## Exact next action
 
-Increment 5 is complete. The exact next action is Increment 6 only: predeclare
-and implement a replaceable multiplicative sponge with independently prepared
-coefficients and explicit stress/velocity application hooks, including faces,
-edges, and corners. Compare the interior solution before boundary contact,
-measure a reflected-wave threshold, and run a finite long case. Do not add
-CPML or free-surface behavior in this increment.
+Increment 6 is complete. The exact next action is Increment 7 only: specify and
+implement six-sided CPML coefficient/state ownership and separate derivative
+correction hooks, update the memory plan with the actual auxiliary arrays, and
+measure normal and grazing-incidence reflection plus long-time stability. Do
+not add a traction-free top until Increment 8.
 
 ## Increment 5 implementation and verification
 
@@ -643,3 +642,24 @@ Verification: CPU Release 11/11, CUDA Release 13/13, ASan/UBSan 11/11, and
 Compute Sanitizer memcheck/initcheck/racecheck/synccheck all passed with zero
 errors or hazards. These results qualify CUDA interior propagation only; no
 absorbing or surface boundary has yet been applied.
+
+## Increment 6 implementation and verification
+
+Increment 6 added a replaceable debug sponge on 2026-09-09:
+
+- `boundary/sponge.hpp` prepares the fixed quadratic factor volume and applies
+  it separately to six stresses and three velocities. Physical cells are
+  exactly one; enabled face factors multiply at edges/corners.
+- `cuda/sponge.cu` and `cuda/sponge.hpp` provide a move-only uploaded profile,
+  two allocation-free kernels, and a composed step with the accepted boundary
+  hook positions.
+- The fixed homogeneous test produced zero pre-boundary trace error and a
+  damped/undamped late reflection ratio of `0.01085103272`, versus the `0.12`
+  debug threshold. All fields and traces were finite after 600 steps. A direct
+  Release run measured `1095.53 ms` undamped and `1143.00 ms` damped.
+
+Verification: CPU Release 12/12, CUDA Release 15/15, ASan/UBSan 12/12.
+Compute Sanitizer memcheck/initcheck covered the full long physics case;
+racecheck/synccheck covered the focused CUDA sponge kernels. All reported zero
+errors, hazards, or warnings. This is not CPML and does not qualify a free
+surface.

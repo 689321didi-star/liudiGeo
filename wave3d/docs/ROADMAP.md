@@ -201,6 +201,15 @@ with separate preparation and application interfaces.
 debug threshold; the interior solution matches the reference window before
 boundary arrivals; long runs remain finite.
 
+**Status:** Verified on the target RTX 5060 on 2026-09-09. A quadratic
+separable multiplicative sponge is prepared once and applied at separate
+stress and velocity hooks; face factors multiply across edges and corners.
+CPU/CUDA application was bitwise equal, the pre-boundary trace error was zero,
+the first-return peak was `1.0851%` of the undamped result versus the fixed
+`12%` debug limit, and all fields/traces remained finite for 600 steps. CPU and
+CUDA Release, ASan/UBSan, and all Compute Sanitizer gates pass. Increment 7
+six-sided CPML is next.
+
 ## Increment 7 — CPML on six sides
 
 **Goal:** Replace the debug sponge with an optional production absorber.

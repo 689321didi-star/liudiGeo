@@ -373,3 +373,20 @@ and implicit `(n+1)*dt` trace labels as the CPU reference are retained.  The
 target RTX 5060 produced bitwise-equal fields and traces in the predeclared
 Increment 5 tests.  This decision does not add a boundary or authorize kernel
 fusion; later optimization must continue to compare against this clear path.
+
+## D029 — Replaceable multiplicative debug sponge
+
+**Status:** Accepted and implemented, 2026-09-09
+
+The debug absorber is a separately prepared full-volume `float32` factor and
+two explicit application hooks.  On an enabled side, normalized absorbing
+depth `r` uses `exp(log(d_outer)*r^2)`; three axis factors multiply at edges
+and corners.  Physical cells retain an exact factor of one, and halo storage
+beyond an absorbing layer retains its outer factor.  Tests use
+`d_outer=0.75` per stress or velocity application.
+
+The sponge is intentionally stateless and replaceable.  It provides an early
+finite-domain baseline but is not called CPML, does not change the interior
+operator, and does not define a traction-free surface.  The predeclared
+reflection experiment reduced the first-return peak to `1.0851%` of the
+undamped result while preserving the pre-boundary record exactly.

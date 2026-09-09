@@ -16,6 +16,8 @@
 
 namespace wave3d::cuda {
 
+class DeviceSpongeProfile;
+
 class DeviceElasticWavefield {
 public:
     explicit DeviceElasticWavefield(const Grid3D& grid)
@@ -102,6 +104,10 @@ private:
         const class DeviceReceiverSet&,
         class DeviceReceiverTraces&,
         std::size_t);
+    friend void apply_sponge_to_stresses(
+        DeviceElasticWavefield&, const DeviceSpongeProfile&);
+    friend void apply_sponge_to_velocities(
+        DeviceElasticWavefield&, const DeviceSpongeProfile&);
 
     [[nodiscard]] static std::size_t validated_cell_count(const Grid3D& grid) {
         require_valid_grid_geometry(grid);

@@ -188,6 +188,13 @@ x-min, x-max, y-min, y-max, z-max: CPML
 Free-surface logic must not be hidden inside general interior kernels unless a
 later, measured optimization preserves a separately tested reference path.
 
+Increment 6 implements the early debug boundary as one prepared `float32`
+damping volume.  Its independently callable stress and velocity hooks leave
+the physical model exactly undamped and multiply separable axis factors at
+edges and corners.  The CUDA owner uploads the profile once; neither hook
+allocates or transfers a volume.  This component remains replaceable and has
+no auxiliary state, so it does not stand in for CPML.
+
 ### `acquisition`
 
 `SourceSet` accepts physical coordinates, origin times, source-time functions,
