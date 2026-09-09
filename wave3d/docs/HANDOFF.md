@@ -121,10 +121,10 @@ origin https://github.com/689321didi-star/liudiGeo.git
 ```
 
 The local `main` branch tracks `origin/main`. `origin/main` remains at
-`63ecc49`; after the Increment 13b commit, local `main` is 16 commits ahead and
-contains the scientific reference gate plus verified work through the general
-HDF5-to-SEG-Y production pipeline. Fetch uses the HTTPS URL and push uses the
-authenticated SSH URL. Never force-push or rewrite shared history. The user
+`63ecc49`; after the Increment 14a commit, local `main` is 17 commits ahead and
+contains the scientific reference gate, the general HDF5-to-SEG-Y production
+pipeline, and the Overthrust source audit. Fetch uses the HTTPS URL and push
+uses the authenticated SSH URL. Never force-push or rewrite shared history. The user
 authorizes local commits; a later push still requires an explicit request.
 
 ## Target environment recorded on 2026-09-08
@@ -617,12 +617,12 @@ qualified separately in Increments 8 and 9.
 ## Exact next action
 
 The elastic forward roadmap, single-file SEG-Y amendment, and general
-YAML/HDF5-input production driver are complete through Increment 13. There is
-no automatic next implementation action. Preserve the accepted forward
-baseline and stop unless the user requests a concrete production dataset run
-or starts a separate RTM, imaging, decomposition, optimization, or deep-
-learning research phase. Such a phase needs its own incremental roadmap and
-predeclared acceptance gates.
+YAML/HDF5-input production driver are complete through Increment 13. The user
+authorized only the reduced derived-isotropic SEG/EAGE Overthrust benchmark in
+Increment 14. Increment 14a source audit is complete; implement the pure
+crop/elastic derivation and its focused tests in Increment 14b next. Do not
+start Salt, SEAM, fluid-solid, anisotropic, viscoelastic, RTM, imaging,
+decomposition, optimization, or deep-learning work.
 
 ## Increment 5 implementation and verification
 
@@ -853,3 +853,31 @@ mismatches failed before propagation and left no SEG-Y. All-options Release
 passed 26/26, full-pipeline Compute Sanitizer memcheck reported zero errors,
 focused I/O ASan/UBSan passed 4/4, and optional-I/O-off CPU Release passed
 16/16. No-adapter, HDF5-only, and SEG-Y-only CUDA builds also remained green.
+
+## Increment 14a implementation and verification
+
+Increment 14a fixed the complete acceptance plan and audited the Overthrust
+source without changing production or test code:
+
+- The SEG page identifies Aminzadeh, Brac, and Kunz (1997) as the scientific
+  authority and CC BY 4.0 as the license. Its advertised S3 CD1 object returned
+  HTTP 403 to both direct metadata and ranged data requests on 2026-09-09.
+- The accepted transport mirror is the 149,938,918-byte MATLAB v5 file linked
+  by `leileely/FDwave3D`, whose repository points back to the SEG source. Its
+  SHA-256 is
+  `251fd1fbd2e1d9ac6aa227960c348f27e08f38325ff7d6d650aa69d77ef105f6`.
+- The decoded `data` variable is `[z,y,x]=[187,801,801]`, its `d` vector is
+  `[25,25,25]` m, every one of 119,979,387 cells is finite and exactly
+  binary32-representable, and the extrema are `2178.83447265625-6000 m/s`.
+  These values agree with independent published descriptions of the model.
+- A depth-integrated horizontal-gradient scan and orthogonal-slice inspection
+  selected zero-based source window `[0:187,153:353,154:354]`. It retains 25 m
+  sampling, performs no interpolation or smoothing, and produces a
+  `[187,200,200]` Wave3D volume.
+- Expected binary32 Vp, derived Vs, and derived Gardner-density hashes and
+  extrema are frozen in `OVERTHRUST_SOURCE_AUDIT.md` as independent converter
+  oracles.
+
+This documentation-only gate required no compilation. `git diff --check`
+passed. Downloaded MATLAB data and generated audit images remain under the
+ignored `data/` directory and are not committed.

@@ -540,3 +540,27 @@ SEG-Y writer. It introduces no propagation equation or kernel. CPML uses the
 accepted target reflection `1e-3`, power 2, and `kappa_max=1`, with actual
 maximum model Vp and the source dominant frequency. A free surface disables
 z-min CPML; an absorbing top enables all six sides.
+
+## D038 — Derived isotropic elastic SEG/EAGE Overthrust benchmark
+
+**Status:** Accepted by the user and source-audited, 2026-09-09
+
+The next and only authorized benchmark is a reduced solid-domain model derived
+from the SEG/EAGE 3-D Overthrust P-wave velocity macro model. The original is
+an acoustic, constant-density model and does not uniquely supply elastic
+properties. Wave3D must therefore label the result as derived rather than
+claiming original or measured `Vs` and density.
+
+The accepted deterministic mapping is `Vs=Vp/sqrt(3)`, corresponding to
+Poisson ratio 0.25, and Gardner density
+`rho=1000*0.31*Vp^(1/4)` for Vp in m/s. Calculations occur in binary64 and are
+converted once to binary32. No input or result is clipped, smoothed, or
+normalized.
+
+The fixed zero-based crop is source `[z,y,x]` window
+`[0:187,153:353,154:354]`, giving canonical Wave3D shape
+`[187,200,200]` at the unchanged 25 m sampling. It was selected by the maximum
+depth-integrated horizontal absolute-gradient score and confirmed on
+orthogonal slices. Large source, HDF5, SEG-Y, images, and run artifacts remain
+outside Git; code, checksums, configuration, attribution, and results remain
+reproducible in the repository.

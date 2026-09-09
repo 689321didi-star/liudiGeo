@@ -32,9 +32,11 @@ checkpoints/
 *.log
 
 # Large modeling data
+data/
 *.bin
 *.h5
 *.hdf5
+*.mat
 *.sgy
 *.segy
 *.su

@@ -370,6 +370,30 @@ extrema mismatches failed before output. All-options Release passed 26/26 and
 pipeline memcheck reported zero errors. Focused I/O ASan/UBSan passed 4/4 and
 optional-I/O-off CPU Release passed 16/16.
 
+## Increment 14 — Reduced SEG/EAGE Overthrust elastic benchmark
+
+**Goal:** Reproducibly derive one reduced isotropic solid elastic model from
+the classic SEG/EAGE 3-D Overthrust P-wave velocity volume and qualify the
+existing HDF5-to-CUDA-to-single-SEG-Y production path on it.
+
+**14a status:** Verified on 2026-09-09. The source audit records the official
+CC BY 4.0 authority, the advertised S3 object's current HTTP 403 response, the
+transport mirror, its 149,938,918-byte count and SHA-256, MATLAB variables,
+`187 x 801 x 801` shape, 25 m spacing, 119,979,387 finite values, and
+`2178.8345-6000 m/s` extrema. These match independent published model
+descriptions. A fixed maximum-horizontal-gradient window selects source
+`[z,y,x]=[0:187,153:353,154:354]`, producing a direct, unsmoothed
+`187 x 200 x 200` crop. Expected Vp/Vs/density extrema and binary32 hashes are
+frozen before converter implementation. Increment 14b conversion is next.
+
+**14b status:** Pending. Implement and test the pure crop/elastic derivation.
+
+**14c status:** Pending. Generate and independently verify canonical HDF5 and
+matching YAML artifacts.
+
+**14d status:** Pending. Run the small/refined and full CUDA/SEG-Y validation
+gates.
+
 ## Deferred research phases
 
 After elastic forward qualification, separate future phases may implement
