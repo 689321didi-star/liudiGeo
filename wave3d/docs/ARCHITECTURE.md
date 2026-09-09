@@ -246,7 +246,8 @@ Propagation code never opens YAML, HDF5, SEG-Y, CSV, or raw binary files.
 
 Implemented roles:
 
-- YAML: human-readable run configuration and source definitions.
+- YAML: versioned human-readable run configuration, declared model extrema,
+  and source/receiver definitions.
 - Generated models: initial deterministic debugging.
 - CSV: receiver geometry during early development.
 - HDF5: canonical internal 3D model, trace, snapshot, and future checkpoint

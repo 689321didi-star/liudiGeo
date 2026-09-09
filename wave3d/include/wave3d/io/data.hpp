@@ -116,7 +116,6 @@ inline void require_valid_sparse_snapshot(
 
 struct ForwardRunConfiguration {
     SimulationConfig simulation{};
-    ElasticMaterial homogeneous_material{};
     MomentTensorSource source{};
     std::vector<PhysicalPoint3D> receiver_coordinates_m;
     std::string model_hdf5_path;
@@ -129,7 +128,6 @@ inline void require_valid_run_configuration(
     if (!errors.empty()) {
         throw std::invalid_argument(errors.front());
     }
-    require_valid_elastic_material(configuration.homogeneous_material);
     require_valid_source_metadata(configuration.source);
     if (configuration.receiver_coordinates_m.empty()) {
         throw std::invalid_argument("run configuration needs receivers");

@@ -507,3 +507,18 @@ representable as an integer number of microseconds in Revision 1 is rejected
 instead of rounded. D035 supersedes only the SEG-Y organization and sidecar
 clauses of D011, D015, and D032; HDF5 remains the lossless canonical internal
 format and the propagator remains independent of all file adapters.
+
+## D036 — YAML v2 declares heterogeneous model extrema
+
+**Status:** Accepted and implemented, 2026-09-09
+
+The original YAML contract repeated one `homogeneous_material`, even when its
+`model_hdf5_path` could select a heterogeneous volume. That is unsafe for CFL
+and dispersion validation. `wave3d.forward.v2` therefore removes the redundant
+homogeneous triple and serializes all six `SimulationConfig::material` extrema:
+minimum/maximum Vp, Vs, and density.
+
+The YAML adapter remains independent of HDF5 and validates the declared
+bounds. The production task must separately calculate extrema from the loaded
+HDF5 cells and require exact binary32 agreement before propagation. Missing,
+old, or unknown YAML schemas fail rather than being guessed.

@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 
@@ -33,7 +34,7 @@ void expect(bool condition, const std::string& message) {
         {4, 5}, {3, 6}, {0, 7}};
     simulation.time = {0.0005, 0.125};
     simulation.material = {
-        3200.0F, 3200.0F, 1800.0F, 1800.0F, 2400.0F, 2400.0F};
+        3000.0F, 3400.0F, 1800.0F, 2000.0F, 2300.0F, 2500.0F};
     simulation.top_boundary = wave3d::TopBoundary::FreeSurface;
     simulation.numerics = {0.85, 20.0};
     const auto source = wave3d::prepare_moment_tensor_source(
@@ -44,7 +45,6 @@ void expect(bool condition, const std::string& message) {
         {25.0, 0.04, 1.25});
     return {
         simulation,
-        {3200.0F, 1800.0F, 2400.0F},
         source,
         {{1.25, 2.5, 0.0}, {75.5, 55.25, 15.0}},
         "models/layered.h5",
@@ -66,8 +66,20 @@ void test_round_trip() {
             actual.simulation.time.total_time_s ==
                 expected.simulation.time.total_time_s &&
             actual.simulation.numerics.design_frequency_hz ==
-                expected.simulation.numerics.design_frequency_hz,
-        "YAML time/numerical metadata changed");
+                expected.simulation.numerics.design_frequency_hz &&
+            actual.simulation.material.min_vp_m_s ==
+                expected.simulation.material.min_vp_m_s &&
+            actual.simulation.material.max_vp_m_s ==
+                expected.simulation.material.max_vp_m_s &&
+            actual.simulation.material.min_vs_m_s ==
+                expected.simulation.material.min_vs_m_s &&
+            actual.simulation.material.max_vs_m_s ==
+                expected.simulation.material.max_vs_m_s &&
+            actual.simulation.material.min_density_kg_m3 ==
+                expected.simulation.material.min_density_kg_m3 &&
+            actual.simulation.material.max_density_kg_m3 ==
+                expected.simulation.material.max_density_kg_m3,
+        "YAML time/numerical/material-extrema metadata changed");
     expect(
         actual.source.physical_location.x_m ==
                 expected.source.physical_location.x_m &&
@@ -100,6 +112,36 @@ void test_malformed_rejection() {
     }
     std::filesystem::remove(path);
     expect(threw, "malformed YAML must fail explicitly");
+
+    const auto old_schema_path = temporary_path("_old_schema.yaml");
+    wave3d::io::write_resolved_yaml(old_schema_path.string(), configuration());
+    std::string old_schema;
+    {
+        std::ifstream input(old_schema_path);
+        old_schema.assign(
+            std::istreambuf_iterator<char>(input),
+            std::istreambuf_iterator<char>());
+    }
+    const auto schema_position = old_schema.find("wave3d.forward.v2");
+    if (schema_position != std::string::npos) {
+        old_schema.replace(
+            schema_position,
+            std::string("wave3d.forward.v2").size(),
+            "wave3d.forward.v1");
+    }
+    {
+        std::ofstream output(old_schema_path, std::ios::trunc);
+        output << old_schema;
+    }
+    threw = false;
+    try {
+        static_cast<void>(
+            wave3d::io::load_yaml_run_configuration(old_schema_path.string()));
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    std::filesystem::remove(old_schema_path);
+    expect(threw, "old YAML run schema must fail explicitly");
 }
 
 } // namespace

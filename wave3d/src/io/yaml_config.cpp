@@ -29,6 +29,11 @@ void emit_boundary(YAML::Emitter& output, const AxisBoundary& boundary) {
 ForwardRunConfiguration load_yaml_run_configuration(const std::string& path) {
     try {
         const YAML::Node root = YAML::LoadFile(path);
+        if (!root["schema"] ||
+            root["schema"].as<std::string>() != "wave3d.forward.v2") {
+            throw std::invalid_argument(
+                "YAML run configuration schema must be wave3d.forward.v2");
+        }
         const auto grid_node = root["grid"];
         Grid3D grid{
             grid_node["nx"].as<std::size_t>(),
@@ -42,11 +47,7 @@ ForwardRunConfiguration load_yaml_run_configuration(const std::string& path) {
             parse_boundary(grid_node["y_boundary"]),
             parse_boundary(grid_node["z_boundary"])};
 
-        const auto material_node = root["homogeneous_material"];
-        const ElasticMaterial material{
-            material_node["vp_m_s"].as<float>(),
-            material_node["vs_m_s"].as<float>(),
-            material_node["density_kg_m3"].as<float>()};
+        const auto material_node = root["material_extrema"];
         const std::string top_text = root["top_boundary"].as<std::string>();
         TopBoundary top_boundary{};
         if (top_text == "free_surface") {
@@ -64,12 +65,12 @@ ForwardRunConfiguration load_yaml_run_configuration(const std::string& path) {
             root["time"]["dt_s"].as<double>(),
             root["time"]["total_time_s"].as<double>()};
         simulation.material = {
-            material.vp_m_s,
-            material.vp_m_s,
-            material.vs_m_s,
-            material.vs_m_s,
-            material.density_kg_m3,
-            material.density_kg_m3};
+            material_node["min_vp_m_s"].as<float>(),
+            material_node["max_vp_m_s"].as<float>(),
+            material_node["min_vs_m_s"].as<float>(),
+            material_node["max_vs_m_s"].as<float>(),
+            material_node["min_density_kg_m3"].as<float>(),
+            material_node["max_density_kg_m3"].as<float>()};
         simulation.top_boundary = top_boundary;
         simulation.numerics = {
             root["numerics"]["cfl_safety_factor"].as<double>(),
@@ -108,7 +109,6 @@ ForwardRunConfiguration load_yaml_run_configuration(const std::string& path) {
         }
         ForwardRunConfiguration result{
             simulation,
-            material,
             source,
             std::move(receivers),
             root["model_hdf5_path"].as<std::string>(),
@@ -130,7 +130,7 @@ std::string resolved_yaml(const ForwardRunConfiguration& configuration) {
     output.SetDoublePrecision(17);
     output.SetFloatPrecision(9);
     output << YAML::BeginMap
-           << YAML::Key << "schema" << YAML::Value << "wave3d.forward.v1"
+           << YAML::Key << "schema" << YAML::Value << "wave3d.forward.v2"
            << YAML::Key << "coordinate_convention" << YAML::Value
            << std::string(coordinate_convention())
            << YAML::Key << "volume_axes" << YAML::Value << "z,y,x"
@@ -162,14 +162,20 @@ std::string resolved_yaml(const ForwardRunConfiguration& configuration) {
            << (simulation.top_boundary == TopBoundary::FreeSurface
                    ? "free_surface"
                    : "absorbing")
-           << YAML::Key << "homogeneous_material" << YAML::Value
+           << YAML::Key << "material_extrema" << YAML::Value
            << YAML::BeginMap
-           << YAML::Key << "vp_m_s" << YAML::Value
-           << configuration.homogeneous_material.vp_m_s
-           << YAML::Key << "vs_m_s" << YAML::Value
-           << configuration.homogeneous_material.vs_m_s
-           << YAML::Key << "density_kg_m3" << YAML::Value
-           << configuration.homogeneous_material.density_kg_m3 << YAML::EndMap
+           << YAML::Key << "min_vp_m_s" << YAML::Value
+           << simulation.material.min_vp_m_s
+           << YAML::Key << "max_vp_m_s" << YAML::Value
+           << simulation.material.max_vp_m_s
+           << YAML::Key << "min_vs_m_s" << YAML::Value
+           << simulation.material.min_vs_m_s
+           << YAML::Key << "max_vs_m_s" << YAML::Value
+           << simulation.material.max_vs_m_s
+           << YAML::Key << "min_density_kg_m3" << YAML::Value
+           << simulation.material.min_density_kg_m3
+           << YAML::Key << "max_density_kg_m3" << YAML::Value
+           << simulation.material.max_density_kg_m3 << YAML::EndMap
            << YAML::Key << "source" << YAML::Value << YAML::BeginMap
            << YAML::Key << "location_m" << YAML::Value << YAML::Flow
            << YAML::BeginSeq << source.physical_location.x_m

@@ -349,6 +349,18 @@ passed 4/4, and the optional-I/O-off CPU Release suite passed 16/16. Builds of
 the qualified executable also passed with no trace output, HDF5 only, SEG-Y
 only, and both adapters enabled.
 
+## Increment 13 — HDF5-to-SEG-Y production pipeline
+
+**Goal:** Run an arbitrary validated canonical HDF5 elastic model from a typed
+YAML configuration and write one combined standard SEG-Y receiver record.
+
+**13a status:** Verified on 2026-09-09. YAML schema
+`wave3d.forward.v2` replaces the misleading homogeneous-material triple with
+six declared heterogeneous model extrema. The focused round trip and old-
+schema rejection test pass. Increment 13b production orchestration is next.
+
+**13b status:** Pending.
+
 ## Deferred research phases
 
 After elastic forward qualification, separate future phases may implement

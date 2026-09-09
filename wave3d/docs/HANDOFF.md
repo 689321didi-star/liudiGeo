@@ -821,3 +821,18 @@ the focused ASan/UBSan I/O suite passed 4/4 with leak detection disabled, and
 the optional-I/O-off CPU Release suite passed 16/16. The qualification
 executable also compiled in no-output, HDF5-only, SEG-Y-only, and combined
 adapter configurations.
+
+## Increment 13a implementation and verification
+
+Increment 13a established model-bound configuration metadata on 2026-09-09:
+
+- `ForwardRunConfiguration` no longer contains a redundant single
+  `homogeneous_material`; its `SimulationConfig` owns all six declared extrema.
+- YAML schema `wave3d.forward.v2` reads and writes `material_extrema` with
+  minimum/maximum Vp, Vs, and density. Missing and v1 schemas are rejected.
+- The focused YAML Release test preserves six deliberately distinct extrema
+  through a write/read round trip and passes malformed and old-schema cases.
+
+This is an interface gate only. Increment 13b must compare the declarations
+against extrema calculated from the HDF5 cells before launching the new
+production runner.
