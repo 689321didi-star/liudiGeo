@@ -37,6 +37,7 @@ void apply_scientific_theme(QApplication& application) {
         QToolBar { spacing: 8px; padding: 7px 10px; border-bottom: 1px solid #263746; }
         QToolButton { background: transparent; color: #cbdbe7; border: 1px solid transparent; border-radius: 6px; padding: 6px 10px; }
         QToolButton:hover { background: #1a2a39; border-color: #314a5d; }
+        QToolButton:disabled { color: #657783; background: transparent; }
         QDockWidget { color: #cbdbe7; font-weight: 600; }
         QDockWidget::title { background: #111c28; border-bottom: 1px solid #263746; padding: 9px 12px; }
         QGroupBox { background: #121d29; border: 1px solid #273a4a; border-radius: 8px; margin-top: 14px; padding: 12px 10px 10px 10px; font-weight: 600; }
@@ -52,6 +53,7 @@ void apply_scientific_theme(QApplication& application) {
         QPushButton:pressed { background: #12394f; }
         QPushButton:disabled { color: #657783; background: #17212a; border-color: #26343e; }
         QPushButton#startRunButton { background: #087ca8; border-color: #32b8e8; font-weight: 700; }
+        QPushButton#startRunButton:disabled { color: #657783; background: #17212a; border-color: #26343e; }
         QProgressBar { min-height: 9px; max-height: 9px; border: none; border-radius: 4px; background: #26343e; text-align: center; }
         QProgressBar::chunk { background: #22a9da; border-radius: 4px; }
         QSplitter::handle { background: #1e2e3b; }

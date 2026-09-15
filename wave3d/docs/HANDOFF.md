@@ -1190,3 +1190,64 @@ cmake --build build/overthrust --parallel 2
 ctest --test-dir build/overthrust --output-on-failure --parallel 2
 # 28/28 passed
 ```
+
+## Increment 18 desktop project workspace
+
+The desktop now has a Qt Core-only project layer beneath the Widgets shell.
+`project.wave3d.json` uses `wave3d.desktop.project.v1` and records the project
+identity, creation time, safe relative model reference, queue preference,
+shared display field, and unique shot table. New projects start with
+`shot-001` and create `source/`, `models/`, `figures/model/`, `runs/`, and
+`manifests/` together. Loading rejects unknown schemas, wrong JSON types,
+invalid timestamps/identifiers, duplicate shots, unsafe paths, and incomplete
+workspace trees. Saving uses `QSaveFile` atomic publication.
+
+Run preparation creates `runs/<run_id>/` once, writes the supplied resolved
+YAML bytes exactly as `config.yaml`, creates `output/`, `figures/`, `logs/`,
+and `reports/`, and atomically publishes a `wave3d.desktop.run.v1` manifest
+with project/shot/run identities and the configuration SHA-256. It refuses an
+existing run ID, unsafe ID, unknown shot, or empty configuration. No method
+mutates a prepared run.
+
+New/Open actions now call this store. The left dock shows active project name,
+path, and shot count; shared display choice changes are persisted. Window
+geometry, dock state, and last project live in Qt settings, and the last valid
+project reopens on startup. Preflight and all run controls remain disabled
+until later experiment-editor validation is implemented. The adjusted layout
+keeps all eight modules visible at the verified window size.
+
+The first fresh Conda-compiler configuration left
+`CMAKE_CXX_FLAGS_RELEASE` empty, so the long CPU physics test was stopped after
+inspection showed it running unoptimized at full CPU utilization. The build
+was immediately reconfigured with `-O3 -DNDEBUG`; no test failure occurred.
+The corrected clean build and verification commands were:
+
+```text
+cmake -S . -B build/desktop18 -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_CXX_COMPILER=/home/byai/.cache/wave3d-toolchain/env/bin/x86_64-conda-linux-gnu-g++ \
+  -DCMAKE_CXX_FLAGS_RELEASE="-O3 -DNDEBUG" \
+  -DWAVE3D_ENABLE_CUDA=OFF \
+  -DWAVE3D_BUILD_DESKTOP=ON \
+  -DCMAKE_PREFIX_PATH=/home/byai/.cache/wave3d-toolchain/env
+cmake --build build/desktop18 --parallel 2
+ctest --test-dir build/desktop18 --output-on-failure --parallel 2
+# 19/19 passed
+
+QT_QPA_PLATFORM=xcb build/desktop18/wave3d_studio --smoke-test
+QT_QPA_PLATFORM=xcb build/desktop18/wave3d_studio \
+  --capture-shell build/desktop18/review/wave3d-desktop-shell.png
+# both exited 0; all four OpenGL contexts were valid
+
+cmake --build build/desktop17-default --parallel 2
+# WAVE3D_BUILD_DESKTOP=OFF; wave3d_studio is absent
+
+cmake --build build/overthrust --parallel 2
+ctest --test-dir build/overthrust --output-on-failure --parallel 2
+# 28/28 passed
+```
+
+Forward-YAML editing/parsing, model loading, scientific volume rendering,
+source/acquisition editors, CUDA worker ownership, and SEG-Y result viewing
+remain deferred. Increment 19 should be predeclared before starting the static
+model scene.

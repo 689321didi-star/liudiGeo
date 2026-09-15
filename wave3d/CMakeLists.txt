@@ -423,6 +423,12 @@ if(WAVE3D_BUILD_DESKTOP)
         COMPONENTS Core Gui Widgets OpenGL OpenGLWidgets)
 
     add_library(
+        wave3d_desktop_project STATIC
+        src/desktop/project_workspace.cpp)
+    target_link_libraries(
+        wave3d_desktop_project PUBLIC wave3d_core Qt6::Core)
+
+    add_library(
         wave3d_desktop_shell STATIC
         src/desktop/main_window.cpp
         src/desktop/theme.cpp)
@@ -430,6 +436,7 @@ if(WAVE3D_BUILD_DESKTOP)
         wave3d_desktop_shell
         PUBLIC
             wave3d_core
+            wave3d_desktop_project
             Qt6::Core
             Qt6::Gui
             Qt6::Widgets
@@ -440,6 +447,18 @@ if(WAVE3D_BUILD_DESKTOP)
     target_link_libraries(wave3d_studio PRIVATE wave3d_desktop_shell)
 
     if(WAVE3D_BUILD_TESTS)
+        add_executable(
+            wave3d_desktop_project_tests
+            tests/test_desktop_project_workspace.cpp)
+        target_link_libraries(
+            wave3d_desktop_project_tests PRIVATE wave3d_desktop_project)
+        add_test(
+            NAME wave3d_desktop_project_tests
+            COMMAND wave3d_desktop_project_tests)
+        set_tests_properties(
+            wave3d_desktop_project_tests
+            PROPERTIES LABELS "desktop;io;interfaces")
+
         add_executable(
             wave3d_desktop_shell_tests
             tests/test_desktop_shell.cpp)

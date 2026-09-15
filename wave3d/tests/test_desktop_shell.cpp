@@ -1,16 +1,21 @@
 #include "wave3d/desktop/main_window.hpp"
+#include "wave3d/desktop/project_workspace.hpp"
 #include "wave3d/desktop/theme.hpp"
 
 #include <QAction>
 #include <QApplication>
 #include <QComboBox>
+#include <QDir>
 #include <QFrame>
 #include <QLabel>
 #include <QListWidget>
 #include <QOpenGLWidget>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QSettings>
 #include <QSplitter>
+#include <QStandardPaths>
+#include <QTemporaryDir>
 #include <QToolBar>
 
 #include <array>
@@ -96,8 +101,8 @@ void test_shell_contract() {
         require_child<QProgressBar>(window, "runProgress")->value() == 0,
         "desktop shell progress must start at zero");
     expect(
-        require_child<QPushButton>(window, "startRunButton")->isEnabled(),
-        "start control must be initially available");
+        !require_child<QPushButton>(window, "startRunButton")->isEnabled(),
+        "start control must remain gated without a valid experiment");
     for (const char* name : {
              "pauseRunButton", "resumeRunButton", "stopRunButton"}) {
         expect(
@@ -106,13 +111,98 @@ void test_shell_contract() {
     }
 }
 
+void test_project_window_state() {
+    QTemporaryDir temporary;
+    expect(temporary.isValid(), "temporary project parent is unavailable");
+    const auto root = QDir(temporary.path()).filePath(QStringLiteral("project"));
+
+    wave3d::desktop::MainWindow window;
+    expect(window.current_project() == nullptr, "window must start without a project");
+    expect(
+        require_child<QLabel>(window, "projectNameLabel")->text() ==
+            QStringLiteral("未打开"),
+        "empty project summary is incorrect");
+
+    QString error;
+    expect(
+        window.create_project(root, QStringLiteral("界面状态测试"), &error),
+        "window could not create a valid project");
+    expect(error.isEmpty(), "successful project creation reported an error");
+    expect(window.current_project() != nullptr, "created project was not activated");
+    expect(
+        window.current_project_root() == QDir(root).absolutePath(),
+        "active project root is not canonical");
+    expect(
+        require_child<QLabel>(window, "projectNameLabel")->text() ==
+            QStringLiteral("界面状态测试"),
+        "project name summary was not updated");
+    expect(
+        require_child<QLabel>(window, "projectShotCountLabel")->text() ==
+            QStringLiteral("1"),
+        "project shot summary was not updated");
+    expect(
+        !require_child<QAction>(window, "validateExperimentAction")->isEnabled() &&
+            !require_child<QAction>(window, "startRunAction")->isEnabled() &&
+            !require_child<QPushButton>(window, "startRunButton")->isEnabled(),
+        "scientific actions must remain gated after project creation");
+
+    auto* selector =
+        require_child<QComboBox>(window, "displayFieldSelector");
+    const auto vz_index = selector->findData(QStringLiteral("vz"));
+    expect(vz_index >= 0, "Vz display choice is missing");
+    selector->setCurrentIndex(vz_index);
+    const auto persisted =
+        wave3d::desktop::ProjectWorkspace::load(QDir(root).absolutePath());
+    expect(
+        persisted.display_field == QStringLiteral("vz"),
+        "shared display preference was not persisted");
+
+    QSettings settings;
+    expect(
+        settings.value(QStringLiteral("desktop/last_project")).toString() ==
+            QDir(root).absolutePath(),
+        "last project setting was not persisted");
+    window.resize(1180, 760);
+    window.show();
+    QApplication::processEvents();
+    expect(window.close(), "desktop window refused normal close");
+    settings.sync();
+    expect(
+        !settings.value(QStringLiteral("desktop/geometry")).toByteArray().isEmpty() &&
+            !settings.value(QStringLiteral("desktop/window_state"))
+                 .toByteArray()
+                 .isEmpty(),
+        "window geometry or dock state was not persisted on close");
+
+    wave3d::desktop::MainWindow reopened;
+    expect(
+        reopened.current_project() != nullptr &&
+            reopened.current_project_root() == QDir(root).absolutePath(),
+        "last project was not reopened from desktop settings");
+    expect(
+        require_child<QComboBox>(reopened, "displayFieldSelector")
+                ->currentData()
+                .toString() == QStringLiteral("vz"),
+        "reopened project did not restore its display preference");
+    expect(
+        !reopened.open_project(
+            QDir(temporary.path()).filePath(QStringLiteral("missing")), &error) &&
+            !error.isEmpty(),
+        "invalid project open must report failure without throwing");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
+    QStandardPaths::setTestModeEnabled(true);
     QApplication application(argc, argv);
+    QApplication::setOrganizationName(QStringLiteral("Wave3DTests"));
+    QApplication::setApplicationName(QStringLiteral("DesktopShellTests"));
+    QSettings().clear();
     wave3d::desktop::apply_scientific_theme(application);
     try {
         test_shell_contract();
+        test_project_window_state();
         std::cout << "desktop shell tests passed\n";
         return 0;
     } catch (const std::exception& error) {

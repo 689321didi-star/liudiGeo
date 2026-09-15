@@ -487,6 +487,29 @@ deterministic structure/screenshot diagnostics. The desktop/CPU suite passed
 OpenGL contexts. The review screenshot was inspected after installing the
 required CJK font. No model data or solver execution is connected yet.
 
+## Increment 18 — Desktop project workspace
+
+**Goal:** Persist a versioned desktop project and create reproducible,
+non-overwriting scientific workspace/run layouts without connecting model data
+or the solver.
+
+**Work:** Add a Qt Core project store, validated JSON schema, standardized
+workspace creation, immutable run preparation, project summary UI, and desktop
+settings persistence.
+
+**Acceptance:** The focused persistence, validation, run-manifest, UI-state,
+build-boundary, WSLg smoke, and existing regression checks in
+`INCREMENT_18_DESKTOP_PROJECT_WORKSPACE_PLAN.md` pass.
+
+**Status:** Verified on 2026-09-15. The versioned Qt Core project store creates
+and validates the standardized workspace, persists the initial shot and shared
+display preference, atomically saves project JSON, and prepares non-overwriting
+run directories with exact resolved YAML bytes and a SHA-256 manifest. The
+desktop actions create/open projects, show their identity, reopen the last
+project, persist window state, and keep scientific actions gated. A fresh
+desktop build passed 19/19, CUDA/YAML/HDF5/SEG-Y passed 28/28, the default
+build remained Qt-free, and WSLg OpenGL smoke passed.
+
 ## Deferred research phases
 
 After elastic forward qualification, separate future phases may implement

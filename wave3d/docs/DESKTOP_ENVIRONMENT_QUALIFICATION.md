@@ -57,3 +57,10 @@ exited successfully. A 1440 x 900 composited review image rendered the Chinese
 interface correctly after the Noto CJK installation. The offscreen platform is
 used only for widget-contract tests because it does not support
 `QOpenGLWidget`.
+
+For a fresh build with the local Conda compiler, explicitly retain Release
+flags with `-DCMAKE_CXX_FLAGS_RELEASE="-O3 -DNDEBUG"`. In this environment the
+first explicit-compiler configure initialized that cache entry as empty, which
+made the CPU physics test run unoptimized. Reconfiguration with the fixed flags
+restored the expected test duration; this was a build-configuration issue, not
+a solver regression.

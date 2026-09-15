@@ -421,6 +421,29 @@ depend on Qt. Increment 17 contains only the four-view shell, centralized
 theme, and inspection hooks. Later controllers must consume existing task and
 visualization interfaces rather than moving solver ownership into widgets.
 
+Increment 18 splits project persistence into `wave3d_desktop_project`, a Qt
+Core-only library below the Widgets shell. `wave3d.desktop.project.v1` stores a
+stable project identity, creation time, optional safe relative model reference,
+queue preference, shared display field, and unique shot identities. It owns no
+scientific arrays and does not parse forward YAML.
+
+A desktop-managed project root follows the scientific data contract:
+
+```text
+project.wave3d.json
+source/
+models/
+figures/model/
+runs/
+manifests/
+```
+
+Run preparation accepts already resolved YAML bytes and creates a new
+`runs/<run_id>/` exactly once. It atomically writes `config.yaml`, records its
+SHA-256 with the project and shot IDs in `manifest.json`, and creates separate
+`output/`, `figures/`, `logs/`, and `reports/` directories. There is no update
+API for a prepared run; a changed experiment receives a new run ID.
+
 Increment 11 verifies that behavior by configuring and building with the whole
 `optional/rtm` tree temporarily absent. RTM-off exposes only the forward views,
 observer, factory, and receiver reader; RTM-on adds the header-only checkpoint

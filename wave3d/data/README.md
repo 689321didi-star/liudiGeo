@@ -5,11 +5,13 @@ remain ignored by Git. Every dataset uses the same directory contract:
 
 ```text
 data/<dataset>/
+├── project.wave3d.json      optional desktop project metadata
 ├── source/                  immutable downloaded source volumes
 ├── models/                  prepared Wave3D HDF5 models and preparation logs
 ├── figures/model/           figures derived from source or prepared models
 ├── runs/<run_id>/
 │   ├── config.yaml          complete run configuration
+│   ├── manifest.json        optional immutable desktop run manifest
 │   ├── output/              primary numerical output, such as record.sgy
 │   ├── figures/             plots derived from this run
 │   ├── logs/                execution and timing logs
@@ -24,6 +26,10 @@ for seismic traces, and SVG/PNG for figures.
 
 Build trees and helper executables belong under the repository-level `build/`
 directory. They must not be stored in `data/`.
+
+When Wave3D Studio creates a managed project, `project.wave3d.json` uses the
+versioned `wave3d.desktop.project.v1` schema and the directories above are
+created together. Existing command-line datasets may omit the project file.
 
 Run configurations use paths relative to their own directory. Moving the
 repository therefore does not invalidate their model or output paths. A run

@@ -47,6 +47,8 @@ desktop preparation increments is implemented and verified:
 - a batched CUDA forward-session interface and six physical-volume display
   quantities for a future live renderer;
 - an optional Qt 6.8/OpenGL modern four-view desktop shell.
+- a versioned desktop project store with standardized scientific directories
+  and non-overwriting run manifests.
 
 The accepted equation contract is in `docs/ELASTIC_NUMERICAL_SPEC.md`; the
 target measurements are in `docs/RTX5060_QUALIFICATION.md`. Viscoelasticity,

@@ -762,3 +762,19 @@ resampling, and later region edits produce derived models with ordered
 operation history and new checksums. The first release implements inspection,
 crop, and reproducible Vp-to-Vs/density derivation; direct voxel painting is
 deferred.
+
+## D050 — Versioned desktop project and immutable run preparation
+
+**Status:** Accepted, 2026-09-15
+
+Desktop project metadata uses `wave3d.desktop.project.v1` JSON and lives at
+`project.wave3d.json` in the scientific workspace root. It stores identity and
+workflow metadata only; forward solver parameters remain in the existing
+versioned YAML format. Project references are safe relative paths so moving a
+complete workspace does not invalidate it.
+
+The desktop creates the same source/model/figure/run/manifest directory
+contract used by organized datasets. A prepared run retains the exact resolved
+YAML bytes and an immutable `wave3d.desktop.run.v1` manifest containing the
+project ID, shot ID, run ID, creation time, and configuration SHA-256. Existing
+project directories and run IDs are rejected instead of merged or overwritten.

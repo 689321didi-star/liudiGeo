@@ -59,6 +59,8 @@ bool capture_shell(wave3d::desktop::MainWindow& window, const QString& path) {
 int main(int argc, char** argv) {
     configure_surface_format();
     QApplication application(argc, argv);
+    QApplication::setOrganizationName(QStringLiteral("Wave3D"));
+    QApplication::setOrganizationDomain(QStringLiteral("wave3d.local"));
     wave3d::desktop::apply_scientific_theme(application);
     QApplication::setApplicationName(QStringLiteral("Wave3D Studio"));
     QApplication::setApplicationVersion(QStringLiteral("0.1.0"));
