@@ -463,6 +463,30 @@ left the nine source fields bitwise unchanged. On the 200 x 200 x 187 target,
 one scalar volume is 29,920,000 bytes; measured extraction ranged from about
 1.1 ms for a centred component to 30.8 ms for centred curl magnitude.
 
+## Desktop application phase
+
+## Increment 17 — Optional Qt/OpenGL desktop shell
+
+**Goal:** Establish a removable desktop build boundary and the accepted
+four-view shell without connecting model data or the CUDA runner.
+
+**Work:** Add default-off `WAVE3D_BUILD_DESKTOP`, a Qt 6 Widgets/OpenGL
+application target, named 3-D/XY/XZ/YZ viewports, module navigation, shared
+display-field control, run/status placeholders, and focused contract tests.
+
+**Acceptance:** The fixed build-boundary, shell-contract, WSLg development
+smoke, and existing regression checks in
+`INCREMENT_17_DESKTOP_SHELL_PLAN.md` pass.
+
+**Status:** Verified on 2026-09-15. Qt is consulted only when the default-off
+desktop option is enabled. The application now provides the accepted four-view
+shell, centralized modern dark theme, Chinese labels, six-field selector,
+module navigation, run placeholders, disabled wavefield-snapshot seam, and
+deterministic structure/screenshot diagnostics. The desktop/CPU suite passed
+18/18, the CUDA/YAML/HDF5/SEG-Y suite passed 28/28, and WSLg created all four
+OpenGL contexts. The review screenshot was inspected after installing the
+required CJK font. No model data or solver execution is connected yet.
+
 ## Deferred research phases
 
 After elastic forward qualification, separate future phases may implement

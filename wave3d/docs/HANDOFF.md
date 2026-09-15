@@ -1139,6 +1139,54 @@ existing memory preflight through `ForwardMemoryPlanRequest::workspace_bytes`.
 For this grid, a planned three-volume render buffer is 89,760,000 bytes (about
 85.6 MiB).
 
-No Qt, OpenGL, worker thread, snapshot writer, or RTM implementation has been
-started. Desktop workflow and interface details must be reviewed with the user
-before that phase begins.
+## Increment 17 desktop shell
+
+The accepted desktop review is now fixed in
+`docs/DESKTOP_DEVELOPMENT_REVIEW.md`, and the observed development-machine
+capacity is recorded in `docs/DESKTOP_ENVIRONMENT_QUALIFICATION.md`. The
+current RTX 5060 Laptop GPU and 8 GiB VRAM are sufficient for the first forward
+desktop/live-display release. WSL2/WSLg remains development evidence only;
+native Linux is still required for release qualification. Qt 6.8.4 and Noto
+Sans CJK were installed in the local development environment.
+
+Increment 17 adds the default-off `WAVE3D_BUILD_DESKTOP` boundary and the
+`wave3d_studio` Qt 6 Widgets/OpenGL shell. Its modern dark interface contains
+one large 3-D viewport, stacked XY/XZ/YZ viewports, eight experiment modules,
+a shared six-field selector defaulting to velocity magnitude, run-state
+controls, a log dock, and a disabled wavefield-snapshot action. Theme rules are
+centralized. Inspection, WSLg OpenGL smoke, and review-image capture modes make
+the empty shell testable before scientific data is connected.
+
+The Qt-enabled CPU build passed 18/18 tests. The WSLg XCB smoke returned zero
+after all four viewports created valid OpenGL contexts. A 1440 x 900 review
+image was captured with the four OpenGL framebuffers composited into the main
+window and inspected for typography, spacing, control duplication, and view
+proportions. The full CUDA/YAML/HDF5/SEG-Y build then passed 28/28 tests. A
+default build still omits every desktop target and does not search for Qt.
+
+Model loading, scientific rendering, experiment persistence, worker threads,
+solver control, snapshot writing, and RTM remain outside Increment 17.
+
+Verification commands were:
+
+```text
+cmake --build build/desktop17 --parallel 2
+ctest --test-dir build/desktop17 --output-on-failure --parallel 2
+# 18/18 passed
+
+QT_QPA_PLATFORM=offscreen \
+  build/desktop17/wave3d_studio --inspect-shell
+# viewport_count=4, display_field_count=6, default_display_field=speed
+
+QT_QPA_PLATFORM=xcb build/desktop17/wave3d_studio --smoke-test
+QT_QPA_PLATFORM=xcb build/desktop17/wave3d_studio \
+  --capture-shell /tmp/wave3d-desktop-shell-17-verified.png
+# both exited 0; capture is 1440 x 900
+
+cmake --build build/desktop17-default --parallel 2
+# WAVE3D_BUILD_DESKTOP=OFF; wave3d_studio is absent
+
+cmake --build build/overthrust --parallel 2
+ctest --test-dir build/overthrust --output-on-failure --parallel 2
+# 28/28 passed
+```

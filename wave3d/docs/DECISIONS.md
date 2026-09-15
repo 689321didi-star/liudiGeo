@@ -724,3 +724,41 @@ The future desktop controller must account for all persistent display volumes
 through the existing forward memory plan's `workspace_bytes`. Three target-grid
 volumes consume 89,760,000 bytes (about 85.6 MiB); this cost is therefore part
 of the same preflight rejection decision as the solver state and traces.
+
+## D048 — Accepted first-release desktop product boundary
+
+**Status:** Accepted, 2026-09-15
+
+The desktop target is a default-off Qt 6 Widgets/OpenGL application in the
+Wave3D repository and is qualified for native Linux with NVIDIA CUDA. Its
+default layout is one large 3-D view plus stacked XY/XZ/YZ views. All views use
+one synchronized scalar selection, initially velocity magnitude, switchable to
+Vx, Vy, Vz, divergence, or curl magnitude. Model and wavefield are separate
+render layers. The first release exports screenshots but no video and exposes
+a disabled wavefield-snapshot command with a future storage seam.
+
+The first-release visual language is a restrained modern dark scientific
+workstation. Theme colors, typography, spacing, and widget treatment are
+centralized so later visual changes do not couple to experiment modules.
+
+HDF5 and explicitly described regular-volume IEEE-float SEG-Y Vp/Vs/rho inputs
+are supported model paths. Source editing includes explosion, manual symmetric
+moment tensors, and strike/dip/rake double-couple conversion. Acquisition tools
+cover rectangular arrays, lines, explicit coordinates, CSV, templates, and
+geometry translation. A sequential single-GPU run queue is optional.
+
+## D049 — Multi-shot schema and immutable source models
+
+**Status:** Accepted, 2026-09-15
+
+A forward experiment owns one or more shots. Every shot owns a source,
+references or overrides acquisition, and produces separate status, traces,
+logs, and checksums. The first UI defaults to one shot but includes a basic
+shot table so future RTM does not require replacing the experiment schema.
+Multiple experiments and shots execute sequentially on the single GPU.
+
+Imported models are immutable. Cropping, property derivation, smoothing,
+resampling, and later region edits produce derived models with ordered
+operation history and new checksums. The first release implements inspection,
+crop, and reproducible Vp-to-Vs/density derivation; direct voxel painting is
+deferred.

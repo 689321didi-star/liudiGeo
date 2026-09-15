@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.24)
 project(wave3d VERSION 0.1.0 LANGUAGES CXX)
 
 option(WAVE3D_BUILD_TESTS "Build Wave3D tests" ON)
+option(WAVE3D_BUILD_DESKTOP "Build the Wave3D Qt desktop application" OFF)
 option(
     WAVE3D_BUILD_QUALIFICATION_TOOLS
     "Build one-off CUDA device and qualification executables"
@@ -413,5 +414,44 @@ if(WAVE3D_ENABLE_CUDA AND WAVE3D_ENABLE_YAML AND WAVE3D_ENABLE_HDF5 AND
         set_tests_properties(
             wave3d_cuda_forward_run_tests
             PROPERTIES LABELS "cuda;io;pipeline")
+    endif()
+endif()
+
+if(WAVE3D_BUILD_DESKTOP)
+    find_package(
+        Qt6 6.8 REQUIRED
+        COMPONENTS Core Gui Widgets OpenGL OpenGLWidgets)
+
+    add_library(
+        wave3d_desktop_shell STATIC
+        src/desktop/main_window.cpp
+        src/desktop/theme.cpp)
+    target_link_libraries(
+        wave3d_desktop_shell
+        PUBLIC
+            wave3d_core
+            Qt6::Core
+            Qt6::Gui
+            Qt6::Widgets
+            Qt6::OpenGL
+            Qt6::OpenGLWidgets)
+
+    add_executable(wave3d_studio apps/studio/main.cpp)
+    target_link_libraries(wave3d_studio PRIVATE wave3d_desktop_shell)
+
+    if(WAVE3D_BUILD_TESTS)
+        add_executable(
+            wave3d_desktop_shell_tests
+            tests/test_desktop_shell.cpp)
+        target_link_libraries(
+            wave3d_desktop_shell_tests PRIVATE wave3d_desktop_shell)
+        add_test(
+            NAME wave3d_desktop_shell_tests
+            COMMAND wave3d_desktop_shell_tests)
+        set_tests_properties(
+            wave3d_desktop_shell_tests
+            PROPERTIES
+                LABELS "desktop;interfaces"
+                ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     endif()
 endif()

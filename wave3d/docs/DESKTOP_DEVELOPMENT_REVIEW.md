@@ -1,12 +1,14 @@
 # Wave3D Desktop Development Review
 
-**Status:** Proposed; awaiting user review before implementation.
+**Status:** Accepted as the fixed first-release reference, 2026-09-15.
 
 ## Product boundary
 
 The desktop application is a scientific experiment workbench around the
 qualified Wave3D solver. Its first release shall configure, validate, run, and
-inspect one 3-D isotropic elastic forward experiment. It shall provide a
+inspect 3-D isotropic elastic forward experiments. A project owns a shared
+model/workspace and one or more shots; a new project starts with one shot. It
+shall provide a
 volume view and three orthogonal slices from the same synchronized wavefield
 frame, source and receiver editing, run progress and control, final SEG-Y
 inspection, and a reproducible run directory.
@@ -30,22 +32,31 @@ qualified platform. A custom renderer keeps CUDA/OpenGL interoperation under
 project control; adding VTK is deferred unless later requirements outweigh its
 dependency and data-transfer cost.
 
+The interface follows a restrained modern scientific-workstation style: dark
+neutral surfaces, clear visual hierarchy, compact controls, consistent
+spacing, and a data-first viewport area. Styling must remain centralized so a
+future light theme or institutional color scheme does not require rewriting
+individual modules.
+
 ## Modules
 
 1. **Project and run manager** — creates or opens a workspace, stores model
    references and experiment YAML, creates immutable run manifests, and keeps
    logs, SEG-Y, reports, and future snapshot products in separate directories.
-2. **Model and crop editor** — imports supported model data, shows dimensions,
+2. **Model and crop editor** — imports Wave3D HDF5 or supported regular-volume
+   SEG-Y property data, shows dimensions,
    spacing, units, property ranges, and three model sections, and selects a
    physical crop before preparation.
 3. **Workspace editor** — edits grid spacing, time step, duration/sample count,
    halo, CPML thickness, free surface, output location, and device selection.
 4. **Source editor** — edits position, wavelet, dominant frequency, delay,
-   amplitude, and six independent moment-tensor terms; includes named presets
-   and shows the source in all four views.
-5. **Acquisition editor** — creates regular surface arrays or imports explicit
-   receiver coordinates, validates bounds and count, and overlays receivers in
-   the views.
+   amplitude, and six independent moment-tensor terms; includes explosion,
+   double-couple, and strike/dip/rake conversion, and shows the source in all
+   four views.
+5. **Acquisition editor** — creates rectangular arrays and receiver lines,
+   imports explicit coordinates from CSV, supports reusable templates and
+   geometry translation, validates bounds/count/duplicates, and overlays
+   receivers in the views.
 6. **Preflight service** — validates model/configuration consistency, CFL and
    stencil/boundary constraints, source/receiver bounds, output size, writable
    paths, and live VRAM. Persistent render volumes are included through
@@ -67,6 +78,9 @@ dependency and data-transfer cost.
 11. **Diagnostics** — records configuration, solver/device information,
     timings, warnings, failures, cancellation state, and output checksums in
     each run.
+12. **Optional run queue** — executes experiments and their shots sequentially
+    on the single GPU, with explicit queued/running/completed/failed/cancelled
+    states. It never launches concurrent full forward sessions on one device.
 
 ## Runtime ownership and data flow
 
@@ -95,6 +109,12 @@ size and display interval remain separate settings. Before freezing defaults,
 measure one-step synchronization overhead and pause latency on the deployment
 GPU.
 
+The default scalar is velocity magnitude. One shared selector switches all
+four views together among Vx, Vy, Vz, velocity magnitude, divergence, and curl
+magnitude. The base model and live wavefield are separate render layers with
+independent colour and opacity controls; the same layer contract can later
+accept RTM images without replacing the four-view layout.
+
 ## Run lifecycle
 
 The controller state machine is:
@@ -110,6 +130,21 @@ Successful completion downloads traces, writes SEG-Y to a temporary file,
 validates its expected size and essential headers, then atomically publishes
 the final filename and checksum. Interrupted runs do not present a partial
 file as a completed SEG-Y product.
+
+## Multi-shot and model provenance contract
+
+A shot owns one source and either references the experiment acquisition or
+overrides it. Every shot produces separate trace data, logs, status, and
+checksums. Single-shot operation is the default UI path, while the underlying
+schema and a basic shot table support add/copy/delete and CSV shot import from
+the first release. SEG-Y trace headers must preserve shot identifiers and
+source coordinates.
+
+Source models are immutable. Crop, Vp-to-Vs/density derivation, smoothing,
+resampling, and later region editing create a derived model with an ordered
+operation history and new checksum. The first release implements read-only
+inspection, crop, and reproducible property derivation; direct voxel painting
+is deferred. No operation overwrites the imported HDF5 or SEG-Y source.
 
 ## Development increments
 
@@ -139,24 +174,31 @@ working. A small deterministic fixture covers UI/controller tests; the full
 Overthrust run is reserved for milestone qualification rather than routine
 test execution.
 
-## Proposed first-release defaults to confirm
+## Accepted first-release defaults
 
 - Keep the desktop application in the `wave3d` repository as an optional
   target instead of creating a parallel product repository.
-- Qualify Linux with NVIDIA CUDA first; postpone Windows packaging until the
-  workflow is stable.
+- Develop and qualify for native Linux with NVIDIA CUDA. WSL/WSLg may be used
+  for development checks but is not the release qualification platform.
 - Use a Chinese interface with scientific symbols, units, paths, and file
   metadata preserved exactly.
 - Open with a four-view layout: 3-D volume on the left and XY/XZ/YZ slices on
   the right, with resizable docks for experiment controls, progress, and logs.
-- Default the live scalar to signed `Vz`; provide Vx, Vy, speed, divergence,
-  and curl magnitude without rerunning the simulation.
-- Initially support the existing Wave3D HDF5 model and YAML experiment schema,
-  regular receiver grids, and explicit receiver-coordinate import. Additional
-  industry model formats are later adapters.
+- Default the live scalar to velocity magnitude; one control switches Vx, Vy,
+  Vz, velocity magnitude, divergence, and curl magnitude for all views.
+- Support the Wave3D HDF5 model plus regular-volume IEEE-float SEG-Y Vp/Vs/rho
+  import with explicit dimensions and spacing. Broader SEG-Y dialects are
+  separate adapter increments.
+- Use a layered model-plus-wavefield renderer and keep the render-layer
+  contract extensible for later scientific volumes.
+- Support comprehensive acquisition editing and a basic multi-shot table.
+- Provide a sequential run queue as an optional workflow mode.
+- Export screenshots only; video recording is outside the first release.
+- Keep imported models read-only and create provenance-tracked derived models
+  for every transformation.
 - Reserve the wavefield-snapshot button in a disabled state labelled as a
   future feature. Do not write large snapshot files in the first release.
 - Preserve forward CLI behavior and SEG-Y format as the scientific baseline.
 
-Desktop implementation must not start until these defaults and module
-boundaries are reviewed and accepted or revised.
+Changes to these product or scientific-data boundaries require a recorded
+decision and an updated acceptance plan before implementation.

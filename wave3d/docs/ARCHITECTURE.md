@@ -401,6 +401,7 @@ WAVE3D_ENABLE_YAML
 WAVE3D_ENABLE_HDF5
 WAVE3D_ENABLE_SEGY
 WAVE3D_ENABLE_RTM
+WAVE3D_BUILD_DESKTOP
 ```
 
 `WAVE3D_ENABLE_RTM=OFF` must remove RTM and imaging targets without changing the
@@ -411,6 +412,14 @@ The `wave3d_forward_run` task library and `wave3d_run` executable require all
 of CUDA, YAML, HDF5, and SEG-Y. Omitting any one removes only those production
 targets and leaves the independently useful core, adapter, and qualification
 targets intact.
+
+`WAVE3D_BUILD_DESKTOP=OFF` is the default and avoids every Qt/OpenGL lookup.
+When enabled, the `wave3d_desktop_shell` library and `wave3d_studio`
+application require Qt 6.8 Core, Gui, Widgets, OpenGL, and OpenGLWidgets. The
+desktop layer depends on the scientific core; solver and I/O targets never
+depend on Qt. Increment 17 contains only the four-view shell, centralized
+theme, and inspection hooks. Later controllers must consume existing task and
+visualization interfaces rather than moving solver ownership into widgets.
 
 Increment 11 verifies that behavior by configuring and building with the whole
 `optional/rtm` tree temporarily absent. RTM-off exposes only the forward views,

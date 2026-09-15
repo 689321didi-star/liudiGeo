@@ -6,8 +6,8 @@ directory and is used only as a numerical reference.
 
 ## Current status
 
-The elastic forward roadmap through the derived-Overthrust Increment 14 is
-implemented and verified:
+The elastic forward roadmap through the derived-Overthrust benchmark and the
+desktop preparation increments is implemented and verified:
 
 - physical and allocated grid dimensions;
 - the `[z][y][x]` storage convention with contiguous `x`;
@@ -44,6 +44,9 @@ implemented and verified:
 - a qualified `200^3`, 4000-step RTX 5060 envelope;
 - const wavefield views, observer/factory/receiver interfaces, and a removable
   default-off checkpoint interface for a possible future RTM phase.
+- a batched CUDA forward-session interface and six physical-volume display
+  quantities for a future live renderer;
+- an optional Qt 6.8/OpenGL modern four-view desktop shell.
 
 The accepted equation contract is in `docs/ELASTIC_NUMERICAL_SPEC.md`; the
 target measurements are in `docs/RTX5060_QUALIFICATION.md`. Viscoelasticity,
@@ -90,6 +93,21 @@ by the production runner or desktop application.
 
 `WAVE3D_ENABLE_RTM` adds interfaces and mock tests only; it does not build an
 RTM executable.
+
+The desktop shell is independently opt-in and currently contains no model
+loader or solver controller:
+
+```text
+cmake -S . -B build-desktop -DCMAKE_BUILD_TYPE=Release \
+  -DWAVE3D_ENABLE_CUDA=OFF -DWAVE3D_BUILD_DESKTOP=ON \
+  -DCMAKE_PREFIX_PATH=/path/to/qt
+cmake --build build-desktop --parallel
+QT_QPA_PLATFORM=xcb ./build-desktop/wave3d_studio
+```
+
+Native Linux is the release platform. The XCB override is needed by the
+current WSLg development environment; a native desktop session normally does
+not need it. Install a Chinese-capable font such as Noto Sans CJK SC.
 
 ## Prepare the derived Overthrust benchmark
 
