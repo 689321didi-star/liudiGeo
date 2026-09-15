@@ -25,6 +25,8 @@ public:
 
     void set_volume(VolumeTextureData data, QString property_name);
     void set_crop_bounds(const std::array<float, 6>& bounds);
+    void set_source_position(
+        const std::optional<std::array<float, 3>>& normalized_position);
     void clear_volume();
     void set_opacity(float opacity);
     void set_lower_threshold(float threshold);
@@ -47,6 +49,7 @@ private:
     std::optional<VolumeTextureData> pending_volume_;
     std::array<float, 3> physical_aspect_{1.0F, 1.0F, 1.0F};
     std::array<float, 6> crop_bounds_{0.0F, 1.0F, 0.0F, 1.0F, 0.0F, 1.0F};
+    std::optional<std::array<float, 3>> source_position_;
     QString property_name_;
     QString failure_message_;
     QPoint last_mouse_position_;

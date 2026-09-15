@@ -837,3 +837,27 @@ selected material property or model changes. It does not define the future
 live wavefield transport: that path will consume the existing CUDA physical
 visualization volume and requires a separately measured buffering and
 CUDA/OpenGL interoperability decision.
+
+## D054 — Experiment drafts bind to immutable model geometry
+
+**Status:** Accepted and verified, 2026-09-15
+
+Desktop experiment editing uses one mutable, versioned JSON draft per shot at
+`source/<shot-id>.experiment.json`. It stores the active model reference plus
+time, numerical, physical source, Ricker, and moment parameters. Saving uses
+atomic replacement and cannot change the project document, imported model, or
+an immutable prepared run.
+
+The active HDF5 model remains authoritative for physical dimensions, spacing,
+halo, absorbing widths, and the free/absorbing top boundary. Those values are
+shown read-only because the production runner requires exact grid equality
+between configuration and model. Changing them requires an explicit derived
+model or preparation operation rather than an inconsistent run draft.
+
+A draft is saveable only after its active source mode resolves through
+`prepare_moment_tensor_source` and its `SimulationConfig` passes the existing
+radius-six CFL and design-band validation. Isotropic explosion and explicit
+six-component symmetric tensors are supported. Strike/dip/rake conversion
+remains a visible disabled option until its convention and formula receive a
+separate scientific test. Receiver geometry and complete forward YAML are not
+invented by the draft layer.

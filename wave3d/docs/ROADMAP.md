@@ -568,6 +568,28 @@ Overthrust shader/upload/frame gate and visual review passed under WSLg/XCB;
 HDF5-on passed 22/22, HDF5-off 19/19, desktop-off 17/17, and the complete CUDA
 configuration 28/28.
 
+## Increment 22 — Persistent workspace and source draft
+
+**Goal:** Configure one active shot's time controls and moment-tensor source
+against the loaded model with immediate scientific validation and durable
+draft state.
+
+**Work:** Add a versioned atomic experiment draft, model-locked grid summary,
+time/numerical controls, explosion/manual source controls, CFL/dispersion and
+coordinate diagnostics, and synchronized source markers.
+
+**Acceptance:** The persistence, resolution, UI-state, source-marker, WSLg,
+optional-build, and CUDA checks in `INCREMENT_22_EXPERIMENT_DRAFT_PLAN.md`
+pass.
+
+**Status:** Verified on 2026-09-15. A per-shot atomic JSON draft now persists
+model binding, time/numerical settings, physical source coordinates, Ricker
+parameters, and explosion or manual moment tensors. The editor locks model
+grid/storage metadata, validates through existing CFL/dispersion/source
+contracts, and synchronizes a source marker across the four views. Real
+Overthrust numerical and visual review passed; HDF5-on passed 23/23,
+HDF5-off 20/20, desktop-off 17/17, and the full CUDA configuration 28/28.
+
 ## Deferred research phases
 
 After elastic forward qualification, separate future phases may implement

@@ -1,4 +1,5 @@
 #include "wave3d/desktop/main_window.hpp"
+#include "wave3d/desktop/experiment_editor.hpp"
 #include "wave3d/desktop/model_derivation.hpp"
 #include "wave3d/desktop/static_model_scene.hpp"
 #include "wave3d/desktop/volume_viewport.hpp"
@@ -30,6 +31,8 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QSaveFile>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QSlider>
@@ -42,6 +45,7 @@
 #include <QWidget>
 
 #include <array>
+#include <cmath>
 #include <exception>
 #include <stdexcept>
 #include <tuple>
@@ -165,6 +169,15 @@ VolumeViewport* volume_viewport(QMainWindow* window) {
     return viewport;
 }
 
+ExperimentEditor* experiment_editor(QMainWindow* window) {
+    auto* editor = dynamic_cast<ExperimentEditor*>(
+        window->findChild<QWidget*>(QStringLiteral("experimentEditor")));
+    if (editor == nullptr) {
+        throw std::logic_error("experiment editor is missing");
+    }
+    return editor;
+}
+
 #ifdef WAVE3D_DESKTOP_HAS_HDF5
 void copy_file_atomically(
     const QString& source_path,
@@ -206,7 +219,8 @@ QImage annotate_section(
     std::size_t x,
     std::size_t y,
     std::size_t z,
-    const ModelCropBounds& crop) {
+    const ModelCropBounds& crop,
+    const std::optional<std::array<double, 3>>& source_index) {
     QPainter painter(&image);
     painter.setRenderHint(QPainter::Antialiasing, false);
     const auto ix = [](std::size_t value) { return static_cast<int>(value); };
@@ -241,6 +255,34 @@ QImage annotate_section(
     } else {
         painter.drawLine(ix(y), 0, ix(y), image.height() - 1);
         painter.drawLine(0, ix(z), image.width() - 1, ix(z));
+    }
+    if (source_index) {
+        const auto plane_distance = orientation == 0
+                                        ? std::abs((*source_index)[2] - z)
+                                        : orientation == 1
+                                              ? std::abs((*source_index)[1] - y)
+                                              : std::abs((*source_index)[0] - x);
+        const bool on_plane = plane_distance <= 0.5;
+        QPointF point;
+        if (orientation == 0) {
+            point = {
+                (*source_index)[0],
+                image.height() - 1.0 - (*source_index)[1]};
+        } else if (orientation == 1) {
+            point = {(*source_index)[0], (*source_index)[2]};
+        } else {
+            point = {(*source_index)[1], (*source_index)[2]};
+        }
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setPen(QPen(
+            on_plane ? QColor(255, 255, 255) : QColor(255, 124, 141),
+            1.5,
+            on_plane ? Qt::SolidLine : Qt::DashLine));
+        painter.setBrush(
+            on_plane ? QBrush(QColor(255, 82, 104)) : Qt::NoBrush);
+        painter.drawEllipse(point, 3.5, 3.5);
+        painter.drawLine(point + QPointF(-5.5, 0.0), point + QPointF(5.5, 0.0));
+        painter.drawLine(point + QPointF(0.0, -5.5), point + QPointF(0.0, 5.5));
     }
     return image;
 }
@@ -445,6 +487,20 @@ QDockWidget* make_model_information_dock(QMainWindow* window) {
     return dock;
 }
 
+QDockWidget* make_experiment_editor_dock(QMainWindow* window) {
+    auto* dock = new QDockWidget(QStringLiteral("实验设置"), window);
+    dock->setObjectName(QStringLiteral("experimentEditorDock"));
+    dock->setMinimumWidth(340);
+    auto* scroll = new QScrollArea(dock);
+    scroll->setObjectName(QStringLiteral("experimentEditorScroll"));
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setWidget(new ExperimentEditor(scroll));
+    dock->setWidget(scroll);
+    return dock;
+}
+
 } // namespace
 
 MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
@@ -504,9 +560,13 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
     auto* experiment_dock = make_experiment_dock(this);
     auto* log_dock = make_log_dock(this);
     auto* model_information_dock = make_model_information_dock(this);
+    auto* experiment_editor_dock = make_experiment_editor_dock(this);
     addDockWidget(Qt::LeftDockWidgetArea, experiment_dock);
     addDockWidget(Qt::BottomDockWidgetArea, log_dock);
     addDockWidget(Qt::RightDockWidgetArea, model_information_dock);
+    addDockWidget(Qt::RightDockWidgetArea, experiment_editor_dock);
+    tabifyDockWidget(model_information_dock, experiment_editor_dock);
+    model_information_dock->raise();
     resizeDocks({log_dock}, {145}, Qt::Vertical);
     resizeDocks({model_information_dock}, {270}, Qt::Horizontal);
 
@@ -683,6 +743,41 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
         &QPushButton::clicked,
         this,
         [this] { volume_viewport(this)->reset_camera(); });
+    experiment_editor(this)->set_callbacks(
+        [this] {
+            update_experiment_validation();
+            update_model_view();
+        },
+        [this] {
+            QString error;
+            if (!save_experiment_draft(&error)) {
+                QMessageBox::critical(
+                    this, QStringLiteral("无法保存实验草稿"), error);
+            }
+        });
+    connect(
+        findChild<QListWidget*>(QStringLiteral("moduleNavigation")),
+        &QListWidget::currentRowChanged,
+        this,
+        [this, model_information_dock, experiment_editor_dock](int row) {
+            if (row == 1) {
+                model_information_dock->show();
+                model_information_dock->raise();
+                return;
+            }
+            if (row == 2 || row == 3) {
+                experiment_editor_dock->show();
+                experiment_editor_dock->raise();
+                auto* scroll = findChild<QScrollArea*>(
+                    QStringLiteral("experimentEditorScroll"));
+                if (row == 2) {
+                    scroll->verticalScrollBar()->setValue(0);
+                } else {
+                    scroll->ensureWidgetVisible(findChild<QGroupBox*>(
+                        QStringLiteral("sourceEditorGroup")));
+                }
+            }
+        });
 
     QSettings settings;
     if (restore_last_project) {
@@ -877,6 +972,46 @@ bool MainWindow::create_cropped_model(
 #endif
 }
 
+bool MainWindow::save_experiment_draft(QString* error_message) {
+#ifndef WAVE3D_DESKTOP_HAS_HDF5
+    if (error_message != nullptr) {
+        *error_message = QStringLiteral("当前桌面构建未启用 HDF5 模型支持");
+    }
+    return false;
+#else
+    if (!project_ || !model_scene_ || project_->shots.isEmpty()) {
+        if (error_message != nullptr) {
+            *error_message = QStringLiteral("请先打开项目并加载有效模型");
+        }
+        return false;
+    }
+    try {
+        auto draft = experiment_editor(this)->current_draft();
+        draft.model_reference = project_->model_reference;
+        const auto& summary = model_scene_->summary();
+        static_cast<void>(ExperimentDraftStore::resolve(
+            draft, summary.grid, summary.extrema));
+        ExperimentDraftStore::save(project_root_, draft);
+        const auto verified = ExperimentDraftStore::load(
+            project_root_, draft.shot_id);
+        resolved_experiment_ = ExperimentDraftStore::resolve(
+            verified, summary.grid, summary.extrema);
+        experiment_model_reference_changed_ = false;
+        experiment_editor(this)->mark_saved();
+        findChild<QTextEdit*>(QStringLiteral("runLog"))
+            ->append(QStringLiteral("已保存实验草稿：%1")
+                         .arg(ExperimentDraftStore::relative_path(draft.shot_id)));
+        statusBar()->showMessage(QStringLiteral("工作区与震源草稿已保存"));
+        return true;
+    } catch (const std::exception& error) {
+        if (error_message != nullptr) {
+            *error_message = QString::fromUtf8(error.what());
+        }
+        return false;
+    }
+#endif
+}
+
 const ProjectDocument* MainWindow::current_project() const noexcept {
     return project_ ? &*project_ : nullptr;
 }
@@ -947,8 +1082,11 @@ void MainWindow::activate_project(
 
 void MainWindow::clear_model_view() {
     model_scene_.reset();
+    resolved_experiment_.reset();
+    experiment_model_reference_changed_ = false;
     volume_property_index_ = -1;
     volume_viewport(this)->clear_volume();
+    experiment_editor(this)->clear_model_context();
     auto* property =
         findChild<QComboBox*>(QStringLiteral("modelPropertySelector"));
     property->setEnabled(false);
@@ -990,6 +1128,10 @@ void MainWindow::clear_model_view() {
                        QStringLiteral("等待科学数据")}}) {
         scientific_viewport(this, viewport.first)
             ->clear_scientific_image(viewport.second);
+        findChild<QOpenGLWidget*>(viewport.first)
+            ->setProperty("sourceMarkerVisible", false);
+        findChild<QOpenGLWidget*>(viewport.first)
+            ->setProperty("sourceMarkerOnPlane", false);
     }
 }
 
@@ -1076,6 +1218,73 @@ void MainWindow::populate_model_information() {
         spin->setEnabled(true);
     }
     update_crop_summary();
+    configure_experiment_editor();
+#endif
+}
+
+void MainWindow::configure_experiment_editor() {
+#ifndef WAVE3D_DESKTOP_HAS_HDF5
+    return;
+#else
+    if (!project_ || !model_scene_ || project_->shots.isEmpty()) {
+        experiment_editor(this)->clear_model_context();
+        resolved_experiment_.reset();
+        return;
+    }
+    const auto& summary = model_scene_->summary();
+    const auto& shot_id = project_->shots.front().id;
+    try {
+        const bool stored =
+            ExperimentDraftStore::exists(project_root_, shot_id);
+        auto draft = stored
+                         ? ExperimentDraftStore::load(project_root_, shot_id)
+                         : ExperimentDraftStore::defaults(
+                               shot_id,
+                               project_->model_reference,
+                               summary.grid,
+                               summary.extrema);
+        experiment_model_reference_changed_ =
+            stored && draft.model_reference != project_->model_reference;
+        draft.model_reference = project_->model_reference;
+        experiment_editor(this)->set_model_context(
+            summary.grid,
+            draft,
+            stored,
+            experiment_model_reference_changed_);
+        update_experiment_validation();
+    } catch (const std::exception& error) {
+        resolved_experiment_.reset();
+        experiment_editor(this)->clear_model_context();
+        experiment_editor(this)->show_validation_error(
+            QString::fromUtf8(error.what()));
+        findChild<QTextEdit*>(QStringLiteral("runLog"))
+            ->append(QStringLiteral("实验草稿加载失败：%1")
+                         .arg(QString::fromUtf8(error.what())));
+    }
+#endif
+}
+
+void MainWindow::update_experiment_validation() {
+#ifndef WAVE3D_DESKTOP_HAS_HDF5
+    return;
+#else
+    if (!project_ || !model_scene_) {
+        resolved_experiment_.reset();
+        return;
+    }
+    try {
+        auto draft = experiment_editor(this)->current_draft();
+        draft.model_reference = project_->model_reference;
+        const auto& summary = model_scene_->summary();
+        resolved_experiment_ = ExperimentDraftStore::resolve(
+            draft, summary.grid, summary.extrema);
+        experiment_editor(this)->show_validation(
+            *resolved_experiment_, experiment_model_reference_changed_);
+    } catch (const std::exception& error) {
+        resolved_experiment_.reset();
+        experiment_editor(this)->show_validation_error(
+            QString::fromUtf8(error.what()));
+    }
 #endif
 }
 
@@ -1133,10 +1342,10 @@ void MainWindow::update_model_view() {
         findChild<QSpinBox*>(QStringLiteral("sliceYSpin"))->value());
     const auto z = static_cast<std::size_t>(
         findChild<QSpinBox*>(QStringLiteral("sliceZSpin"))->value());
+    const auto& grid = model_scene_->summary().grid;
     auto crop = selected_crop_bounds(this);
     if (crop.x_begin >= crop.x_end || crop.y_begin >= crop.y_end ||
         crop.z_begin >= crop.z_end) {
-        const auto& grid = model_scene_->summary().grid;
         crop = {0, grid.nx, 0, grid.ny, 0, grid.nz};
     }
     auto* volume = volume_viewport(this);
@@ -1148,8 +1357,29 @@ void MainWindow::update_model_view() {
         volume_property_index_ = property_index;
     }
     volume->set_crop_bounds(model_scene_->normalized_crop_bounds(crop));
+    std::optional<std::array<double, 3>> source_index;
+    std::optional<std::array<float, 3>> source_texture;
+    if (resolved_experiment_) {
+        const auto& point = resolved_experiment_->source.physical_location;
+        source_index = std::array<double, 3>{
+            point.x_m / grid.dx_m,
+            point.y_m / grid.dy_m,
+            point.z_m / grid.dz_m};
+        const auto normalized = [](double coordinate, float spacing, std::size_t count) {
+            return count == 1
+                       ? 0.5F
+                       : static_cast<float>(
+                             coordinate /
+                             (static_cast<double>(spacing) * (count - 1)));
+        };
+        source_texture = std::array<float, 3>{
+            normalized(point.x_m, grid.dx_m, grid.nx),
+            normalized(point.y_m, grid.dy_m, grid.ny),
+            normalized(point.z_m, grid.dz_m, grid.nz)};
+    }
+    volume->set_source_position(source_texture);
     auto xy = annotate_section(
-        model_scene_->xy_slice(property, z), 0, x, y, z, crop);
+        model_scene_->xy_slice(property, z), 0, x, y, z, crop, source_index);
     scientific_viewport(this, QStringLiteral("xyViewport"))
         ->set_scientific_image(
             std::move(xy),
@@ -1158,15 +1388,47 @@ void MainWindow::update_model_view() {
     scientific_viewport(this, QStringLiteral("xzViewport"))
         ->set_scientific_image(
             annotate_section(
-                model_scene_->xz_slice(property, y), 1, x, y, z, crop),
+                model_scene_->xz_slice(property, y),
+                1,
+                x,
+                y,
+                z,
+                crop,
+                source_index),
             QStringLiteral("y=%1 · %2 m").arg(y).arg(
                 y * model_scene_->summary().grid.dy_m));
     scientific_viewport(this, QStringLiteral("yzViewport"))
         ->set_scientific_image(
             annotate_section(
-                model_scene_->yz_slice(property, x), 2, x, y, z, crop),
+                model_scene_->yz_slice(property, x),
+                2,
+                x,
+                y,
+                z,
+                crop,
+                source_index),
             QStringLiteral("x=%1 · %2 m").arg(x).arg(
                 x * model_scene_->summary().grid.dx_m));
+    for (const char* name : {"xyViewport", "xzViewport", "yzViewport"}) {
+        findChild<QOpenGLWidget*>(QString::fromUtf8(name))
+            ->setProperty("sourceMarkerVisible", source_index.has_value());
+    }
+    if (source_index) {
+        findChild<QOpenGLWidget*>(QStringLiteral("xyViewport"))
+            ->setProperty(
+                "sourceMarkerOnPlane", std::abs((*source_index)[2] - z) <= 0.5);
+        findChild<QOpenGLWidget*>(QStringLiteral("xzViewport"))
+            ->setProperty(
+                "sourceMarkerOnPlane", std::abs((*source_index)[1] - y) <= 0.5);
+        findChild<QOpenGLWidget*>(QStringLiteral("yzViewport"))
+            ->setProperty(
+                "sourceMarkerOnPlane", std::abs((*source_index)[0] - x) <= 0.5);
+    } else {
+        for (const char* name : {"xyViewport", "xzViewport", "yzViewport"}) {
+            findChild<QOpenGLWidget*>(QString::fromUtf8(name))
+                ->setProperty("sourceMarkerOnPlane", false);
+        }
+    }
 #endif
 }
 

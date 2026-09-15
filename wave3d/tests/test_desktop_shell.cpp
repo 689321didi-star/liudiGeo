@@ -11,10 +11,12 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QDir>
+#include <QDoubleSpinBox>
 #include <QFile>
 #include <QFileInfo>
 #include <QFrame>
 #include <QLabel>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QOpenGLWidget>
 #include <QProgressBar>
@@ -76,6 +78,11 @@ void test_shell_contract() {
             !require_child<QPushButton>(window, "resetVolumeCameraButton")
                  ->isEnabled(),
         "volume controls must start disabled");
+    expect(
+        !require_child<QWidget>(window, "experimentEditor")->isEnabled() &&
+            !require_child<QPushButton>(window, "saveExperimentDraftButton")
+                 ->isEnabled(),
+        "experiment editor must start disabled without a model");
 
     const auto* four_view = require_child<QSplitter>(window, "fourViewSplitter");
     const auto* slices = require_child<QSplitter>(window, "sliceViewSplitter");
@@ -313,6 +320,26 @@ void test_hdf5_model_import() {
         require_child<QLabel>(window, "modelStateBadge")->text() ==
             QStringLiteral("模型已加载"),
         "model state badge was not updated");
+    expect(
+        require_child<QWidget>(window, "experimentEditor")->isEnabled() &&
+            require_child<QLabel>(window, "workspaceGridSummaryLabel")
+                ->text()
+                .contains(QStringLiteral("4 × 3 × 5")) &&
+            require_child<QLabel>(window, "workspaceGridSummaryLabel")
+                ->text()
+                .contains(QStringLiteral("只读")) &&
+            require_child<QLabel>(window, "experimentValidationLabel")
+                ->text()
+                .startsWith(QStringLiteral("参数有效")),
+        "model did not configure a valid read-only-grid experiment draft");
+    const auto* source_modes =
+        require_child<QComboBox>(window, "sourceModeCombo");
+    expect(
+        source_modes->count() == 3 &&
+            !source_modes->model()
+                 ->flags(source_modes->model()->index(2, 0))
+                 .testFlag(Qt::ItemIsEnabled),
+        "future double-couple source option is not present and gated");
 
     const std::array<std::pair<const char*, QSize>, 3> expected_images{{
         {"xyViewport", QSize(4, 3)},
@@ -356,6 +383,65 @@ void test_hdf5_model_import() {
         volume->property("volumeOpacity").toFloat() == 0.7F &&
             volume->property("volumeLowerThreshold").toFloat() == 0.2F,
         "volume transfer controls did not update renderer state");
+    for (const char* name : {"xyViewport", "xzViewport", "yzViewport"}) {
+        expect(
+            require_child<QOpenGLWidget>(window, name)
+                ->property("sourceMarkerVisible")
+                .toBool(),
+            "valid default source was not synchronized to every viewport");
+    }
+    expect(
+        volume->property("sourceMarkerPosition").toList().size() == 3,
+        "valid default source was not synchronized to the 3-D viewport");
+
+    require_child<QDoubleSpinBox>(window, "sourceXSpin")->setValue(15.0);
+    require_child<QDoubleSpinBox>(window, "totalTimeSpin")->setValue(4.25);
+    require_child<QComboBox>(window, "sourceModeCombo")->setCurrentIndex(1);
+    for (const char* name : {
+             "momentMxxEdit", "momentMyyEdit", "momentMzzEdit",
+             "momentMxzEdit", "momentMyzEdit"}) {
+        require_child<QLineEdit>(window, name)->setText(QStringLiteral("0"));
+    }
+    require_child<QLineEdit>(window, "momentMxyEdit")
+        ->setText(QStringLiteral("1e12"));
+    expect(
+        require_child<QPushButton>(window, "saveExperimentDraftButton")
+                ->isEnabled() &&
+            require_child<QLabel>(window, "experimentSaveStateLabel")->text() ==
+                QStringLiteral("有未保存修改"),
+        "valid source edits did not produce a saveable dirty draft");
+    error.clear();
+    expect(
+        window.save_experiment_draft(&error),
+        "valid workspace/source draft save failed");
+    const auto draft_path = QDir(project_root).filePath(
+        QStringLiteral("source/shot-001.experiment.json"));
+    const auto saved_draft = wave3d::desktop::ExperimentDraftStore::load(
+        project_root, QStringLiteral("shot-001"));
+    expect(
+        QFileInfo::exists(draft_path) && saved_draft.total_time_s == 4.25 &&
+            saved_draft.source_location_m.x_m == 15.0 &&
+            saved_draft.source_mode ==
+                wave3d::desktop::DraftSourceMode::MomentTensor &&
+            saved_draft.moment_tensor_nm.m_xy_nm == 1.0e12,
+        "saved UI draft did not preserve workspace/source values");
+    const auto source_marker = volume->property("sourceMarkerPosition").toList();
+    expect(
+        source_marker.size() == 3 && source_marker[0].toFloat() == 0.5F &&
+            source_marker[1].toFloat() == 0.5F &&
+            source_marker[2].toFloat() == 0.25F,
+        "edited source did not map to normalized 3-D model coordinates");
+
+    require_child<QDoubleSpinBox>(window, "timeStepMsSpin")->setValue(10.0);
+    expect(
+        !require_child<QPushButton>(window, "saveExperimentDraftButton")
+             ->isEnabled() &&
+            require_child<QLabel>(window, "experimentValidationLabel")
+                ->text()
+                .startsWith(QStringLiteral("参数无效")) &&
+            volume->property("sourceMarkerPosition").toList().isEmpty(),
+        "invalid CFL state remained saveable or retained a source marker");
+    require_child<QDoubleSpinBox>(window, "timeStepMsSpin")->setValue(1.0);
 
     auto* slice_z = require_child<QSpinBox>(window, "sliceZSpin");
     expect(
@@ -382,6 +468,14 @@ void test_hdf5_model_import() {
                 ->property("hasScientificImage")
                 .toBool(),
         "reopening a project did not reload its referenced model");
+    expect(
+        require_child<QDoubleSpinBox>(reopened, "totalTimeSpin")->value() ==
+                4.25 &&
+            require_child<QDoubleSpinBox>(reopened, "sourceXSpin")->value() ==
+                15.0 &&
+            require_child<QComboBox>(reopened, "sourceModeCombo")
+                    ->currentIndex() == 1,
+        "reopening a project did not restore the active-shot experiment draft");
 
     auto* property =
         require_child<QComboBox>(window, "modelPropertySelector");
@@ -480,8 +574,16 @@ void test_hdf5_model_import() {
             require_child<QOpenGLWidget>(window, "volumeViewport")
                 ->property("volumeTextureDimensions")
                 .toString()
-                .isEmpty(),
+                .isEmpty() &&
+            !require_child<QWidget>(window, "experimentEditor")->isEnabled(),
         "switching to an empty project retained crop controls");
+    for (const char* name : {"xyViewport", "xzViewport", "yzViewport"}) {
+        expect(
+            !require_child<QOpenGLWidget>(window, name)
+                 ->property("sourceMarkerVisible")
+                 .toBool(),
+            "switching to an empty project retained a source marker");
+    }
 }
 #endif
 

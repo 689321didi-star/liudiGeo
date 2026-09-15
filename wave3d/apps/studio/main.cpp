@@ -6,6 +6,7 @@
 #include <QComboBox>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
+#include <QListWidget>
 #include <QOpenGLWidget>
 #include <QPainter>
 #include <QPixmap>
@@ -169,6 +170,10 @@ int main(int argc, char** argv) {
         QStringLiteral("volume-camera"),
         QStringLiteral("设置三维审查视角 yaw,pitch,distance（弧度、弧度、相对距离）"),
         QStringLiteral("yaw,pitch,distance"));
+    const QCommandLineOption module_option(
+        QStringLiteral("module"),
+        QStringLiteral("打开审查模块：model、workspace 或 source"),
+        QStringLiteral("name"));
     parser.addOption(inspect_option);
     parser.addOption(smoke_option);
     parser.addOption(capture_option);
@@ -177,6 +182,7 @@ int main(int argc, char** argv) {
     parser.addOption(slice_option);
     parser.addOption(crop_option);
     parser.addOption(volume_camera_option);
+    parser.addOption(module_option);
     parser.process(application);
 
     wave3d::desktop::MainWindow window(
@@ -217,6 +223,21 @@ int main(int argc, char** argv) {
         std::cerr << "Cannot set volume camera: " << error.toStdString() << '\n';
         return 2;
     }
+    if (parser.isSet(module_option)) {
+        const auto module = parser.value(module_option);
+        const auto row = module == QStringLiteral("model")
+                             ? 1
+                             : module == QStringLiteral("workspace")
+                                   ? 2
+                                   : module == QStringLiteral("source") ? 3 : -1;
+        auto* navigation = window.findChild<QListWidget*>(
+            QStringLiteral("moduleNavigation"));
+        if (row < 0 || navigation == nullptr) {
+            std::cerr << "Cannot select review module\n";
+            return 2;
+        }
+        navigation->setCurrentRow(row);
+    }
     if (parser.isSet(inspect_option)) {
         return inspect_shell(window);
     }
@@ -251,6 +272,12 @@ int main(int argc, char** argv) {
          !volume->property("volumeTextureReady").toBool() ||
          !volume->property("volumeFrameReady").toBool())) {
         std::cerr << "Static volume renderer did not produce a valid frame\n";
+        return 1;
+    }
+    if (volume != nullptr &&
+        volume->property("sourceMarkerPosition").toList().size() == 3 &&
+        !volume->property("sourceMarkerVisible").toBool()) {
+        std::cerr << "Static source marker was not rendered\n";
         return 1;
     }
     return 0;

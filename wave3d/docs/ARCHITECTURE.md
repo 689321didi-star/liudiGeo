@@ -487,6 +487,23 @@ orbit, and zoom are renderer state and never enter model or HDF5 layers. This
 static upload path is separate from the later solver visualization transport
 and CUDA/OpenGL interoperation.
 
+Increment 22 adds `wave3d_desktop_experiment`, a Qt Core persistence and
+resolution layer below the Widgets shell. Each shot may own one mutable
+`source/<shot-id>.experiment.json` document with schema
+`wave3d.desktop.experiment.v1`. Atomic replacement is allowed while editing;
+prepared run directories remain immutable and independent. The draft records
+which project model reference it was designed against so a later crop or model
+switch is visible before resaving.
+
+Physical grid dimensions, spacing, halo, absorbing widths, and top-boundary
+choice come from the active HDF5 model and remain read-only in this editor.
+Editable time, numerical, Ricker, coordinate, and moment values resolve into
+the existing `SimulationConfig` and `MomentTensorSource`; CFL, dispersion, and
+physical-domain validation are therefore shared with the command-line solver.
+The source marker is presentation state derived from the successfully resolved
+physical point. A complete `ForwardRunConfiguration` is not produced until a
+receiver set exists in a later acquisition increment.
+
 Increment 11 verifies that behavior by configuring and building with the whole
 `optional/rtm` tree temporarily absent. RTM-off exposes only the forward views,
 observer, factory, and receiver reader; RTM-on adds the header-only checkpoint

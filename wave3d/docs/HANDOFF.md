@@ -1420,3 +1420,74 @@ Before implementation continues, predeclare Increment 22 around one narrow
 desktop workflow goal. Source/workspace experiment editing is the recommended
 next boundary; live CUDA frame transport should remain a later isolated
 increment.
+
+## Increment 22 persistent workspace and source draft
+
+The desktop now has a Qt Core `wave3d_desktop_experiment` layer and a Widgets
+editor. One active shot stores a mutable
+`source/<shot-id>.experiment.json` using schema
+`wave3d.desktop.experiment.v1`. The file binds the draft to its model reference
+and atomically persists time, numerical, physical source, Ricker, explosion,
+and six-component moment-tensor values. It does not alter project metadata,
+models, or prepared runs.
+
+Model dimensions, spacing, halo, CPML widths, and top boundary are displayed
+as read-only because the current runner requires the HDF5 and configuration
+grids to match exactly. Editable values pass through the existing
+`SimulationConfig`, radius-six numerical validation, and
+`prepare_moment_tensor_source`. Invalid CFL, design frequency, coordinates,
+wavelet, or moment values disable saving and remove the source marker.
+
+The source marker uses physical coordinates and is shown in the OpenGL volume
+plus XY/XZ/YZ. A filled section marker means the source lies on that plane; a
+dashed hollow marker is its off-plane projection. The UI supports an isotropic
+explosion and a manual symmetric moment tensor. The double-couple entry is
+visible but disabled until strike/dip/rake conversion is separately verified.
+Preflight and run controls remain disabled until acquisition and complete YAML
+exist.
+
+Final verification on 2026-09-15:
+
+```text
+ctest --test-dir build/desktop19 --output-on-failure
+# HDF5 enabled: 23/23 passed
+
+ctest --test-dir build/desktop18 --output-on-failure
+# HDF5 disabled: 20/20 passed
+
+ctest --test-dir build/desktop17-default --output-on-failure
+# desktop disabled: 17/17 passed
+
+QT_QPA_PLATFORM=xcb build/desktop19/wave3d_studio \
+  --project build/desktop19/review_project \
+  --slice-indices 100,100,46 \
+  --crop-bounds 0,199,0,199,0,186 \
+  --volume-camera 0.9,0.32,1.9 \
+  --module source \
+  --capture-shell build/desktop19/review/wave3d-source-editor.png
+
+QT_QPA_PLATFORM=xcb build/desktop19/wave3d_studio \
+  --project build/desktop19/review_project \
+  --slice-indices 100,100,46 \
+  --crop-bounds 0,199,0,199,0,186 \
+  --volume-camera 0.9,0.32,1.9 \
+  --module workspace \
+  --capture-shell build/desktop19/review/wave3d-workspace-editor.png
+# both 1440 x 1062 captures passed OpenGL and source-marker gates
+
+ctest --test-dir build/overthrust --output-on-failure
+# CUDA/YAML/HDF5/SEG-Y: 28/28 passed
+```
+
+Both captures were inspected. The workspace page clearly reports the
+model-locked grid/storage contract and all editable time/numerical units. The
+source page has no horizontal clipping and shows the source type, coordinates,
+time, Ricker, moment, validation, and save state. In both captures the source
+at `(2500,2500,1150) m` coincides with `x=100`, `y=100`, and `z=46`; the 3-D
+position is consistent with the upper-quarter model depth. The reported CFL
+and dispersion values agree with the accepted Overthrust parameters.
+
+Before implementation continues, predeclare Increment 23 around acquisition
+geometry and complete forward-configuration assembly. YAML round-trip,
+receiver overlays, storage estimates, and preflight belong together at that
+boundary; CUDA execution remains later.

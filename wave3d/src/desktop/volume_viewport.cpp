@@ -157,10 +157,24 @@ void VolumeViewport::set_crop_bounds(const std::array<float, 6>& bounds) {
     update();
 }
 
+void VolumeViewport::set_source_position(
+    const std::optional<std::array<float, 3>>& normalized_position) {
+    source_position_ = normalized_position;
+    QVariantList diagnostic_position;
+    if (source_position_) {
+        for (const auto coordinate : *source_position_) {
+            diagnostic_position.push_back(coordinate);
+        }
+    }
+    setProperty("sourceMarkerPosition", diagnostic_position);
+    update();
+}
+
 void VolumeViewport::clear_volume() {
     pending_volume_.reset();
     property_name_.clear();
     failure_message_.clear();
+    set_source_position(std::nullopt);
     if (property("openGlReady").toBool() && context() != nullptr &&
         context()->isValid()) {
         makeCurrent();
@@ -353,6 +367,50 @@ void VolumeViewport::paintGL() {
         rect().adjusted(16, 0, -16, -14),
         Qt::AlignHCenter | Qt::AlignBottom,
         message);
+
+    setProperty("sourceMarkerVisible", false);
+    if (source_position_ && property("volumeTextureReady").toBool()) {
+        const QVector3D camera(
+            distance_ * std::cos(pitch_) * std::cos(yaw_),
+            distance_ * std::cos(pitch_) * std::sin(yaw_),
+            distance_ * std::sin(pitch_));
+        const auto forward = -camera.normalized();
+        const auto right = QVector3D::crossProduct(
+                               forward, QVector3D(0.0F, 0.0F, 1.0F))
+                               .normalized();
+        const auto up = QVector3D::crossProduct(right, forward).normalized();
+        const QVector3D world(
+            ((*source_position_)[0] - 0.5F) * physical_aspect_[0],
+            ((*source_position_)[1] - 0.5F) * physical_aspect_[1],
+            (0.5F - (*source_position_)[2]) * physical_aspect_[2]);
+        const auto relative = world - camera;
+        const auto depth = QVector3D::dotProduct(relative, forward);
+        if (depth > 0.0F) {
+            const auto viewport_ratio =
+                height() == 0 ? 1.0F : static_cast<float>(width()) / height();
+            const auto ndc_x = QVector3D::dotProduct(relative, right) /
+                               (0.58F * depth * viewport_ratio);
+            const auto ndc_y =
+                QVector3D::dotProduct(relative, up) / (0.58F * depth);
+            if (std::abs(ndc_x) <= 1.0F && std::abs(ndc_y) <= 1.0F) {
+                const QPointF point(
+                    (ndc_x + 1.0F) * 0.5F * width(),
+                    (1.0F - ndc_y) * 0.5F * height());
+                painter.setPen(QPen(QColor(255, 255, 255), 2.0));
+                painter.setBrush(QColor(255, 82, 104, 230));
+                painter.drawEllipse(point, 7.0, 7.0);
+                painter.drawLine(point + QPointF(-11.0, 0.0),
+                                 point + QPointF(11.0, 0.0));
+                painter.drawLine(point + QPointF(0.0, -11.0),
+                                 point + QPointF(0.0, 11.0));
+                painter.setPen(QColor(255, 222, 226));
+                painter.drawText(
+                    QRectF(point.x() + 10.0, point.y() - 18.0, 80.0, 24.0),
+                    QStringLiteral("震源 S"));
+                setProperty("sourceMarkerVisible", true);
+            }
+        }
+    }
 }
 
 void VolumeViewport::mousePressEvent(QMouseEvent* event) {
