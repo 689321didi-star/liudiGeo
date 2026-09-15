@@ -7,6 +7,7 @@
 #include <QFileInfo>
 #include <QTemporaryDir>
 
+#include <algorithm>
 #include <iostream>
 #include <stdexcept>
 
@@ -142,6 +143,59 @@ void test_static_model_contract() {
         rejected = true;
     }
     expect(rejected, "empty crop must be rejected");
+
+    const auto texture =
+        scene.volume_texture(wave3d::desktop::ModelProperty::Vp);
+    expect(
+        texture.nx == 4 && texture.ny == 3 && texture.nz == 5 &&
+            texture.normalized_values.size() == fixture().cell_count(),
+        "volume texture shape changed");
+    expect(
+        texture.normalized_values[
+            summary.grid.physical_linear_index(0, 0, summary.center_z)] == 0.0F &&
+            texture.normalized_values[summary.grid.physical_linear_index(
+                3, 2, summary.center_z)] == 1.0F,
+        "volume normalization endpoints changed or sample order was permuted");
+    expect(
+        texture.physical_aspect[0] == 0.25F &&
+            texture.physical_aspect[1] == (1.0F / 3.0F) &&
+            texture.physical_aspect[2] == 1.0F,
+        "volume physical aspect changed");
+    const auto source_after_texture =
+        scene.cropped_model({0, 4, 0, 3, 0, 5});
+    expect(
+        source_after_texture.vp_m_s == fixture().vp_m_s &&
+            source_after_texture.vs_m_s == fixture().vs_m_s &&
+            source_after_texture.density_kg_m3 == fixture().density_kg_m3,
+        "volume preparation changed the source physical arrays");
+    const auto normalized_crop =
+        scene.normalized_crop_bounds({1, 4, 0, 2, 1, 5});
+    expect(
+        normalized_crop[0] == (1.0F / 3.0F) && normalized_crop[1] == 1.0F &&
+            normalized_crop[2] == 0.0F && normalized_crop[3] == 0.5F &&
+        normalized_crop[4] == 0.25F && normalized_crop[5] == 1.0F,
+        "volume crop bounds do not map to texture coordinates");
+    rejected = false;
+    try {
+        static_cast<void>(
+            scene.normalized_crop_bounds({0, 5, 0, 2, 0, 2}));
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    expect(rejected, "invalid volume crop bounds must be rejected");
+
+    const auto constant = wave3d::desktop::StaticModelScene(
+                              wave3d::make_homogeneous_model(
+                                  summary.grid,
+                                  {3600.0F, 2000.0F, 2400.0F}))
+                              .volume_texture(
+                                  wave3d::desktop::ModelProperty::Density);
+    expect(
+        std::all_of(
+            constant.normalized_values.begin(),
+            constant.normalized_values.end(),
+            [](float value) { return value == 0.5F; }),
+        "constant volume normalization must use the stable midpoint");
 }
 
 } // namespace

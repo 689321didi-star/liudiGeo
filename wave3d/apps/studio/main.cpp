@@ -1,5 +1,6 @@
 #include "wave3d/desktop/main_window.hpp"
 #include "wave3d/desktop/theme.hpp"
+#include "wave3d/desktop/volume_viewport.hpp"
 
 #include <QApplication>
 #include <QComboBox>
@@ -12,6 +13,8 @@
 #include <QSpinBox>
 #include <QTimer>
 
+#include <array>
+#include <exception>
 #include <iostream>
 #include <vector>
 
@@ -87,6 +90,40 @@ bool set_spin_values(
     return true;
 }
 
+bool set_volume_camera(
+    wave3d::desktop::MainWindow& window,
+    const QString& text,
+    QString* error) {
+    const auto values = text.split(QLatin1Char(','));
+    if (values.size() != 3) {
+        *error = QStringLiteral("三维视角需要 yaw,pitch,distance 三个参数");
+        return false;
+    }
+    std::array<float, 3> parsed{};
+    for (qsizetype index = 0; index < values.size(); ++index) {
+        bool valid = false;
+        parsed[static_cast<std::size_t>(index)] = values[index].toFloat(&valid);
+        if (!valid) {
+            *error = QStringLiteral("三维视角参数不是有效数字");
+            return false;
+        }
+    }
+    auto* base =
+        window.findChild<QOpenGLWidget*>(QStringLiteral("volumeViewport"));
+    auto* volume = dynamic_cast<wave3d::desktop::VolumeViewport*>(base);
+    if (volume == nullptr) {
+        *error = QStringLiteral("找不到三维体渲染器");
+        return false;
+    }
+    try {
+        volume->set_camera(parsed[0], parsed[1], parsed[2]);
+    } catch (const std::exception& exception) {
+        *error = QString::fromUtf8(exception.what());
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -128,6 +165,10 @@ int main(int argc, char** argv) {
         QStringLiteral("crop-bounds"),
         QStringLiteral("设置含端点的审查裁剪范围"),
         QStringLiteral("x0,x1,y0,y1,z0,z1"));
+    const QCommandLineOption volume_camera_option(
+        QStringLiteral("volume-camera"),
+        QStringLiteral("设置三维审查视角 yaw,pitch,distance（弧度、弧度、相对距离）"),
+        QStringLiteral("yaw,pitch,distance"));
     parser.addOption(inspect_option);
     parser.addOption(smoke_option);
     parser.addOption(capture_option);
@@ -135,6 +176,7 @@ int main(int argc, char** argv) {
     parser.addOption(import_model_option);
     parser.addOption(slice_option);
     parser.addOption(crop_option);
+    parser.addOption(volume_camera_option);
     parser.process(application);
 
     wave3d::desktop::MainWindow window(
@@ -169,6 +211,12 @@ int main(int argc, char** argv) {
         std::cerr << "Cannot set crop bounds: " << error.toStdString() << '\n';
         return 2;
     }
+    if (parser.isSet(volume_camera_option) &&
+        !set_volume_camera(
+            window, parser.value(volume_camera_option), &error)) {
+        std::cerr << "Cannot set volume camera: " << error.toStdString() << '\n';
+        return 2;
+    }
     if (parser.isSet(inspect_option)) {
         return inspect_shell(window);
     }
@@ -193,6 +241,17 @@ int main(int argc, char** argv) {
                       << viewport->objectName().toStdString() << '\n';
             return 1;
         }
+    }
+    const auto* volume =
+        window.findChild<QOpenGLWidget*>(QStringLiteral("volumeViewport"));
+    if (window.current_project() != nullptr &&
+        !window.current_project()->model_reference.isEmpty() &&
+        (volume == nullptr ||
+         !volume->property("volumeShaderReady").toBool() ||
+         !volume->property("volumeTextureReady").toBool() ||
+         !volume->property("volumeFrameReady").toBool())) {
+        std::cerr << "Static volume renderer did not produce a valid frame\n";
+        return 1;
     }
     return 0;
 }

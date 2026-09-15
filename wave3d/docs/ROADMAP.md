@@ -547,6 +547,27 @@ checksum manifests publish without overwriting sources, and the project
 activates the derived model only after verification. All optional-build,
 desktop, CUDA, and real Overthrust visual gates passed.
 
+## Increment 21 — Static OpenGL volume rendering
+
+**Goal:** Render the validated static material model as an interactive 3-D
+volume while preserving the accepted model, slice, and crop contracts.
+
+**Work:** Add canonical texture preparation, OpenGL 3.3 volume ray marching,
+physical aspect, crop clipping, orbit/zoom, and compact transfer controls.
+
+**Acceptance:** The CPU texture contract, desktop state, real WSLg shader and
+Overthrust capture, optional-build, and CUDA checks in
+`INCREMENT_21_STATIC_VOLUME_RENDERING_PLAN.md` pass.
+
+**Status:** Verified on 2026-09-15. The static scene now prepares an immutable
+canonical display copy, and the dedicated OpenGL 3.3 viewport uploads it as a
+single-channel 3-D texture for physical-aspect front-to-back ray marching.
+Material changes, shared crop bounds, opacity/threshold controls, orbit/zoom,
+and camera reset synchronize without changing the scientific arrays. The real
+Overthrust shader/upload/frame gate and visual review passed under WSLg/XCB;
+HDF5-on passed 22/22, HDF5-off 19/19, desktop-off 17/17, and the complete CUDA
+configuration 28/28.
+
 ## Deferred research phases
 
 After elastic forward qualification, separate future phases may implement

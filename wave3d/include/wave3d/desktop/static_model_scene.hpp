@@ -5,7 +5,9 @@
 #include <QImage>
 #include <QString>
 
+#include <array>
 #include <cstddef>
+#include <vector>
 
 namespace wave3d::desktop {
 
@@ -29,6 +31,14 @@ struct ModelCropBounds {
     std::size_t z_end{0};
 };
 
+struct VolumeTextureData {
+    std::size_t nx{0};
+    std::size_t ny{0};
+    std::size_t nz{0};
+    std::vector<float> normalized_values;
+    std::array<float, 3> physical_aspect{1.0F, 1.0F, 1.0F};
+};
+
 class StaticModelScene final {
 public:
     [[nodiscard]] static StaticModelScene load_hdf5(const QString& path);
@@ -50,6 +60,10 @@ public:
         ModelProperty property,
         std::size_t x_index) const;
     [[nodiscard]] PhysicalModel cropped_model(
+        const ModelCropBounds& bounds) const;
+    [[nodiscard]] VolumeTextureData volume_texture(
+        ModelProperty property) const;
+    [[nodiscard]] std::array<float, 6> normalized_crop_bounds(
         const ModelCropBounds& bounds) const;
 
 private:

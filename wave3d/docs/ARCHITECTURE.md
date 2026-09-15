@@ -455,9 +455,7 @@ not alter or replace the original physical arrays.
 
 The project import path copies an external model atomically into `models/`,
 then atomically saves its relative reference. Static scene ownership remains
-separate from the future GPU render transport. The large viewport currently
-uses a labelled center-XY preview; a later renderer may upload the same
-validated model to a 3-D texture without changing the project or HDF5 layers.
+separate from GPU render transport.
 
 Increment 20 adds an immutable derivation service beside the static scene.
 Views use arbitrary zero-based slice indices and one crop represented as
@@ -472,6 +470,22 @@ checksum provenance manifest under `manifests/models/`. The window then loads
 the result and atomically updates the project reference. The derived grid uses
 a local zero origin; its manifest retains source offsets for reversible
 coordinate mapping.
+
+Increment 21 adds a presentation-only volume bridge to the static scene. It
+copies the selected property into canonical normalized `float32` storage,
+retains the full physical x/y/z proportions, and translates the shared crop to
+normalized texture coordinates. The owned `PhysicalModel` and its SI values
+remain unchanged.
+
+`VolumeViewport` owns the OpenGL context resources, one `GL_R32F` 3-D texture,
+and a core-profile shader that ray marches front to back through the
+physical-aspect box. Texture z is inverted only in the presentation mapping so
+model `z=0` appears at the top and positive depth remains downward. Vp, Vs, or
+density changes rebuild the CPU display copy and texture; slice-index and crop
+changes update view state without recopying the volume. Opacity, threshold,
+orbit, and zoom are renderer state and never enter model or HDF5 layers. This
+static upload path is separate from the later solver visualization transport
+and CUDA/OpenGL interoperation.
 
 Increment 11 verifies that behavior by configuring and building with the whole
 `optional/rtm` tree temporarily absent. RTM-off exposes only the forward views,

@@ -814,3 +814,26 @@ Each crop creates a new HDF5 under `models/` and a
 source and output SHA-256 values are recorded. The HDF5 is reread and compared
 before atomic rename; the project reference changes only after the HDF5 and
 manifest exist. Imported and earlier derived models are never overwritten.
+
+## D053 — Static volume rendering uses a normalized presentation copy
+
+**Status:** Accepted and verified, 2026-09-15
+
+The static 3-D renderer consumes one independent `float32` copy of the selected
+Vp, Vs, or density array in canonical `[z][y][x]` order. It normalizes against
+that property's full-volume extrema, maps a constant property to `0.5`, and
+uploads one `GL_R32F` texture. Normalization, colour, opacity, threshold, camera,
+and crop clipping are presentation state; the validated SI-valued
+`PhysicalModel` remains unchanged.
+
+The OpenGL 3.3 fragment shader ray marches front to back through a box scaled
+by node-to-node physical extents. Its texture mapping places `z=0` at the top
+and positive model depth downward. Inclusive UI crop endpoints are converted
+to normalized texture limits without creating a cropped volume, while explicit
+derived-model creation retains the accepted half-open scientific contract.
+
+Static model upload is deliberately CPU-to-OpenGL and occurs only when the
+selected material property or model changes. It does not define the future
+live wavefield transport: that path will consume the existing CUDA physical
+visualization volume and requires a separately measured buffering and
+CUDA/OpenGL interoperability decision.

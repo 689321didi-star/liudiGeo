@@ -83,6 +83,16 @@ std::size_t linear_index(
     return x + grid.nx * (y + grid.ny * z);
 }
 
+void require_valid_crop_bounds(
+    const Grid3D& grid,
+    const ModelCropBounds& bounds) {
+    if (bounds.x_begin >= bounds.x_end || bounds.x_end > grid.nx ||
+        bounds.y_begin >= bounds.y_end || bounds.y_end > grid.ny ||
+        bounds.z_begin >= bounds.z_end || bounds.z_end > grid.nz) {
+        throw std::invalid_argument("model crop bounds are empty or outside the grid");
+    }
+}
+
 } // namespace
 
 StaticModelScene StaticModelScene::load_hdf5(const QString& path) {
@@ -185,11 +195,7 @@ QImage StaticModelScene::make_slice(
 PhysicalModel StaticModelScene::cropped_model(
     const ModelCropBounds& bounds) const {
     const auto& source_grid = model_.grid;
-    if (bounds.x_begin >= bounds.x_end || bounds.x_end > source_grid.nx ||
-        bounds.y_begin >= bounds.y_end || bounds.y_end > source_grid.ny ||
-        bounds.z_begin >= bounds.z_end || bounds.z_end > source_grid.nz) {
-        throw std::invalid_argument("model crop bounds are empty or outside the grid");
-    }
+    require_valid_crop_bounds(source_grid, bounds);
     auto output_grid = source_grid;
     output_grid.nx = bounds.x_end - bounds.x_begin;
     output_grid.ny = bounds.y_end - bounds.y_begin;
@@ -218,6 +224,51 @@ PhysicalModel StaticModelScene::cropped_model(
     }
     require_valid_physical_model(output);
     return output;
+}
+
+VolumeTextureData StaticModelScene::volume_texture(
+    ModelProperty property) const {
+    const auto& source = property_values(model_, property);
+    const auto [minimum, maximum] = property_range(model_, property);
+    const auto span = maximum - minimum;
+    std::vector<float> normalized(source.size());
+    std::transform(
+        source.begin(), source.end(), normalized.begin(), [minimum, span](float value) {
+            return span == 0.0F ? 0.5F : (value - minimum) / span;
+        });
+    const auto& grid = model_.grid;
+    const std::array<float, 3> extents{
+        (grid.nx > 1 ? static_cast<float>(grid.nx - 1) : 1.0F) * grid.dx_m,
+        (grid.ny > 1 ? static_cast<float>(grid.ny - 1) : 1.0F) * grid.dy_m,
+        (grid.nz > 1 ? static_cast<float>(grid.nz - 1) : 1.0F) * grid.dz_m};
+    const auto maximum_extent =
+        *std::max_element(extents.begin(), extents.end());
+    return {
+        grid.nx,
+        grid.ny,
+        grid.nz,
+        std::move(normalized),
+        {extents[0] / maximum_extent,
+         extents[1] / maximum_extent,
+         extents[2] / maximum_extent}};
+}
+
+std::array<float, 6> StaticModelScene::normalized_crop_bounds(
+    const ModelCropBounds& bounds) const {
+    require_valid_crop_bounds(model_.grid, bounds);
+    const auto coordinate = [](std::size_t index, std::size_t count) {
+        return count == 1
+                   ? 0.5F
+                   : static_cast<float>(index) / static_cast<float>(count - 1);
+    };
+    const auto& grid = model_.grid;
+    return {
+        coordinate(bounds.x_begin, grid.nx),
+        coordinate(bounds.x_end - 1, grid.nx),
+        coordinate(bounds.y_begin, grid.ny),
+        coordinate(bounds.y_end - 1, grid.ny),
+        coordinate(bounds.z_begin, grid.nz),
+        coordinate(bounds.z_end - 1, grid.nz)};
 }
 
 } // namespace wave3d::desktop

@@ -1,6 +1,7 @@
 #include "wave3d/desktop/main_window.hpp"
 #include "wave3d/desktop/model_derivation.hpp"
 #include "wave3d/desktop/static_model_scene.hpp"
+#include "wave3d/desktop/volume_viewport.hpp"
 
 #include <QAction>
 #include <QCloseEvent>
@@ -31,6 +32,7 @@
 #include <QSaveFile>
 #include <QSettings>
 #include <QSignalBlocker>
+#include <QSlider>
 #include <QSpinBox>
 #include <QSplitter>
 #include <QStatusBar>
@@ -150,6 +152,15 @@ ScientificViewport* scientific_viewport(
         window->findChild<QOpenGLWidget*>(object_name));
     if (viewport == nullptr) {
         throw std::logic_error("scientific viewport is missing");
+    }
+    return viewport;
+}
+
+VolumeViewport* volume_viewport(QMainWindow* window) {
+    auto* viewport = dynamic_cast<VolumeViewport*>(
+        window->findChild<QOpenGLWidget*>(QStringLiteral("volumeViewport")));
+    if (viewport == nullptr) {
+        throw std::logic_error("volume viewport is missing");
     }
     return viewport;
 }
@@ -409,6 +420,26 @@ QDockWidget* make_model_information_dock(QMainWindow* window) {
     create->setEnabled(false);
     crop_layout->addWidget(create, 5, 0, 1, 3);
     layout->addWidget(crop);
+
+    auto* rendering = new QGroupBox(QStringLiteral("三维传递函数"), contents);
+    auto* rendering_form = new QFormLayout(rendering);
+    auto* opacity = new QSlider(Qt::Horizontal, rendering);
+    opacity->setObjectName(QStringLiteral("volumeOpacitySlider"));
+    opacity->setRange(1, 100);
+    opacity->setValue(55);
+    opacity->setEnabled(false);
+    rendering_form->addRow(QStringLiteral("不透明度："), opacity);
+    auto* threshold = new QSlider(Qt::Horizontal, rendering);
+    threshold->setObjectName(QStringLiteral("volumeThresholdSlider"));
+    threshold->setRange(0, 95);
+    threshold->setValue(8);
+    threshold->setEnabled(false);
+    rendering_form->addRow(QStringLiteral("低值阈值："), threshold);
+    auto* reset_camera = new QPushButton(QStringLiteral("重置三维视角"), rendering);
+    reset_camera->setObjectName(QStringLiteral("resetVolumeCameraButton"));
+    reset_camera->setEnabled(false);
+    rendering_form->addRow(reset_camera);
+    layout->addWidget(rendering);
     layout->addStretch();
     dock->setWidget(contents);
     return dock;
@@ -452,8 +483,7 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
 
     auto* horizontal = new QSplitter(Qt::Horizontal, central);
     horizontal->setObjectName(QStringLiteral("fourViewSplitter"));
-    horizontal->addWidget(new ScientificViewport(
-        QStringLiteral("三维体视图"), QStringLiteral("volumeViewport"), horizontal));
+    horizontal->addWidget(new VolumeViewport(horizontal));
 
     auto* slices = new QSplitter(Qt::Vertical, horizontal);
     slices->setObjectName(QStringLiteral("sliceViewSplitter"));
@@ -633,6 +663,26 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
                 QMessageBox::critical(this, QStringLiteral("无法创建裁剪模型"), error);
             }
         });
+    connect(
+        findChild<QSlider*>(QStringLiteral("volumeOpacitySlider")),
+        &QSlider::valueChanged,
+        this,
+        [this](int value) {
+            volume_viewport(this)->set_opacity(static_cast<float>(value) / 100.0F);
+        });
+    connect(
+        findChild<QSlider*>(QStringLiteral("volumeThresholdSlider")),
+        &QSlider::valueChanged,
+        this,
+        [this](int value) {
+            volume_viewport(this)->set_lower_threshold(
+                static_cast<float>(value) / 100.0F);
+        });
+    connect(
+        findChild<QPushButton*>(QStringLiteral("resetVolumeCameraButton")),
+        &QPushButton::clicked,
+        this,
+        [this] { volume_viewport(this)->reset_camera(); });
 
     QSettings settings;
     if (restore_last_project) {
@@ -746,6 +796,7 @@ bool MainWindow::import_hdf5_model(
             }
             project_ = std::move(updated_project);
             model_scene_ = std::move(scene);
+            volume_property_index_ = -1;
         } catch (...) {
             if (copied) {
                 QFile::remove(destination_absolute);
@@ -802,6 +853,7 @@ bool MainWindow::create_cropped_model(
         ProjectWorkspace::save(project_root_, updated_project);
         project_ = std::move(updated_project);
         model_scene_ = std::move(next_scene);
+        volume_property_index_ = -1;
         populate_model_information();
         update_model_view();
         findChild<QTextEdit*>(QStringLiteral("runLog"))
@@ -895,6 +947,8 @@ void MainWindow::activate_project(
 
 void MainWindow::clear_model_view() {
     model_scene_.reset();
+    volume_property_index_ = -1;
+    volume_viewport(this)->clear_volume();
     auto* property =
         findChild<QComboBox*>(QStringLiteral("modelPropertySelector"));
     property->setEnabled(false);
@@ -922,9 +976,12 @@ void MainWindow::clear_model_view() {
         ->setText(QStringLiteral("—"));
     findChild<QPushButton*>(QStringLiteral("createCropButton"))
         ->setEnabled(false);
+    for (const char* name : {"volumeOpacitySlider", "volumeThresholdSlider"}) {
+        findChild<QSlider*>(QString::fromUtf8(name))->setEnabled(false);
+    }
+    findChild<QPushButton*>(QStringLiteral("resetVolumeCameraButton"))
+        ->setEnabled(false);
     for (const auto& viewport : std::array{
-             std::pair{QStringLiteral("volumeViewport"),
-                       QStringLiteral("等待科学数据")},
              std::pair{QStringLiteral("xyViewport"),
                        QStringLiteral("等待科学数据")},
              std::pair{QStringLiteral("xzViewport"),
@@ -986,6 +1043,10 @@ void MainWindow::populate_model_information() {
                       .arg(summary.center_y)
                       .arg(summary.center_z));
     findChild<QComboBox*>(QStringLiteral("modelPropertySelector"))
+        ->setEnabled(true);
+    findChild<QSlider*>(QStringLiteral("volumeOpacitySlider"))->setEnabled(true);
+    findChild<QSlider*>(QStringLiteral("volumeThresholdSlider"))->setEnabled(true);
+    findChild<QPushButton*>(QStringLiteral("resetVolumeCameraButton"))
         ->setEnabled(true);
     const std::array<std::tuple<const char*, std::size_t, std::size_t>, 3>
         slice_controls{{
@@ -1078,12 +1139,17 @@ void MainWindow::update_model_view() {
         const auto& grid = model_scene_->summary().grid;
         crop = {0, grid.nx, 0, grid.ny, 0, grid.nz};
     }
+    auto* volume = volume_viewport(this);
+    const auto property_index =
+        findChild<QComboBox*>(QStringLiteral("modelPropertySelector"))
+            ->currentIndex();
+    if (volume_property_index_ != property_index) {
+        volume->set_volume(model_scene_->volume_texture(property), field);
+        volume_property_index_ = property_index;
+    }
+    volume->set_crop_bounds(model_scene_->normalized_crop_bounds(crop));
     auto xy = annotate_section(
         model_scene_->xy_slice(property, z), 0, x, y, z, crop);
-    scientific_viewport(this, QStringLiteral("volumeViewport"))
-        ->set_scientific_image(
-            xy,
-            QStringLiteral("静态 XY 预览 · 三维体渲染待后续增量"));
     scientific_viewport(this, QStringLiteral("xyViewport"))
         ->set_scientific_image(
             std::move(xy),

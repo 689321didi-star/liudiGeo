@@ -1,6 +1,7 @@
 #include "wave3d/desktop/main_window.hpp"
 #include "wave3d/desktop/project_workspace.hpp"
 #include "wave3d/desktop/theme.hpp"
+#include "wave3d/desktop/volume_viewport.hpp"
 
 #ifdef WAVE3D_DESKTOP_HAS_HDF5
 #include "wave3d/io/hdf5.hpp"
@@ -19,6 +20,7 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QSettings>
+#include <QSlider>
 #include <QSplitter>
 #include <QSpinBox>
 #include <QStandardPaths>
@@ -69,6 +71,11 @@ void test_shell_contract() {
             !require_child<QSpinBox>(window, name)->isEnabled(),
             "model index controls must start disabled");
     }
+    expect(
+        !require_child<QSlider>(window, "volumeOpacitySlider")->isEnabled() &&
+            !require_child<QPushButton>(window, "resetVolumeCameraButton")
+                 ->isEnabled(),
+        "volume controls must start disabled");
 
     const auto* four_view = require_child<QSplitter>(window, "fourViewSplitter");
     const auto* slices = require_child<QSplitter>(window, "sliceViewSplitter");
@@ -307,8 +314,7 @@ void test_hdf5_model_import() {
             QStringLiteral("模型已加载"),
         "model state badge was not updated");
 
-    const std::array<std::pair<const char*, QSize>, 4> expected_images{{
-        {"volumeViewport", QSize(4, 3)},
+    const std::array<std::pair<const char*, QSize>, 3> expected_images{{
         {"xyViewport", QSize(4, 3)},
         {"xzViewport", QSize(4, 5)},
         {"yzViewport", QSize(3, 5)}}};
@@ -321,6 +327,35 @@ void test_hdf5_model_import() {
             viewport->property("scientificImageSize").toSize() == size,
             "scientific viewport received a section with incorrect dimensions");
     }
+    auto* volume_base = require_child<QOpenGLWidget>(window, "volumeViewport");
+    auto* volume =
+        dynamic_cast<wave3d::desktop::VolumeViewport*>(volume_base);
+    expect(
+        volume != nullptr &&
+            volume->property("volumeTextureDimensions").toString() ==
+                QStringLiteral("4x3x5") &&
+            volume->property("uploadedModelProperty").toString() ==
+                QStringLiteral("vp") &&
+            require_child<QSlider>(window, "volumeOpacitySlider")->isEnabled(),
+        "model did not synchronize the 3-D volume texture state");
+    volume->set_camera(0.9F, 2.0F, 0.2F);
+    expect(
+        volume->property("volumeCameraYaw").toFloat() == 0.9F &&
+            volume->property("volumeCameraPitch").toFloat() == 1.35F &&
+            volume->property("volumeCameraDistance").toFloat() == 1.15F,
+        "volume camera did not apply orbit/zoom limits");
+    require_child<QPushButton>(window, "resetVolumeCameraButton")->click();
+    expect(
+        volume->property("volumeCameraYaw").toFloat() == 0.65F &&
+            volume->property("volumeCameraPitch").toFloat() == 0.42F &&
+            volume->property("volumeCameraDistance").toFloat() == 1.75F,
+        "volume camera reset did not restore the review view");
+    require_child<QSlider>(window, "volumeOpacitySlider")->setValue(70);
+    require_child<QSlider>(window, "volumeThresholdSlider")->setValue(20);
+    expect(
+        volume->property("volumeOpacity").toFloat() == 0.7F &&
+            volume->property("volumeLowerThreshold").toFloat() == 0.2F,
+        "volume transfer controls did not update renderer state");
 
     auto* slice_z = require_child<QSpinBox>(window, "sliceZSpin");
     expect(
@@ -356,6 +391,10 @@ void test_hdf5_model_import() {
             ->property("hasScientificImage")
             .toBool(),
         "property switching cleared the scientific section");
+    expect(
+        volume->property("uploadedModelProperty").toString() ==
+            QStringLiteral("density"),
+        "property switching did not update the 3-D volume state");
 
     error.clear();
     expect(
@@ -372,8 +411,17 @@ void test_hdf5_model_import() {
     require_child<QSpinBox>(window, "cropYEndSpin")->setValue(1);
     require_child<QSpinBox>(window, "cropZBeginSpin")->setValue(1);
     require_child<QSpinBox>(window, "cropZEndSpin")->setValue(4);
+    const auto volume_crop =
+        volume->property("volumeCropBounds").toList();
     expect(
-        require_child<QPushButton>(window, "createCropButton")->isEnabled(),
+        require_child<QPushButton>(window, "createCropButton")->isEnabled() &&
+            volume_crop.size() == 6 &&
+            volume_crop[0].toFloat() == (1.0F / 3.0F) &&
+            volume_crop[1].toFloat() == 1.0F &&
+            volume_crop[2].toFloat() == 0.0F &&
+            volume_crop[3].toFloat() == 0.5F &&
+            volume_crop[4].toFloat() == 0.25F &&
+            volume_crop[5].toFloat() == 1.0F,
         "valid crop controls did not enable derivation");
     error.clear();
     expect(
@@ -428,7 +476,11 @@ void test_hdf5_model_import() {
     }
     expect(
         !require_child<QSpinBox>(window, "sliceXSpin")->isEnabled() &&
-            !require_child<QPushButton>(window, "createCropButton")->isEnabled(),
+            !require_child<QPushButton>(window, "createCropButton")->isEnabled() &&
+            require_child<QOpenGLWidget>(window, "volumeViewport")
+                ->property("volumeTextureDimensions")
+                .toString()
+                .isEmpty(),
         "switching to an empty project retained crop controls");
 }
 #endif

@@ -1363,3 +1363,60 @@ Before implementation continues, Increment 21 should be predeclared around
 one narrow goal. The recommended next goal is a true static OpenGL 3-D texture
 and volume ray caster consuming the already validated model scene; experiment
 editors and live CUDA frames should remain separate later increments.
+
+## Increment 21 static OpenGL volume rendering
+
+The large viewport is now a dedicated OpenGL 3.3 volume renderer. The static
+model scene makes one normalized display copy of the selected Vp, Vs, or
+density volume, preserving canonical `[z][y][x]` ordering and the source
+physical arrays. The renderer uploads `GL_R32F`, ray marches front to back
+through a physical-aspect box, maps model depth downward, and clips samples
+against the same crop shown in the three section views.
+
+Mouse drag orbits, the wheel changes distance, and compact sliders control
+opacity and the lower transfer threshold. Reset restores a reviewed camera.
+Property changes replace the texture; slice and crop changes do not recopy the
+full volume. Diagnostic properties distinguish context, shader, texture, and
+frame readiness. `--volume-camera yaw,pitch,distance` makes a changed orbit and
+zoom reproducible during automated review capture.
+
+Qt's offscreen platform crashed while destroying a real `QOpenGLWidget`, so
+the structural CTest uses the `minimal` platform. That test does not claim GPU
+render success. The separate WSLg/XCB capture is the production shader,
+texture-upload, and nonempty-frame gate.
+
+Final verification on 2026-09-15:
+
+```text
+ctest --test-dir build/desktop19 --output-on-failure
+# HDF5 enabled: 22/22 passed
+
+ctest --test-dir build/desktop18 --output-on-failure
+# HDF5 disabled: 19/19 passed
+
+ctest --test-dir build/desktop17-default --output-on-failure
+# desktop disabled: 17/17 passed
+
+QT_QPA_PLATFORM=xcb build/desktop19/wave3d_studio \
+  --project build/desktop19/review_project \
+  --slice-indices 70,120,80 \
+  --crop-bounds 40,160,30,170,10,150 \
+  --volume-camera 0.9,0.32,1.65 \
+  --capture-shell build/desktop19/review/wave3d-static-volume.png
+# shader, 200 x 200 x 187 GL_R32F upload, and frame gates passed;
+# 1440 x 1031 PNG
+
+ctest --test-dir build/overthrust --output-on-failure
+# CUDA/YAML/HDF5/SEG-Y: 28/28 passed
+```
+
+The captured Overthrust volume was inspected against XY, XZ, and YZ. The
+dipping and folded layers continue across views, shallow/deep ordering is
+consistent, the selected `121 x 141 x 141` subvolume has the expected physical
+proportions, and no transpose, mirror, clipping, or text-rendering defect was
+observed. The PNG remains an ignored review artifact.
+
+Before implementation continues, predeclare Increment 22 around one narrow
+desktop workflow goal. Source/workspace experiment editing is the recommended
+next boundary; live CUDA frame transport should remain a later isolated
+increment.

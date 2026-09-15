@@ -441,7 +441,8 @@ if(WAVE3D_BUILD_DESKTOP)
     add_library(
         wave3d_desktop_shell STATIC
         src/desktop/main_window.cpp
-        src/desktop/theme.cpp)
+        src/desktop/theme.cpp
+        src/desktop/volume_viewport.cpp)
     target_link_libraries(
         wave3d_desktop_shell
         PUBLIC
@@ -517,6 +518,6 @@ if(WAVE3D_BUILD_DESKTOP)
             wave3d_desktop_shell_tests
             PROPERTIES
                 LABELS "desktop;interfaces"
-                ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+                ENVIRONMENT "QT_QPA_PLATFORM=minimal")
     endif()
 endif()

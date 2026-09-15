@@ -54,6 +54,7 @@ private:
     QString project_root_;
     std::optional<ProjectDocument> project_;
     std::unique_ptr<StaticModelScene> model_scene_;
+    int volume_property_index_{-1};
 };
 
 } // namespace wave3d::desktop
