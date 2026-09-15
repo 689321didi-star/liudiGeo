@@ -419,6 +419,50 @@ samples, positive three-component energy, and 121/121 first arrivals inside
 the conservative travel window. Final regressions passed. Increment 14 is
 complete; stop at this one derived Overthrust benchmark.
 
+## Desktop solver preparation phase
+
+## Increment 15 — Stateful CUDA forward session for desktop control
+
+**Goal:** Make the accepted production CUDA solver controllable in whole-step
+batches and observable through a const device view without changing numerical
+behavior.
+
+**Work:** Add a file-format-independent `CudaForwardSession`, completed-step
+metadata, const device-wavefield views, explicit validation downloads, and
+production-task composition through the session. Keep Qt, rendering,
+snapshots, RTM, and precision/performance kernel changes outside the increment.
+
+**Acceptance:** The fixed checks in
+`INCREMENT_15_CUDA_FORWARD_SESSION_PLAN.md` pass, including bitwise direct-vs-
+session fields/traces, all repository tests, and byte-identical reproduction
+of the accepted dense Overthrust SEG-Y.
+
+**Status:** Verified on 2026-09-15. Uneven whole-step batches matched the
+direct CUDA composition bitwise in all nine final fields and all three trace
+components. The production runner now uses the session and reproduced the
+accepted dense Overthrust SEG-Y byte for byte. CUDA RTM-off passed 28/28,
+all-options RTM-on passed 29/29, and CPU-only passed 17/17.
+
+## Increment 16 — CUDA physical-volume visualization extraction
+
+**Goal:** Produce scientifically aligned physical-domain display scalars from
+the accepted staggered CUDA wavefield without coupling the solver to a GUI or
+renderer.
+
+**Work:** Add one reusable scalar device-volume owner and GPU extraction for
+centred Vx/Vy/Vz, speed, divergence, and curl magnitude. Exclude halo and CPML
+from the output and retain full physical resolution.
+
+**Acceptance:** The analytic staggered-field, non-mutation, layout, invalid-
+input, and build-boundary checks in
+`INCREMENT_16_CUDA_VISUALIZATION_EXTRACTION_PLAN.md` all pass.
+
+**Status:** Verified on 2026-09-15. Analytic affine fields on the staggered
+lattices produced the expected six physical-domain quantities and extraction
+left the nine source fields bitwise unchanged. On the 200 x 200 x 187 target,
+one scalar volume is 29,920,000 bytes; measured extraction ranged from about
+1.1 ms for a centred component to 30.8 ms for centred curl magnitude.
+
 ## Deferred research phases
 
 After elastic forward qualification, separate future phases may implement

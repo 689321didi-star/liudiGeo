@@ -143,6 +143,21 @@ perform no allocation, resize, full-field copy, or synchronization inside a
 step.  Traces use receiver-major `[receiver][sample]` storage and retain `dt`
 as explicit metadata.
 
+Increment 15 adds a file-format-independent `CudaForwardSession`. It owns the
+accepted CUDA forward resources for one stable lifetime, advances in caller-
+selected whole-step batches, synchronizes only at a batch boundary, reports
+the existing leapfrog time metadata, and exposes a non-owning const device
+view. The command-line production task advances the entire remaining interval
+as one batch; a future desktop controller can use short batches for cooperative
+pause, stop, progress, and visualization without changing solver equations.
+
+Increment 16 adds a reusable one-scalar `DeviceVisualizationVolume` and a GPU
+extraction kernel. It removes halo and CPML, writes canonical physical
+`[z][y][x]` storage, centres Vx/Vy/Vz from their face lattices, and derives
+speed, divergence, or curl magnitude on a common integer lattice. Curl is
+formed on the natural staggered edge lattices before interpolation. Extraction
+does not own synchronization, rendering, colour mapping, or file output.
+
 ### `physics`
 
 Contains the 3D isotropic elastic constitutive update. Attenuation and
@@ -381,7 +396,7 @@ The intended CMake options include:
 ```text
 WAVE3D_ENABLE_CUDA
 WAVE3D_BUILD_TESTS
-WAVE3D_BUILD_CPU_REFERENCE
+WAVE3D_BUILD_QUALIFICATION_TOOLS
 WAVE3D_ENABLE_YAML
 WAVE3D_ENABLE_HDF5
 WAVE3D_ENABLE_SEGY
@@ -430,8 +445,9 @@ wave3d/
 ├── AGENTS.md
 ├── CMakeLists.txt
 ├── apps/
-│   ├── forward3d.cpp
 │   ├── run_forward.cpp
+│   ├── qualify_rtx5060.cpp       # optional qualification tool
+│   ├── qualify_visualization.cpp # optional qualification tool
 │   └── rtm3d.cpp                 # optional, future
 ├── include/wave3d/
 │   ├── core/

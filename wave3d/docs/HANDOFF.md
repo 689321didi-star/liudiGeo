@@ -977,3 +977,168 @@ ASAN_OPTIONS=detect_leaks=0 ctest --test-dir build-derived-sanitize \
   -R '^wave3d_derived_overthrust_tests$' --output-on-failure
 # 1/1 passed
 ```
+
+## SEG-Y receiver-gather visualization
+
+The dependency-free `tools/plot_segy.py` utility reads Wave3D's fixed-length,
+big-endian SEG-Y Revision 1 IEEE-float output and renders its receiver-major
+VX/VY/VZ traces as either a labeled standalone SVG or a plain PNG. It validates
+the file sizing, sample axis, format code, component codes, equal component
+counts, and finite samples before rendering. Time-bin reduction retains the
+largest absolute sample and therefore does not erase narrow arrivals. Display
+scaling clips each component independently at a configurable absolute-value
+percentile; it does not modify the SEG-Y data. A square receiver count is
+rendered with separators between its x-fastest rows so that flattening the
+surface array does not look like a propagation discontinuity. The optional
+`--shared-scale` mode uses one absolute-amplitude color limit for all three
+panels when component strength must be compared directly.
+
+The commands below preserve the historical paths used before the data-layout
+migration. Their 121-receiver artifacts were subsequently deleted as
+requested; current runs follow `data/README.md`.
+
+Observed commands/results:
+
+```text
+python3 -m py_compile tools/plot_segy.py
+python3 tools/plot_segy.py \
+  data/overthrust/overthrust_output/record.sgy \
+  data/overthrust/plots/record_gathers.svg
+python3 tools/plot_segy.py \
+  data/overthrust/overthrust_output/record.sgy \
+  data/overthrust/plots/record_gathers.png
+python3 tools/plot_segy.py --shared-scale \
+  data/overthrust/overthrust_output/record.sgy \
+  data/overthrust/plots/record_gathers_shared.svg
+# All renderings: 121 receivers, 3000 samples, dt=0.001 s.
+```
+
+## Dense 101 by 101 Overthrust receiver run
+
+The explicitly requested dense run retained the qualified physical model,
+source, 3 s sample axis, and 4 km by 4 km receiver aperture. The receiver
+spacing changed from 400 m to 40 m, producing 10,201 surface receivers and
+30,603 receiver-major VX/VY/VZ traces. The old 121-receiver `record.sgy`, its
+forward log, and its derived plots were deleted before this run; the audited
+MAT and prepared HDF5 inputs were retained.
+
+The new configuration required 3,073,674,920 planned bytes against a live
+5,826,727,116-byte budget on the RTX 5060 Laptop GPU. All 3000 steps completed
+in 200,400.441 ms propagation and 204.54 s wall time. The resulting SEG-Y is
+exactly 374,584,320 bytes with SHA-256
+`3854ec1776b3fbfa5ed3000869c99341c7aa67a03980295a04fe14e8087914c9`.
+
+The streaming dense-grid verifier checked all 30,603 trace headers and all
+91,809,000 samples. Every sample was finite, 86,284,671 were nonzero, all
+10,201 receiver arrivals were inside their conservative travel windows, and
+the first-significant range was 0.294–0.857 s. Early radial polarity agreed
+with the Mxy quadrant sign at 9,895/10,000 off-axis receivers. The original MAT
+three views, marked crop, actual HDF5 Vp crop, Vp/Vs/density section, two center
+line gathers, and dense peak/arrival maps were rendered from the actual data.
+
+Observed commands/results:
+
+```text
+ctest --test-dir build/overthrust --output-on-failure --parallel 2
+# 26/26 passed
+
+build/overthrust/wave3d_run \
+  data/overthrust/runs/forward_101x101/config.yaml
+# receivers=10201, samples=3000, exit=0
+
+python3 tools/verify_and_plot_segy_grid.py \
+  data/overthrust/runs/forward_101x101/output/record.sgy \
+  data/overthrust/runs/forward_101x101/figures/receiver_maps.svg \
+  --report data/overthrust/runs/forward_101x101/reports/segy_verification.txt \
+  --side 101 --spacing 40
+# result=PASS
+
+python3 tools/plot_overthrust_model.py \
+  data/overthrust/source/overthrust_3d_vp.mat \
+  data/overthrust/models/elastic_200x200x187.h5 \
+  data/overthrust/figures/model \
+  --h5dump /home/byai/.cache/wave3d-toolchain/env/bin/h5dump
+# crop_slice_match=PASS
+```
+
+## Local data-layout standardization
+
+Local Overthrust artifacts now follow the versioned `data/README.md` contract.
+The downloaded MAT moved to `source/`, the prepared elastic HDF5 model moved to
+`models/`, model-wide views moved to `figures/model/`, and both receiver
+configurations moved into self-contained `runs/forward_11x11/` and
+`runs/forward_101x101/` directories. The dense run keeps separate `output/`,
+`figures/`, `logs/`, and `reports/` subdirectories. Compiler output and the
+local zlib preparation helper moved to the repository-level ignored `build/`
+tree.
+
+The YAML model paths were changed to relative paths for the new layout. The
+MAT, HDF5, and SEG-Y payloads were moved without rewriting: their SHA-256
+values remain `251fd1f...105f6`, `229a723e...43c`, and
+`3854ec17...14c9`. `manifests/SHA256SUMS` verifies the primary inputs,
+configurations, record, and SVGs. The dense SEG-Y streaming verifier again
+checked all 30,603 traces and 91,809,000 samples and returned `PASS`; the model
+plotter again returned `crop_slice_match=PASS`. A fresh repository-level CUDA
+build passed 26/26 tests.
+
+## Pre-optimization Overthrust revalidation
+
+Before solver control and performance work, the unchanged dense Overthrust
+configuration was run again on 2026-09-15. The repository build passed 26/26
+tests before propagation. The 200 x 200 x 187 physical model, 101 x 101
+three-component surface array, 3 Hz Mxy source, 1 ms step, 3000 samples,
+traction-free top, and five-side CPML all remained unchanged.
+
+The run exited successfully after 241,562.642 ms of propagation. Its
+374,584,320-byte SEG-Y had SHA-256
+`3854ec1776b3fbfa5ed3000869c99341c7aa67a03980295a04fe14e8087914c9`
+and was byte-for-byte identical to the accepted canonical output. An
+independent scan again found 91,809,000/91,809,000 finite samples, 10,201 of
+10,201 arrivals inside the conservative bounds, and 9,895/10,000 expected Mxy
+off-axis polarity matches. No new validation figure was retained. The
+duplicate SEG-Y was removed after comparison so the organized dataset keeps
+one canonical copy.
+
+This propagation was 20.54% slower than the preceding 200,400.441 ms
+measurement while producing identical data. Future optimization benchmarks
+must therefore control GPU power/clock state and use repeated measurements.
+The detailed report is
+`data/overthrust/runs/forward_101x101/reports/pre_optimization_revalidation_20260915.txt`.
+
+## Desktop solver preparation
+
+The user authorized solver preparation before any desktop UI work. Increment
+15 adds `CudaForwardSession`: stable CUDA ownership, positive whole-step batch
+advance, completed-step time metadata, explicit validation downloads, and a
+const device-wavefield view. The production task now composes through this
+session but advances all remaining steps in one batch, preserving the previous
+single-synchronization behavior. A focused free-surface/five-side-CPML test
+proved that deliberately uneven batches reproduce direct CUDA composition
+bitwise in all nine final fields and all VX/VY/VZ traces.
+
+Increment 16 adds a reusable 29,920,000-byte scalar device volume for the
+target physical grid and GPU extraction of centred Vx/Vy/Vz, speed, divergence,
+and curl magnitude. The affine staggered-coordinate test checks every physical
+voxel against analytic values and proves extraction leaves the source fields
+bitwise unchanged. Target-grid five-run means were 1.058/1.104/1.070 ms for
+Vx/Vy/Vz, 2.042 ms for speed, 4.840 ms for divergence, and 30.754 ms for curl
+magnitude. No display image was generated.
+
+CUDA RTM-off passed 28/28 tests, all-options RTM-on passed 29/29, and CPU-only
+passed 17/17. The active environment did not contain `compute-sanitizer`; no
+existing numerical CUDA kernel changed. The production Overthrust session run
+completed in 240,622.832 ms propagation and produced a 374,584,320-byte SEG-Y
+with the accepted SHA-256
+`3854ec1776b3fbfa5ed3000869c99341c7aa67a03980295a04fe14e8087914c9`.
+`cmp` confirmed byte-for-byte identity, after which the duplicate was removed.
+The full report is
+`data/overthrust/runs/forward_101x101/reports/desktop_solver_preparation_20260915.txt`.
+
+The desktop controller must add its persistent visualization buffers to the
+existing memory preflight through `ForwardMemoryPlanRequest::workspace_bytes`.
+For this grid, a planned three-volume render buffer is 89,760,000 bytes (about
+85.6 MiB).
+
+No Qt, OpenGL, worker thread, snapshot writer, or RTM implementation has been
+started. Desktop workflow and interface details must be reviewed with the user
+before that phase begins.

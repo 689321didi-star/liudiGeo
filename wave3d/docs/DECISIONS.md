@@ -670,3 +670,57 @@ positive energy. All 121 first-significant arrivals pass the frozen
 straight-line travel window. Full Release, focused sanitizer, CPU-off-option,
 and adapter-combination regressions pass. This closes only the derived
 Overthrust elastic-forward increment.
+
+## D045 — Local scientific-data directory contract
+
+**Status:** Accepted and implemented, 2026-09-14
+
+Every local dataset under `data/<dataset>/` separates immutable downloaded
+volumes in `source/`, prepared HDF5 volumes in `models/`, dataset-level model
+plots in `figures/model/`, and run artifacts in `runs/<run_id>/`. Every run
+uses the same `config.yaml`, `output/`, `figures/`, `logs/`, and `reports/`
+layout. Checksums and inventories stay in `manifests/`.
+
+Run configurations resolve model and output paths relative to their own
+directory, so the complete data tree can move with the repository. Build
+trees, helper source, and executables belong under the repository-level
+`build/` directory. Large scientific data remains ignored by Git, while
+`data/README.md` is versioned as the directory contract.
+
+## D046 — Stateful CUDA forward ownership for interactive consumers
+
+**Status:** Accepted and verified, 2026-09-15
+
+The production CUDA state is now owned by a file-format-independent
+`CudaForwardSession`. A caller chooses a positive whole-step batch size; the
+session synchronizes at the batch boundary and advances its completed-step
+metadata only after successful synchronization. The CLI uses one full batch,
+while a future desktop controller may use short batches for cooperative
+control. The session exposes only const device wavefield views and permits
+final trace download only after completion. It owns no thread, GUI state,
+snapshot policy, or RTM behavior.
+
+Direct CUDA composition and uneven session batches matched bitwise in all nine
+fields and all traces. The dense Overthrust SEG-Y also remained byte-for-byte
+identical to the accepted output.
+
+## D047 — One aligned physical scalar is the solver-render boundary
+
+**Status:** Accepted and verified, 2026-09-15
+
+The solver-side visualization boundary is one reusable full-resolution
+`float32` physical volume in canonical `[z][y][x]` order. It excludes halo and
+absorbing cells. Supported initial fields are centred Vx, Vy, Vz, speed,
+divergence, and curl magnitude. Face velocities and natural edge-lattice curl
+components are interpolated to one integer lattice before scalar formation.
+
+Filtered downsampling, buffering, CUDA/OpenGL interop, render scheduling,
+colour/opacity mapping, screenshots, videos, and scientific snapshots remain
+outside this boundary. This prevents transient display policy from entering
+the wave solver and prevents an unfiltered decimation path from becoming a
+scientific output convention.
+
+The future desktop controller must account for all persistent display volumes
+through the existing forward memory plan's `workspace_bytes`. Three target-grid
+volumes consume 89,760,000 bytes (about 85.6 MiB); this cost is therefore part
+of the same preflight rejection decision as the solver state and traces.
