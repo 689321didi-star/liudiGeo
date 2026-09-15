@@ -12,6 +12,8 @@ cmake-build-*/
 *.a
 *.lib
 *.pdb
+*.pyc
+__pycache__/
 
 # CUDA generated files
 *.cubin
@@ -32,7 +34,8 @@ checkpoints/
 *.log
 
 # Large modeling data
-data/
+data/*
+!data/README.md
 *.bin
 *.h5
 *.hdf5

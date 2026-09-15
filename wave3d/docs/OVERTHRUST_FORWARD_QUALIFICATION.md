@@ -76,7 +76,7 @@ step therefore remained unchanged.
 The command was:
 
 ```text
-build-all/wave3d_run data/overthrust/overthrust_small.yaml
+build-all/wave3d_run data/overthrust/runs/forward_11x11/config.yaml
 ```
 
 It completed all 3000 steps without a CUDA error:
@@ -130,3 +130,18 @@ Overthrust+all-adapters compile/test: passed
 
 Increment 14 is complete. This qualification does not authorize or claim
 attenuation, anisotropy, fluids, RTM, imaging, or another geological model.
+
+## 2026-09-15 pre-optimization reproducibility check
+
+The unchanged 101 x 101 receiver experiment was repeated before solver
+optimization. All 26 repository tests passed first. The full run exited zero
+and produced a 374,584,320-byte SEG-Y whose SHA-256 was
+`3854ec1776b3fbfa5ed3000869c99341c7aa67a03980295a04fe14e8087914c9`.
+It was byte-for-byte identical to the accepted canonical dense output.
+
+The independent verifier scanned all 30,603 headers and 91,809,000 samples;
+all samples were finite, all 10,201 arrivals satisfied their bounds, and the
+Mxy polarity test matched 9,895/10,000 off-axis receivers. Propagation took
+241,562.642 ms, 20.54% above the preceding 200,400.441 ms measurement, so
+performance changes will use controlled repeated runs. The duplicate SEG-Y
+and the temporary validation plot were removed after verification.
