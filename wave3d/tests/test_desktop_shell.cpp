@@ -2,10 +2,16 @@
 #include "wave3d/desktop/project_workspace.hpp"
 #include "wave3d/desktop/theme.hpp"
 
+#ifdef WAVE3D_DESKTOP_HAS_HDF5
+#include "wave3d/io/hdf5.hpp"
+#endif
+
 #include <QAction>
 #include <QApplication>
 #include <QComboBox>
 #include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QFrame>
 #include <QLabel>
 #include <QListWidget>
@@ -94,6 +100,9 @@ void test_shell_contract() {
     const auto* snapshot = require_child<QAction>(window, "snapshotAction");
     expect(!snapshot->isEnabled(), "wavefield snapshot must remain disabled");
     expect(
+        !require_child<QAction>(window, "importHdf5ModelAction")->isEnabled(),
+        "model import must remain gated without an open project");
+    expect(
         require_child<QLabel>(window, "runStateLabel")->text() ==
             QStringLiteral("空闲"),
         "desktop shell must start idle");
@@ -145,6 +154,20 @@ void test_project_window_state() {
             !require_child<QAction>(window, "startRunAction")->isEnabled() &&
             !require_child<QPushButton>(window, "startRunButton")->isEnabled(),
         "scientific actions must remain gated after project creation");
+#ifdef WAVE3D_DESKTOP_HAS_HDF5
+    expect(
+        require_child<QAction>(window, "importHdf5ModelAction")->isEnabled(),
+        "HDF5-enabled project did not enable model import");
+#else
+    expect(
+        !require_child<QAction>(window, "importHdf5ModelAction")->isEnabled(),
+        "HDF5-off project exposed model import");
+    error.clear();
+    expect(
+        !window.import_hdf5_model(QStringLiteral("unused.h5"), &error) &&
+            !error.isEmpty(),
+        "HDF5-off model import must fail explicitly");
+#endif
 
     auto* selector =
         require_child<QComboBox>(window, "displayFieldSelector");
@@ -191,6 +214,155 @@ void test_project_window_state() {
         "invalid project open must report failure without throwing");
 }
 
+#ifdef WAVE3D_DESKTOP_HAS_HDF5
+wave3d::PhysicalModel model_fixture() {
+    const wave3d::Grid3D grid{
+        4, 3, 5,
+        10.0F, 20.0F, 30.0F,
+        6,
+        {2, 2}, {2, 2}, {0, 2}};
+    auto model = wave3d::make_homogeneous_model(
+        grid, {3600.0F, 2000.0F, 2400.0F});
+    model.vp_m_s.front() = 3000.0F;
+    model.vp_m_s.back() = 4500.0F;
+    model.vs_m_s.front() = 1700.0F;
+    model.vs_m_s.back() = 2500.0F;
+    model.density_kg_m3.front() = 2200.0F;
+    model.density_kg_m3.back() = 2700.0F;
+    return model;
+}
+
+QByteArray file_bytes(const QString& path) {
+    QFile input(path);
+    if (!input.open(QIODevice::ReadOnly)) {
+        throw std::runtime_error("cannot read test file");
+    }
+    return input.readAll();
+}
+
+void test_hdf5_model_import() {
+    QTemporaryDir temporary;
+    expect(temporary.isValid(), "temporary model workspace is unavailable");
+    const auto project_root =
+        QDir(temporary.path()).filePath(QStringLiteral("model-project"));
+    const auto second_project_root =
+        QDir(temporary.path()).filePath(QStringLiteral("empty-project"));
+    const auto source =
+        QDir(temporary.path()).filePath(QStringLiteral("fixture.h5"));
+    wave3d::io::write_hdf5_model(source.toStdString(), model_fixture());
+    const auto original_bytes = file_bytes(source);
+
+    wave3d::desktop::MainWindow window;
+    QString error;
+    expect(
+        !window.import_hdf5_model(source, &error) && !error.isEmpty(),
+        "model import without an open project must fail explicitly");
+    error.clear();
+    expect(
+        window.create_project(
+            project_root, QStringLiteral("模型导入测试"), &error),
+        "model import project creation failed");
+    expect(
+        require_child<QAction>(window, "importHdf5ModelAction")->isEnabled(),
+        "HDF5 import action was not enabled for an open project");
+    expect(
+        window.import_hdf5_model(source, &error),
+        "valid external HDF5 model import failed");
+
+    const auto copied =
+        QDir(project_root).filePath(QStringLiteral("models/fixture.h5"));
+    expect(
+        QFileInfo::exists(source) && QFileInfo::exists(copied),
+        "model import must retain the source and create the project copy");
+    expect(
+        file_bytes(source) == original_bytes &&
+            file_bytes(copied) == original_bytes,
+        "model import changed the source or did not make an exact copy");
+    expect(
+        window.current_project()->model_reference ==
+            QStringLiteral("models/fixture.h5"),
+        "active project model reference is incorrect");
+    expect(
+        wave3d::desktop::ProjectWorkspace::load(project_root).model_reference ==
+            QStringLiteral("models/fixture.h5"),
+        "model reference was not persisted");
+    expect(
+        require_child<QComboBox>(window, "modelPropertySelector")->isEnabled(),
+        "model property selector was not enabled");
+    expect(
+        require_child<QLabel>(window, "modelGridLabel")->text() ==
+            QStringLiteral("4 × 3 × 5"),
+        "model grid metadata was not populated");
+    expect(
+        require_child<QLabel>(window, "modelStateBadge")->text() ==
+            QStringLiteral("模型已加载"),
+        "model state badge was not updated");
+
+    const std::array<std::pair<const char*, QSize>, 4> expected_images{{
+        {"volumeViewport", QSize(4, 3)},
+        {"xyViewport", QSize(4, 3)},
+        {"xzViewport", QSize(4, 5)},
+        {"yzViewport", QSize(3, 5)}}};
+    for (const auto& [name, size] : expected_images) {
+        const auto* viewport = require_child<QOpenGLWidget>(window, name);
+        expect(
+            viewport->property("hasScientificImage").toBool(),
+            "imported model did not populate every scientific viewport");
+        expect(
+            viewport->property("scientificImageSize").toSize() == size,
+            "scientific viewport received a section with incorrect dimensions");
+    }
+
+    wave3d::desktop::MainWindow reopened;
+    expect(
+        reopened.current_project() != nullptr &&
+            reopened.current_project()->model_reference ==
+                QStringLiteral("models/fixture.h5") &&
+            require_child<QOpenGLWidget>(reopened, "xyViewport")
+                ->property("hasScientificImage")
+                .toBool(),
+        "reopening a project did not reload its referenced model");
+
+    auto* property =
+        require_child<QComboBox>(window, "modelPropertySelector");
+    property->setCurrentIndex(property->findData(QStringLiteral("density")));
+    expect(
+        require_child<QOpenGLWidget>(window, "yzViewport")
+            ->property("hasScientificImage")
+            .toBool(),
+        "property switching cleared the scientific section");
+
+    error.clear();
+    expect(
+        !window.import_hdf5_model(source, &error) && !error.isEmpty(),
+        "existing project model must not be overwritten");
+    expect(
+        file_bytes(copied) == original_bytes &&
+            wave3d::io::read_hdf5_model(copied.toStdString()).grid.nx == 4,
+        "overwrite refusal damaged the existing project model");
+
+    expect(
+        window.create_project(
+            second_project_root, QStringLiteral("空模型项目"), &error),
+        "second project creation failed");
+    expect(
+        !require_child<QComboBox>(window, "modelPropertySelector")->isEnabled(),
+        "switching to an empty project retained the prior model selector");
+    expect(
+        require_child<QLabel>(window, "modelGridLabel")->text() ==
+            QStringLiteral("—"),
+        "switching to an empty project retained prior model metadata");
+    for (const auto& [name, unused] : expected_images) {
+        static_cast<void>(unused);
+        expect(
+            !require_child<QOpenGLWidget>(window, name)
+                 ->property("hasScientificImage")
+                 .toBool(),
+            "switching to an empty project retained a prior model image");
+    }
+}
+#endif
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -203,6 +375,9 @@ int main(int argc, char** argv) {
     try {
         test_shell_contract();
         test_project_window_state();
+#ifdef WAVE3D_DESKTOP_HAS_HDF5
+        test_hdf5_model_import();
+#endif
         std::cout << "desktop shell tests passed\n";
         return 0;
     } catch (const std::exception& error) {

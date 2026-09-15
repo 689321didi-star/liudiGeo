@@ -778,3 +778,22 @@ contract used by organized datasets. A prepared run retains the exact resolved
 YAML bytes and an immutable `wave3d.desktop.run.v1` manifest containing the
 project ID, shot ID, run ID, creation time, and configuration SHA-256. Existing
 project directories and run IDs are rejected instead of merged or overwritten.
+
+## D051 — Validated CPU model scene precedes GPU volume rendering
+
+**Status:** Accepted and verified, 2026-09-15
+
+Static desktop model inspection consumes `PhysicalModel` through the existing
+`wave3d.model.v1` HDF5 adapter. The scene owns the validated CPU arrays in
+canonical `[z][y][x]` order and produces central XY, XZ, and YZ images. XY
+places increasing y upward; XZ and YZ place positive z downward. Vp, Vs, and
+density each use their own full-volume range with one sequential three-stop
+map from `(8,29,55)` through `(23,132,160)` to `(250,221,90)`.
+
+An external model is copied byte-for-byte into `models/` using a temporary
+file and atomic publication. An existing destination is never overwritten,
+and the project stores only the safe relative reference after the copied model
+has loaded successfully. The 3-D viewport temporarily presents the same
+center-XY image with an explicit static-preview label. This establishes the
+model/indexing contract without implying that 3-D texture upload, ray casting,
+interactive slices, or crop editing are implemented.

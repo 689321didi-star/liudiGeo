@@ -37,7 +37,7 @@ int inspect_shell(wave3d::desktop::MainWindow& window) {
               << (field == nullptr ? "" : field->currentData().toString().toStdString())
               << '\n';
     return viewports.size() == 4 && field != nullptr && field->count() == 6 &&
-                   field->currentData().toString() == QStringLiteral("speed")
+                   field->findData(QStringLiteral("speed")) >= 0
                ? 0
                : 1;
 }
@@ -79,12 +79,34 @@ int main(int argc, char** argv) {
         QStringLiteral("capture-shell"),
         QStringLiteral("渲染界面并将审查图保存到指定路径"),
         QStringLiteral("path"));
+    const QCommandLineOption project_option(
+        QStringLiteral("project"),
+        QStringLiteral("打开指定 Wave3D 项目目录"),
+        QStringLiteral("directory"));
+    const QCommandLineOption import_model_option(
+        QStringLiteral("import-model"),
+        QStringLiteral("向当前项目导入指定 HDF5 模型"),
+        QStringLiteral("path"));
     parser.addOption(inspect_option);
     parser.addOption(smoke_option);
     parser.addOption(capture_option);
+    parser.addOption(project_option);
+    parser.addOption(import_model_option);
     parser.process(application);
 
-    wave3d::desktop::MainWindow window;
+    wave3d::desktop::MainWindow window(
+        nullptr, !parser.isSet(project_option));
+    QString error;
+    if (parser.isSet(project_option) &&
+        !window.open_project(parser.value(project_option), &error)) {
+        std::cerr << "Cannot open project: " << error.toStdString() << '\n';
+        return 2;
+    }
+    if (parser.isSet(import_model_option) &&
+        !window.import_hdf5_model(parser.value(import_model_option), &error)) {
+        std::cerr << "Cannot import model: " << error.toStdString() << '\n';
+        return 2;
+    }
     if (parser.isSet(inspect_option)) {
         return inspect_shell(window);
     }

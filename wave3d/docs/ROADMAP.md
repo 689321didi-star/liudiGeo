@@ -510,6 +510,25 @@ project, persist window state, and keep scientific actions gated. A fresh
 desktop build passed 19/19, CUDA/YAML/HDF5/SEG-Y passed 28/28, the default
 build remained Qt-free, and WSLg OpenGL smoke passed.
 
+## Increment 19 — Static HDF5 model inspection
+
+**Goal:** Load a real validated Wave3D model and display scientifically indexed
+static metadata and central orthogonal sections without launching propagation.
+
+**Work:** Add an HDF5-conditional desktop model scene, immutable project import,
+Vp/Vs/density selection, model metadata, and synchronized XY/XZ/YZ images.
+
+**Acceptance:** The focused model-scene, project-import, HDF5-off boundary,
+clean desktop, WSLg smoke, and existing regression checks in
+`INCREMENT_19_STATIC_HDF5_MODEL_PLAN.md` pass.
+
+**Status:** Verified on 2026-09-15. The existing HDF5 adapter now feeds a
+validated desktop scene with model metadata, immutable project import,
+Vp/Vs/density selection, and correctly oriented central XY/XZ/YZ images. Both
+HDF5-on and HDF5-off desktop suites, the full CUDA regression, and the real
+Overthrust WSLg capture passed their declared gates. The large viewport is
+still an explicitly labelled static preview; volume ray casting is deferred.
+
 ## Deferred research phases
 
 After elastic forward qualification, separate future phases may implement

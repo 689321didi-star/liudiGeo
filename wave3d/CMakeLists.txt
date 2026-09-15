@@ -428,6 +428,15 @@ if(WAVE3D_BUILD_DESKTOP)
     target_link_libraries(
         wave3d_desktop_project PUBLIC wave3d_core Qt6::Core)
 
+    if(WAVE3D_ENABLE_HDF5)
+        add_library(
+            wave3d_desktop_static_model STATIC
+            src/desktop/static_model_scene.cpp)
+        target_link_libraries(
+            wave3d_desktop_static_model
+            PUBLIC wave3d_core wave3d_io_hdf5 Qt6::Core Qt6::Gui)
+    endif()
+
     add_library(
         wave3d_desktop_shell STATIC
         src/desktop/main_window.cpp
@@ -442,11 +451,32 @@ if(WAVE3D_BUILD_DESKTOP)
             Qt6::Widgets
             Qt6::OpenGL
             Qt6::OpenGLWidgets)
+    if(WAVE3D_ENABLE_HDF5)
+        target_link_libraries(
+            wave3d_desktop_shell PUBLIC wave3d_desktop_static_model)
+        target_compile_definitions(
+            wave3d_desktop_shell PUBLIC WAVE3D_DESKTOP_HAS_HDF5=1)
+    endif()
 
     add_executable(wave3d_studio apps/studio/main.cpp)
     target_link_libraries(wave3d_studio PRIVATE wave3d_desktop_shell)
 
     if(WAVE3D_BUILD_TESTS)
+        if(WAVE3D_ENABLE_HDF5)
+            add_executable(
+                wave3d_desktop_static_model_tests
+                tests/test_desktop_static_model.cpp)
+            target_link_libraries(
+                wave3d_desktop_static_model_tests
+                PRIVATE wave3d_desktop_static_model)
+            add_test(
+                NAME wave3d_desktop_static_model_tests
+                COMMAND wave3d_desktop_static_model_tests)
+            set_tests_properties(
+                wave3d_desktop_static_model_tests
+                PROPERTIES LABELS "desktop;io;model;visualization")
+        endif()
+
         add_executable(
             wave3d_desktop_project_tests
             tests/test_desktop_project_workspace.cpp)

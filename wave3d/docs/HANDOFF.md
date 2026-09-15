@@ -1,6 +1,6 @@
 # Wave3D Project Handoff
 
-Last updated: 2026-09-09
+Last updated: 2026-09-15
 
 ## Purpose
 
@@ -615,7 +615,7 @@ qualified separately in Increments 8 and 9.
 - Compute Sanitizer memcheck, initcheck, racecheck, and synccheck: zero errors,
   hazards, or warnings.
 
-## Exact next action
+## Historical next action after Increment 4e
 
 The elastic forward roadmap, single-file SEG-Y amendment, and general
 YAML/HDF5-input production driver are complete through Increment 13. The user
@@ -1247,7 +1247,62 @@ ctest --test-dir build/overthrust --output-on-failure --parallel 2
 # 28/28 passed
 ```
 
-Forward-YAML editing/parsing, model loading, scientific volume rendering,
-source/acquisition editors, CUDA worker ownership, and SEG-Y result viewing
-remain deferred. Increment 19 should be predeclared before starting the static
-model scene.
+## Increment 19 static HDF5 model inspection
+
+The desktop now has an HDF5-conditional `wave3d_desktop_static_model` layer.
+It uses `read_hdf5_model` and retains the validated CPU `PhysicalModel`, grid,
+physical extents, Vp/Vs/density extrema, and central indices. Its images are
+generated directly from canonical `[z][y][x]` data: XY displays increasing y
+upward, while XZ and YZ display positive depth downward. Each property uses
+its full-volume range and the documented blue/teal/yellow sequential map.
+
+Model import requires an open project. An external HDF5 is copied exactly to
+`models/` using `QSaveFile` atomic publication, an existing destination is
+refused, and only a successfully loaded model receives a persisted relative
+reference. Reopening the project reloads that reference. Opening an empty
+project clears the prior images, metadata, and property control so data cannot
+leak visually between projects.
+
+The shell adds an import action, model-information dock, Vp/Vs/density
+selector, and real synchronized central sections. The large viewport currently
+shows a scaled center-XY preview labelled as static; it is not claimed as 3-D
+volume rendering. Explicit `--project` and `--import-model` paths support
+repeatable inspection and capture.
+
+Final verification on 2026-09-15:
+
+```text
+cmake --build build/desktop19 --parallel 4
+ctest --test-dir build/desktop19 --output-on-failure
+# HDF5 enabled: 21/21 passed
+
+cmake --build build/desktop18 --parallel 4
+ctest --test-dir build/desktop18 --output-on-failure
+# HDF5 disabled: 19/19 passed
+
+cmake --build build/desktop17-default --parallel 4
+ctest --test-dir build/desktop17-default --output-on-failure
+# desktop disabled: 17/17 passed; wave3d_studio target absent
+
+QT_QPA_PLATFORM=xcb build/desktop19/wave3d_studio \
+  --project build/desktop19/review_project \
+  --import-model data/overthrust/models/elastic_200x200x187.h5 \
+  --capture-shell build/desktop19/review/wave3d-static-overthrust.png
+# exited 0 after all four OpenGL contexts became valid; 1278 x 1089 PNG
+
+ctest --test-dir build/overthrust --output-on-failure
+# CUDA/YAML/HDF5/SEG-Y: 28/28 passed
+```
+
+The real `200 x 200 x 187` Overthrust capture was inspected. The reported
+25 m spacing, 4975/4975/4650 m extents, and Vp/Vs/density ranges were present.
+The square XY section and near-square depth sections retained their correct
+aspect ratios; the lateral center slice and dipping/layered vertical slices
+were consistent with the source model, with no observed transpose, mirror, or
+font-rendering defect. The screenshot and copied review model remain ignored
+build artifacts.
+
+Before the next implementation, predeclare Increment 20. Its narrow purpose
+should be interactive slice coordinates plus immutable crop definition and
+provenance; 3-D ray casting, experiment editors, CUDA worker ownership, live
+wavefields, and SEG-Y result viewing remain later increments.

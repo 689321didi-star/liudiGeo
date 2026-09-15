@@ -5,15 +5,21 @@
 #include <QMainWindow>
 #include <QString>
 
+#include <memory>
 #include <optional>
 
 class QCloseEvent;
 
 namespace wave3d::desktop {
 
+class StaticModelScene;
+
 class MainWindow final : public QMainWindow {
 public:
-    explicit MainWindow(QWidget* parent = nullptr);
+    explicit MainWindow(
+        QWidget* parent = nullptr,
+        bool restore_last_project = true);
+    ~MainWindow() override;
 
     [[nodiscard]] bool create_project(
         const QString& root_directory,
@@ -24,6 +30,10 @@ public:
         const QString& root_directory,
         QString* error_message = nullptr);
 
+    [[nodiscard]] bool import_hdf5_model(
+        const QString& source_path,
+        QString* error_message = nullptr);
+
     [[nodiscard]] const ProjectDocument* current_project() const noexcept;
     [[nodiscard]] const QString& current_project_root() const noexcept;
 
@@ -32,10 +42,14 @@ protected:
 
 private:
     void activate_project(QString root_directory, ProjectDocument project);
+    void clear_model_view();
+    void update_model_view();
+    void populate_model_information();
     void save_window_settings();
 
     QString project_root_;
     std::optional<ProjectDocument> project_;
+    std::unique_ptr<StaticModelScene> model_scene_;
 };
 
 } // namespace wave3d::desktop

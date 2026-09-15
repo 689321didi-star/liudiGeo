@@ -444,6 +444,21 @@ SHA-256 with the project and shot IDs in `manifest.json`, and creates separate
 `output/`, `figures/`, `logs/`, and `reports/` directories. There is no update
 API for a prepared run; a changed experiment receives a new run ID.
 
+When HDF5 is also enabled, Increment 19 adds
+`wave3d_desktop_static_model` between the HDF5 adapter and Widgets shell. It
+owns one validated `PhysicalModel` and derives display-only QImages; neither
+the HDF5 adapter nor the scientific model layer depends on Qt. Its slice
+contract follows canonical `[z][y][x]` storage, displays y upward in XY and
+positive depth downward in XZ/YZ, and normalizes against the selected
+property's full-volume extrema. These images are presentation products and do
+not alter or replace the original physical arrays.
+
+The project import path copies an external model atomically into `models/`,
+then atomically saves its relative reference. Static scene ownership remains
+separate from the future GPU render transport. The large viewport currently
+uses a labelled center-XY preview; a later renderer may upload the same
+validated model to a 3-D texture without changing the project or HDF5 layers.
+
 Increment 11 verifies that behavior by configuring and building with the whole
 `optional/rtm` tree temporarily absent. RTM-off exposes only the forward views,
 observer, factory, and receiver reader; RTM-on adds the header-only checkpoint
