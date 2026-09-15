@@ -9,9 +9,11 @@
 #include <QPainter>
 #include <QPixmap>
 #include <QSurfaceFormat>
+#include <QSpinBox>
 #include <QTimer>
 
 #include <iostream>
+#include <vector>
 
 namespace {
 
@@ -54,6 +56,37 @@ bool capture_shell(wave3d::desktop::MainWindow& window, const QString& path) {
     return image.save(path);
 }
 
+bool set_spin_values(
+    wave3d::desktop::MainWindow& window,
+    const QString& text,
+    const std::vector<const char*>& names,
+    QString* error) {
+    const auto values = text.split(QLatin1Char(','));
+    if (values.size() != static_cast<qsizetype>(names.size())) {
+        *error = QStringLiteral("参数数量不正确");
+        return false;
+    }
+    std::vector<int> parsed;
+    parsed.reserve(names.size());
+    for (qsizetype index = 0; index < values.size(); ++index) {
+        bool valid = false;
+        const auto value = values[index].toInt(&valid);
+        auto* spin = window.findChild<QSpinBox*>(
+            QString::fromUtf8(names[static_cast<std::size_t>(index)]));
+        if (!valid || spin == nullptr || !spin->isEnabled() ||
+            value < spin->minimum() || value > spin->maximum()) {
+            *error = QStringLiteral("参数超出当前模型范围");
+            return false;
+        }
+        parsed.push_back(value);
+    }
+    for (std::size_t index = 0; index < names.size(); ++index) {
+        window.findChild<QSpinBox*>(QString::fromUtf8(names[index]))
+            ->setValue(parsed[index]);
+    }
+    return true;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -87,11 +120,21 @@ int main(int argc, char** argv) {
         QStringLiteral("import-model"),
         QStringLiteral("向当前项目导入指定 HDF5 模型"),
         QStringLiteral("path"));
+    const QCommandLineOption slice_option(
+        QStringLiteral("slice-indices"),
+        QStringLiteral("设置审查切面 x,y,z"),
+        QStringLiteral("x,y,z"));
+    const QCommandLineOption crop_option(
+        QStringLiteral("crop-bounds"),
+        QStringLiteral("设置含端点的审查裁剪范围"),
+        QStringLiteral("x0,x1,y0,y1,z0,z1"));
     parser.addOption(inspect_option);
     parser.addOption(smoke_option);
     parser.addOption(capture_option);
     parser.addOption(project_option);
     parser.addOption(import_model_option);
+    parser.addOption(slice_option);
+    parser.addOption(crop_option);
     parser.process(application);
 
     wave3d::desktop::MainWindow window(
@@ -105,6 +148,25 @@ int main(int argc, char** argv) {
     if (parser.isSet(import_model_option) &&
         !window.import_hdf5_model(parser.value(import_model_option), &error)) {
         std::cerr << "Cannot import model: " << error.toStdString() << '\n';
+        return 2;
+    }
+    if (parser.isSet(slice_option) &&
+        !set_spin_values(
+            window,
+            parser.value(slice_option),
+            {"sliceXSpin", "sliceYSpin", "sliceZSpin"},
+            &error)) {
+        std::cerr << "Cannot set slice indices: " << error.toStdString() << '\n';
+        return 2;
+    }
+    if (parser.isSet(crop_option) &&
+        !set_spin_values(
+            window,
+            parser.value(crop_option),
+            {"cropXBeginSpin", "cropXEndSpin", "cropYBeginSpin",
+             "cropYEndSpin", "cropZBeginSpin", "cropZEndSpin"},
+            &error)) {
+        std::cerr << "Cannot set crop bounds: " << error.toStdString() << '\n';
         return 2;
     }
     if (parser.isSet(inspect_option)) {

@@ -20,6 +20,7 @@
 #include <QPushButton>
 #include <QSettings>
 #include <QSplitter>
+#include <QSpinBox>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QToolBar>
@@ -59,6 +60,14 @@ void test_shell_contract() {
     for (const char* name : {
              "volumeViewport", "xyViewport", "xzViewport", "yzViewport"}) {
         static_cast<void>(require_child<QOpenGLWidget>(window, name));
+    }
+    for (const char* name : {
+             "sliceXSpin", "sliceYSpin", "sliceZSpin",
+             "cropXBeginSpin", "cropXEndSpin", "cropYBeginSpin",
+             "cropYEndSpin", "cropZBeginSpin", "cropZEndSpin"}) {
+        expect(
+            !require_child<QSpinBox>(window, name)->isEnabled(),
+            "model index controls must start disabled");
     }
 
     const auto* four_view = require_child<QSplitter>(window, "fourViewSplitter");
@@ -313,6 +322,22 @@ void test_hdf5_model_import() {
             "scientific viewport received a section with incorrect dimensions");
     }
 
+    auto* slice_z = require_child<QSpinBox>(window, "sliceZSpin");
+    expect(
+        slice_z->minimum() == 0 && slice_z->maximum() == 4 &&
+            slice_z->value() == 2,
+        "slice controls were not configured from model dimensions");
+    const auto prior_key =
+        require_child<QOpenGLWidget>(window, "xyViewport")
+            ->property("scientificImageCacheKey")
+            .toULongLong();
+    slice_z->setValue(1);
+    expect(
+        require_child<QOpenGLWidget>(window, "xyViewport")
+                ->property("scientificImageCacheKey")
+                .toULongLong() != prior_key,
+        "changing a slice index did not publish a new synchronized image");
+
     wave3d::desktop::MainWindow reopened;
     expect(
         reopened.current_project() != nullptr &&
@@ -341,6 +366,47 @@ void test_hdf5_model_import() {
             wave3d::io::read_hdf5_model(copied.toStdString()).grid.nx == 4,
         "overwrite refusal damaged the existing project model");
 
+    require_child<QSpinBox>(window, "cropXBeginSpin")->setValue(1);
+    require_child<QSpinBox>(window, "cropXEndSpin")->setValue(3);
+    require_child<QSpinBox>(window, "cropYBeginSpin")->setValue(0);
+    require_child<QSpinBox>(window, "cropYEndSpin")->setValue(1);
+    require_child<QSpinBox>(window, "cropZBeginSpin")->setValue(1);
+    require_child<QSpinBox>(window, "cropZEndSpin")->setValue(4);
+    expect(
+        require_child<QPushButton>(window, "createCropButton")->isEnabled(),
+        "valid crop controls did not enable derivation");
+    error.clear();
+    expect(
+        window.create_cropped_model(QStringLiteral("ui_crop"), &error),
+        "valid UI crop derivation failed");
+    const auto crop_path =
+        QDir(project_root).filePath(QStringLiteral("models/ui_crop.h5"));
+    const auto provenance_path = QDir(project_root).filePath(
+        QStringLiteral("manifests/models/ui_crop.json"));
+    expect(
+        QFileInfo::exists(crop_path) && QFileInfo::exists(provenance_path) &&
+            QFileInfo::exists(copied),
+        "UI crop did not retain source/model/provenance artifacts");
+    expect(
+        window.current_project()->model_reference ==
+                QStringLiteral("models/ui_crop.h5") &&
+            wave3d::desktop::ProjectWorkspace::load(project_root)
+                    .model_reference == QStringLiteral("models/ui_crop.h5") &&
+            wave3d::io::read_hdf5_model(crop_path.toStdString()).grid.nx == 3 &&
+            require_child<QSpinBox>(window, "sliceZSpin")->maximum() == 3,
+        "UI crop did not activate the derived model or reset its controls");
+
+    require_child<QSpinBox>(window, "cropXBeginSpin")->setValue(2);
+    require_child<QSpinBox>(window, "cropXEndSpin")->setValue(1);
+    expect(
+        !require_child<QPushButton>(window, "createCropButton")->isEnabled(),
+        "invalid crop range did not disable derivation");
+    error.clear();
+    expect(
+        !window.create_cropped_model(QStringLiteral("invalid_crop"), &error) &&
+            !error.isEmpty(),
+        "invalid UI crop bounds must fail explicitly");
+
     expect(
         window.create_project(
             second_project_root, QStringLiteral("空模型项目"), &error),
@@ -360,6 +426,10 @@ void test_hdf5_model_import() {
                  .toBool(),
             "switching to an empty project retained a prior model image");
     }
+    expect(
+        !require_child<QSpinBox>(window, "sliceXSpin")->isEnabled() &&
+            !require_child<QPushButton>(window, "createCropButton")->isEnabled(),
+        "switching to an empty project retained crop controls");
 }
 #endif
 

@@ -89,6 +89,59 @@ void test_static_model_contract() {
     expect(
         scene.source_path() == QFileInfo(path).absoluteFilePath(),
         "model source path was not canonicalized");
+
+    const auto top = scene.xy_slice(wave3d::desktop::ModelProperty::Vp, 0);
+    expect(top.size() == QSize(4, 3), "arbitrary XY section size changed");
+    expect(
+        top.pixelColor(0, 2) != xy.pixelColor(0, 2),
+        "arbitrary XY index did not select a different physical plane");
+    bool rejected = false;
+    try {
+        static_cast<void>(
+            scene.yz_slice(wave3d::desktop::ModelProperty::Vp, 4));
+    } catch (const std::out_of_range&) {
+        rejected = true;
+    }
+    expect(rejected, "out-of-range model slice must be rejected");
+
+    const auto cropped = scene.cropped_model({1, 4, 0, 2, 1, 5});
+    expect(
+        cropped.grid.nx == 3 && cropped.grid.ny == 2 && cropped.grid.nz == 4,
+        "crop dimensions changed");
+    expect(
+        cropped.grid.dx_m == summary.grid.dx_m &&
+            cropped.grid.dy_m == summary.grid.dy_m &&
+            cropped.grid.dz_m == summary.grid.dz_m &&
+            cropped.grid.halo == summary.grid.halo &&
+            cropped.grid.x_boundary.lower_absorbing ==
+                summary.grid.x_boundary.lower_absorbing,
+        "crop did not preserve spacing or storage metadata");
+    const auto source_model = fixture();
+    for (std::size_t z = 0; z < cropped.grid.nz; ++z) {
+        for (std::size_t y = 0; y < cropped.grid.ny; ++y) {
+            for (std::size_t x = 0; x < cropped.grid.nx; ++x) {
+                const auto destination =
+                    cropped.grid.physical_linear_index(x, y, z);
+                const auto source_index = source_model.grid.physical_linear_index(
+                    x + 1, y, z + 1);
+                expect(
+                    cropped.vp_m_s[destination] ==
+                            source_model.vp_m_s[source_index] &&
+                        cropped.vs_m_s[destination] ==
+                            source_model.vs_m_s[source_index] &&
+                        cropped.density_kg_m3[destination] ==
+                            source_model.density_kg_m3[source_index],
+                    "crop changed canonical three-property sample mapping");
+            }
+        }
+    }
+    rejected = false;
+    try {
+        static_cast<void>(scene.cropped_model({1, 1, 0, 2, 0, 2}));
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    expect(rejected, "empty crop must be rejected");
 }
 
 } // namespace

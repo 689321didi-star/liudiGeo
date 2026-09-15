@@ -797,3 +797,20 @@ has loaded successfully. The 3-D viewport temporarily presents the same
 center-XY image with an explicit static-preview label. This establishes the
 model/indexing contract without implying that 3-D texture upload, ray casting,
 interactive slices, or crop editing are implemented.
+
+## D052 — Crops use half-open source indices and a reversible local origin
+
+**Status:** Accepted and verified, 2026-09-15
+
+The scientific crop contract uses zero-based half-open x/y/z ranges. The UI
+shows inclusive endpoints and converts once at its boundary. A derived model
+keeps the source spacing, halo, and absorbing-boundary metadata while its local
+physical coordinates restart at `(0,0,0)`. The derivation manifest records the
+source begin index and its meter offset on every axis, making the mapping back
+to the source volume explicit.
+
+Each crop creates a new HDF5 under `models/` and a
+`wave3d.desktop.model_derivation.v1` manifest under `manifests/models/`. Both
+source and output SHA-256 values are recorded. The HDF5 is reread and compared
+before atomic rename; the project reference changes only after the HDF5 and
+manifest exist. Imported and earlier derived models are never overwritten.

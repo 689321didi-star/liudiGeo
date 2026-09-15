@@ -33,6 +33,9 @@ public:
     [[nodiscard]] bool import_hdf5_model(
         const QString& source_path,
         QString* error_message = nullptr);
+    [[nodiscard]] bool create_cropped_model(
+        const QString& output_stem,
+        QString* error_message = nullptr);
 
     [[nodiscard]] const ProjectDocument* current_project() const noexcept;
     [[nodiscard]] const QString& current_project_root() const noexcept;
@@ -43,6 +46,7 @@ protected:
 private:
     void activate_project(QString root_directory, ProjectDocument project);
     void clear_model_view();
+    void update_crop_summary();
     void update_model_view();
     void populate_model_information();
     void save_window_settings();

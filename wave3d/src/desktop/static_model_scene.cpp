@@ -112,21 +112,45 @@ const QString& StaticModelScene::source_path() const noexcept {
 }
 
 QImage StaticModelScene::xy_slice(ModelProperty property) const {
-    return make_slice(property, 0);
+    return xy_slice(property, summary_.center_z);
 }
 
 QImage StaticModelScene::xz_slice(ModelProperty property) const {
-    return make_slice(property, 1);
+    return xz_slice(property, summary_.center_y);
 }
 
 QImage StaticModelScene::yz_slice(ModelProperty property) const {
-    return make_slice(property, 2);
+    return yz_slice(property, summary_.center_x);
+}
+
+QImage StaticModelScene::xy_slice(
+    ModelProperty property,
+    std::size_t z_index) const {
+    return make_slice(property, 0, z_index);
+}
+
+QImage StaticModelScene::xz_slice(
+    ModelProperty property,
+    std::size_t y_index) const {
+    return make_slice(property, 1, y_index);
+}
+
+QImage StaticModelScene::yz_slice(
+    ModelProperty property,
+    std::size_t x_index) const {
+    return make_slice(property, 2, x_index);
 }
 
 QImage StaticModelScene::make_slice(
     ModelProperty property,
-    int orientation) const {
+    int orientation,
+    std::size_t fixed_index) const {
     const auto& grid = model_.grid;
+    const auto limit = orientation == 0 ? grid.nz
+                                       : orientation == 1 ? grid.ny : grid.nx;
+    if (fixed_index >= limit) {
+        throw std::out_of_range("model slice index is outside the physical grid");
+    }
     const auto& values = property_values(model_, property);
     const auto [minimum, maximum] = property_range(model_, property);
 
@@ -135,9 +159,9 @@ QImage StaticModelScene::make_slice(
     QImage image(width, height, QImage::Format_RGB32);
     for (int row = 0; row < height; ++row) {
         for (int column = 0; column < width; ++column) {
-            std::size_t x = summary_.center_x;
-            std::size_t y = summary_.center_y;
-            std::size_t z = summary_.center_z;
+            std::size_t x = orientation == 2 ? fixed_index : summary_.center_x;
+            std::size_t y = orientation == 1 ? fixed_index : summary_.center_y;
+            std::size_t z = orientation == 0 ? fixed_index : summary_.center_z;
             if (orientation == 0) {
                 x = static_cast<std::size_t>(column);
                 y = grid.ny - 1 - static_cast<std::size_t>(row);
@@ -156,6 +180,44 @@ QImage StaticModelScene::make_slice(
         }
     }
     return image;
+}
+
+PhysicalModel StaticModelScene::cropped_model(
+    const ModelCropBounds& bounds) const {
+    const auto& source_grid = model_.grid;
+    if (bounds.x_begin >= bounds.x_end || bounds.x_end > source_grid.nx ||
+        bounds.y_begin >= bounds.y_end || bounds.y_end > source_grid.ny ||
+        bounds.z_begin >= bounds.z_end || bounds.z_end > source_grid.nz) {
+        throw std::invalid_argument("model crop bounds are empty or outside the grid");
+    }
+    auto output_grid = source_grid;
+    output_grid.nx = bounds.x_end - bounds.x_begin;
+    output_grid.ny = bounds.y_end - bounds.y_begin;
+    output_grid.nz = bounds.z_end - bounds.z_begin;
+    const auto count = output_grid.physical_cell_count();
+    PhysicalModel output{
+        output_grid,
+        std::vector<float>(count),
+        std::vector<float>(count),
+        std::vector<float>(count)};
+    for (std::size_t z = 0; z < output_grid.nz; ++z) {
+        for (std::size_t y = 0; y < output_grid.ny; ++y) {
+            for (std::size_t x = 0; x < output_grid.nx; ++x) {
+                const auto source = source_grid.physical_linear_index(
+                    bounds.x_begin + x,
+                    bounds.y_begin + y,
+                    bounds.z_begin + z);
+                const auto destination =
+                    output_grid.physical_linear_index(x, y, z);
+                output.vp_m_s[destination] = model_.vp_m_s[source];
+                output.vs_m_s[destination] = model_.vs_m_s[source];
+                output.density_kg_m3[destination] =
+                    model_.density_kg_m3[source];
+            }
+        }
+    }
+    require_valid_physical_model(output);
+    return output;
 }
 
 } // namespace wave3d::desktop

@@ -459,6 +459,20 @@ separate from the future GPU render transport. The large viewport currently
 uses a labelled center-XY preview; a later renderer may upload the same
 validated model to a 3-D texture without changing the project or HDF5 layers.
 
+Increment 20 adds an immutable derivation service beside the static scene.
+Views use arbitrary zero-based slice indices and one crop represented as
+half-open ranges. The UI translates its inclusive endpoints at the widget
+boundary and draws the same crop/crosshair state into XY, XZ, and YZ. Exact
+crop extraction copies all three material arrays in canonical order and
+preserves grid spacing plus halo/absorbing metadata.
+
+Derived HDF5 publication and project mutation are separate steps. The service
+writes and rereads a temporary model, renames it atomically, and publishes a
+checksum provenance manifest under `manifests/models/`. The window then loads
+the result and atomically updates the project reference. The derived grid uses
+a local zero origin; its manifest retains source offsets for reversible
+coordinate mapping.
+
 Increment 11 verifies that behavior by configuring and building with the whole
 `optional/rtm` tree temporarily absent. RTM-off exposes only the forward views,
 observer, factory, and receiver reader; RTM-on adds the header-only checkpoint

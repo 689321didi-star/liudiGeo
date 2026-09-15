@@ -1,4 +1,5 @@
 #include "wave3d/desktop/main_window.hpp"
+#include "wave3d/desktop/model_derivation.hpp"
 #include "wave3d/desktop/static_model_scene.hpp"
 
 #include <QAction>
@@ -12,6 +13,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QGroupBox>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QLabel>
@@ -28,6 +30,8 @@
 #include <QPushButton>
 #include <QSaveFile>
 #include <QSettings>
+#include <QSignalBlocker>
+#include <QSpinBox>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QTextEdit>
@@ -38,6 +42,7 @@
 #include <array>
 #include <exception>
 #include <stdexcept>
+#include <tuple>
 #include <utility>
 
 namespace wave3d::desktop {
@@ -59,6 +64,9 @@ public:
         message_ = std::move(message);
         setProperty("hasScientificImage", !image_.isNull());
         setProperty("scientificImageSize", image_.size());
+        setProperty(
+            "scientificImageCacheKey",
+            QVariant::fromValue<qulonglong>(image_.cacheKey()));
         update();
     }
 
@@ -67,6 +75,7 @@ public:
         message_ = std::move(message);
         setProperty("hasScientificImage", false);
         setProperty("scientificImageSize", QSize());
+        setProperty("scientificImageCacheKey", QVariant::fromValue<qulonglong>(0));
         update();
     }
 
@@ -167,6 +176,62 @@ void copy_file_atomically(
     if (!output.commit()) {
         throw std::runtime_error("cannot atomically publish project model copy");
     }
+}
+
+ModelCropBounds selected_crop_bounds(QMainWindow* window) {
+    const auto value = [window](const char* name) {
+        return static_cast<std::size_t>(
+            window->findChild<QSpinBox*>(QString::fromUtf8(name))->value());
+    };
+    return {
+        value("cropXBeginSpin"), value("cropXEndSpin") + 1,
+        value("cropYBeginSpin"), value("cropYEndSpin") + 1,
+        value("cropZBeginSpin"), value("cropZEndSpin") + 1};
+}
+
+QImage annotate_section(
+    QImage image,
+    int orientation,
+    std::size_t x,
+    std::size_t y,
+    std::size_t z,
+    const ModelCropBounds& crop) {
+    QPainter painter(&image);
+    painter.setRenderHint(QPainter::Antialiasing, false);
+    const auto ix = [](std::size_t value) { return static_cast<int>(value); };
+    painter.setPen(QPen(QColor(255, 142, 64), 1));
+    if (orientation == 0) {
+        painter.drawRect(
+            ix(crop.x_begin),
+            image.height() - ix(crop.y_end),
+            ix(crop.x_end - crop.x_begin) - 1,
+            ix(crop.y_end - crop.y_begin) - 1);
+    } else if (orientation == 1) {
+        painter.drawRect(
+            ix(crop.x_begin),
+            ix(crop.z_begin),
+            ix(crop.x_end - crop.x_begin) - 1,
+            ix(crop.z_end - crop.z_begin) - 1);
+    } else {
+        painter.drawRect(
+            ix(crop.y_begin),
+            ix(crop.z_begin),
+            ix(crop.y_end - crop.y_begin) - 1,
+            ix(crop.z_end - crop.z_begin) - 1);
+    }
+    painter.setPen(QPen(QColor(198, 244, 255), 1));
+    if (orientation == 0) {
+        painter.drawLine(ix(x), 0, ix(x), image.height() - 1);
+        const auto row = image.height() - 1 - ix(y);
+        painter.drawLine(0, row, image.width() - 1, row);
+    } else if (orientation == 1) {
+        painter.drawLine(ix(x), 0, ix(x), image.height() - 1);
+        painter.drawLine(0, ix(z), image.width() - 1, ix(z));
+    } else {
+        painter.drawLine(ix(y), 0, ix(y), image.height() - 1);
+        painter.drawLine(0, ix(z), image.width() - 1, ix(z));
+    }
+    return image;
 }
 #endif
 
@@ -274,8 +339,10 @@ QDockWidget* make_log_dock(QMainWindow* window) {
 QDockWidget* make_model_information_dock(QMainWindow* window) {
     auto* dock = new QDockWidget(QStringLiteral("模型信息"), window);
     dock->setObjectName(QStringLiteral("modelInformationDock"));
+    dock->setMinimumWidth(250);
     auto* contents = new QWidget(dock);
-    auto* form = new QFormLayout(contents);
+    auto* layout = new QVBoxLayout(contents);
+    auto* form = new QFormLayout;
 
     auto* property = new QComboBox(contents);
     property->setObjectName(QStringLiteral("modelPropertySelector"));
@@ -297,6 +364,52 @@ QDockWidget* make_model_information_dock(QMainWindow* window) {
         value->setObjectName(specification.second);
         form->addRow(specification.first, value);
     }
+    layout->addLayout(form);
+
+    auto* slices = new QGroupBox(QStringLiteral("联动切面索引"), contents);
+    auto* slice_layout = new QGridLayout(slices);
+    int column = 0;
+    for (const auto& specification : std::array{
+             std::pair{QStringLiteral("X"), QStringLiteral("sliceXSpin")},
+             std::pair{QStringLiteral("Y"), QStringLiteral("sliceYSpin")},
+             std::pair{QStringLiteral("Z"), QStringLiteral("sliceZSpin")}}) {
+        slice_layout->addWidget(new QLabel(specification.first, slices), 0, column);
+        auto* spin = new QSpinBox(slices);
+        spin->setObjectName(specification.second);
+        spin->setEnabled(false);
+        slice_layout->addWidget(spin, 1, column++);
+    }
+    layout->addWidget(slices);
+
+    auto* crop = new QGroupBox(QStringLiteral("裁剪范围（含端点）"), contents);
+    auto* crop_layout = new QGridLayout(crop);
+    crop_layout->addWidget(new QLabel(QStringLiteral("轴"), crop), 0, 0);
+    crop_layout->addWidget(new QLabel(QStringLiteral("起点"), crop), 0, 1);
+    crop_layout->addWidget(new QLabel(QStringLiteral("终点"), crop), 0, 2);
+    const std::array<const char*, 6> crop_names{
+        "cropXBeginSpin", "cropXEndSpin", "cropYBeginSpin",
+        "cropYEndSpin", "cropZBeginSpin", "cropZEndSpin"};
+    for (int axis = 0; axis < 3; ++axis) {
+        crop_layout->addWidget(
+            new QLabel(QString(QChar('X' + axis)), crop), axis + 1, 0);
+        for (int endpoint = 0; endpoint < 2; ++endpoint) {
+            auto* spin = new QSpinBox(crop);
+            spin->setObjectName(QString::fromUtf8(
+                crop_names[static_cast<std::size_t>(axis * 2 + endpoint)]));
+            spin->setEnabled(false);
+            crop_layout->addWidget(spin, axis + 1, endpoint + 1);
+        }
+    }
+    auto* summary = new QLabel(QStringLiteral("—"), crop);
+    summary->setObjectName(QStringLiteral("cropSummaryLabel"));
+    summary->setWordWrap(true);
+    crop_layout->addWidget(summary, 4, 0, 1, 3);
+    auto* create = new QPushButton(QStringLiteral("创建裁剪模型"), crop);
+    create->setObjectName(QStringLiteral("createCropButton"));
+    create->setEnabled(false);
+    crop_layout->addWidget(create, 5, 0, 1, 3);
+    layout->addWidget(crop);
+    layout->addStretch();
     dock->setWidget(contents);
     return dock;
 }
@@ -363,10 +476,9 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
     auto* model_information_dock = make_model_information_dock(this);
     addDockWidget(Qt::LeftDockWidgetArea, experiment_dock);
     addDockWidget(Qt::BottomDockWidgetArea, log_dock);
-    addDockWidget(Qt::BottomDockWidgetArea, model_information_dock);
-    tabifyDockWidget(log_dock, model_information_dock);
-    log_dock->raise();
+    addDockWidget(Qt::RightDockWidgetArea, model_information_dock);
     resizeDocks({log_dock}, {145}, Qt::Vertical);
+    resizeDocks({model_information_dock}, {270}, Qt::Horizontal);
 
     auto* file_menu = menuBar()->addMenu(QStringLiteral("文件"));
     auto* new_project = file_menu->addAction(QStringLiteral("新建项目"));
@@ -481,12 +593,54 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
         &QComboBox::currentIndexChanged,
         this,
         [this](int) { update_model_view(); });
+    for (const char* name : {"sliceXSpin", "sliceYSpin", "sliceZSpin"}) {
+        connect(
+            findChild<QSpinBox*>(QString::fromUtf8(name)),
+            &QSpinBox::valueChanged,
+            this,
+            [this](int) { update_model_view(); });
+    }
+    for (const char* name : {
+             "cropXBeginSpin", "cropXEndSpin", "cropYBeginSpin",
+             "cropYEndSpin", "cropZBeginSpin", "cropZEndSpin"}) {
+        connect(
+            findChild<QSpinBox*>(QString::fromUtf8(name)),
+            &QSpinBox::valueChanged,
+            this,
+            [this](int) {
+                update_crop_summary();
+                update_model_view();
+            });
+    }
+    connect(
+        findChild<QPushButton*>(QStringLiteral("createCropButton")),
+        &QPushButton::clicked,
+        this,
+        [this] {
+            bool accepted = false;
+            const auto stem = QInputDialog::getText(
+                this,
+                QStringLiteral("创建裁剪模型"),
+                QStringLiteral("输出名称（英文、数字、下划线）："),
+                QLineEdit::Normal,
+                QStringLiteral("crop_001"),
+                &accepted);
+            if (!accepted) {
+                return;
+            }
+            QString error;
+            if (!create_cropped_model(stem, &error)) {
+                QMessageBox::critical(this, QStringLiteral("无法创建裁剪模型"), error);
+            }
+        });
 
     QSettings settings;
-    restoreGeometry(
-        settings.value(QStringLiteral("desktop/geometry")).toByteArray());
-    restoreState(
-        settings.value(QStringLiteral("desktop/window_state")).toByteArray());
+    if (restore_last_project) {
+        restoreGeometry(
+            settings.value(QStringLiteral("desktop/geometry")).toByteArray());
+        restoreState(
+            settings.value(QStringLiteral("desktop/window_state")).toByteArray());
+    }
 
     statusBar()->showMessage(QStringLiteral("空闲 · 速度模 · 未加载模型"));
     const auto last_project =
@@ -616,6 +770,61 @@ bool MainWindow::import_hdf5_model(
 #endif
 }
 
+bool MainWindow::create_cropped_model(
+    const QString& output_stem,
+    QString* error_message) {
+#ifndef WAVE3D_DESKTOP_HAS_HDF5
+    static_cast<void>(output_stem);
+    if (error_message != nullptr) {
+        *error_message = QStringLiteral("当前桌面构建未启用 HDF5 模型支持");
+    }
+    return false;
+#else
+    if (!project_ || !model_scene_) {
+        if (error_message != nullptr) {
+            *error_message = QStringLiteral("请先加载有效模型");
+        }
+        return false;
+    }
+    std::optional<DerivedModelArtifact> artifact;
+    try {
+        artifact = create_cropped_model_artifact(
+            project_root_,
+            project_->model_reference,
+            *model_scene_,
+            selected_crop_bounds(this),
+            output_stem);
+        auto next_scene = std::make_unique<StaticModelScene>(
+            StaticModelScene::load_hdf5(
+                QDir(project_root_).filePath(artifact->model_reference)));
+        auto updated_project = *project_;
+        updated_project.model_reference = artifact->model_reference;
+        ProjectWorkspace::save(project_root_, updated_project);
+        project_ = std::move(updated_project);
+        model_scene_ = std::move(next_scene);
+        populate_model_information();
+        update_model_view();
+        findChild<QTextEdit*>(QStringLiteral("runLog"))
+            ->append(QStringLiteral("已创建裁剪模型：%1；来源清单：%2")
+                         .arg(
+                             artifact->model_reference,
+                             artifact->manifest_reference));
+        statusBar()->showMessage(QStringLiteral("裁剪模型已创建并加载"));
+        return true;
+    } catch (const std::exception& error) {
+        if (artifact) {
+            QFile::remove(QDir(project_root_).filePath(artifact->model_reference));
+            QFile::remove(
+                QDir(project_root_).filePath(artifact->manifest_reference));
+        }
+        if (error_message != nullptr) {
+            *error_message = QString::fromUtf8(error.what());
+        }
+        return false;
+    }
+#endif
+}
+
 const ProjectDocument* MainWindow::current_project() const noexcept {
     return project_ ? &*project_ : nullptr;
 }
@@ -700,6 +909,19 @@ void MainWindow::clear_model_view() {
              "modelCenterLabel"}) {
         findChild<QLabel*>(QString::fromUtf8(name))->setText(QStringLiteral("—"));
     }
+    for (const char* name : {
+             "sliceXSpin", "sliceYSpin", "sliceZSpin",
+             "cropXBeginSpin", "cropXEndSpin", "cropYBeginSpin",
+             "cropYEndSpin", "cropZBeginSpin", "cropZEndSpin"}) {
+        auto* spin = findChild<QSpinBox*>(QString::fromUtf8(name));
+        spin->setEnabled(false);
+        spin->setRange(0, 0);
+        spin->setValue(0);
+    }
+    findChild<QLabel*>(QStringLiteral("cropSummaryLabel"))
+        ->setText(QStringLiteral("—"));
+    findChild<QPushButton*>(QStringLiteral("createCropButton"))
+        ->setEnabled(false);
     for (const auto& viewport : std::array{
              std::pair{QStringLiteral("volumeViewport"),
                        QStringLiteral("等待科学数据")},
@@ -765,6 +987,66 @@ void MainWindow::populate_model_information() {
                       .arg(summary.center_z));
     findChild<QComboBox*>(QStringLiteral("modelPropertySelector"))
         ->setEnabled(true);
+    const std::array<std::tuple<const char*, std::size_t, std::size_t>, 3>
+        slice_controls{{
+            {"sliceXSpin", summary.grid.nx, summary.center_x},
+            {"sliceYSpin", summary.grid.ny, summary.center_y},
+            {"sliceZSpin", summary.grid.nz, summary.center_z}}};
+    for (const auto& [name, count, center] : slice_controls) {
+        auto* spin = findChild<QSpinBox*>(QString::fromUtf8(name));
+        const QSignalBlocker blocker(spin);
+        spin->setRange(0, static_cast<int>(count - 1));
+        spin->setValue(static_cast<int>(center));
+        spin->setEnabled(true);
+    }
+    const std::array<std::tuple<const char*, std::size_t, bool>, 6>
+        crop_controls{{
+            {"cropXBeginSpin", summary.grid.nx, false},
+            {"cropXEndSpin", summary.grid.nx, true},
+            {"cropYBeginSpin", summary.grid.ny, false},
+            {"cropYEndSpin", summary.grid.ny, true},
+            {"cropZBeginSpin", summary.grid.nz, false},
+            {"cropZEndSpin", summary.grid.nz, true}}};
+    for (const auto& [name, count, upper] : crop_controls) {
+        auto* spin = findChild<QSpinBox*>(QString::fromUtf8(name));
+        const QSignalBlocker blocker(spin);
+        spin->setRange(0, static_cast<int>(count - 1));
+        spin->setValue(upper ? static_cast<int>(count - 1) : 0);
+        spin->setEnabled(true);
+    }
+    update_crop_summary();
+#endif
+}
+
+void MainWindow::update_crop_summary() {
+#ifndef WAVE3D_DESKTOP_HAS_HDF5
+    return;
+#else
+    if (!model_scene_) {
+        return;
+    }
+    const auto bounds = selected_crop_bounds(this);
+    const bool valid = bounds.x_begin < bounds.x_end &&
+                       bounds.y_begin < bounds.y_end &&
+                       bounds.z_begin < bounds.z_end;
+    auto* button = findChild<QPushButton*>(QStringLiteral("createCropButton"));
+    button->setEnabled(valid);
+    auto* label = findChild<QLabel*>(QStringLiteral("cropSummaryLabel"));
+    if (!valid) {
+        label->setText(QStringLiteral("范围无效：起点必须不大于终点"));
+        return;
+    }
+    const auto& grid = model_scene_->summary().grid;
+    const auto nx = bounds.x_end - bounds.x_begin;
+    const auto ny = bounds.y_end - bounds.y_begin;
+    const auto nz = bounds.z_end - bounds.z_begin;
+    label->setText(QStringLiteral("%1 × %2 × %3 网格 · %4 / %5 / %6 m")
+                       .arg(nx)
+                       .arg(ny)
+                       .arg(nz)
+                       .arg((nx - 1) * grid.dx_m)
+                       .arg((ny - 1) * grid.dy_m)
+                       .arg((nz - 1) * grid.dz_m));
 #endif
 }
 
@@ -784,19 +1066,41 @@ void MainWindow::update_model_view() {
                               : field == QStringLiteral("density")
                                     ? ModelProperty::Density
                                     : ModelProperty::Vp;
-    auto xy = model_scene_->xy_slice(property);
+    const auto x = static_cast<std::size_t>(
+        findChild<QSpinBox*>(QStringLiteral("sliceXSpin"))->value());
+    const auto y = static_cast<std::size_t>(
+        findChild<QSpinBox*>(QStringLiteral("sliceYSpin"))->value());
+    const auto z = static_cast<std::size_t>(
+        findChild<QSpinBox*>(QStringLiteral("sliceZSpin"))->value());
+    auto crop = selected_crop_bounds(this);
+    if (crop.x_begin >= crop.x_end || crop.y_begin >= crop.y_end ||
+        crop.z_begin >= crop.z_end) {
+        const auto& grid = model_scene_->summary().grid;
+        crop = {0, grid.nx, 0, grid.ny, 0, grid.nz};
+    }
+    auto xy = annotate_section(
+        model_scene_->xy_slice(property, z), 0, x, y, z, crop);
     scientific_viewport(this, QStringLiteral("volumeViewport"))
         ->set_scientific_image(
             xy,
-            QStringLiteral("静态中心 XY 预览 · 三维体渲染待后续增量"));
+            QStringLiteral("静态 XY 预览 · 三维体渲染待后续增量"));
     scientific_viewport(this, QStringLiteral("xyViewport"))
-        ->set_scientific_image(std::move(xy), QStringLiteral("中心 z 切面"));
+        ->set_scientific_image(
+            std::move(xy),
+            QStringLiteral("z=%1 · %2 m").arg(z).arg(
+                z * model_scene_->summary().grid.dz_m));
     scientific_viewport(this, QStringLiteral("xzViewport"))
         ->set_scientific_image(
-            model_scene_->xz_slice(property), QStringLiteral("中心 y 切面"));
+            annotate_section(
+                model_scene_->xz_slice(property, y), 1, x, y, z, crop),
+            QStringLiteral("y=%1 · %2 m").arg(y).arg(
+                y * model_scene_->summary().grid.dy_m));
     scientific_viewport(this, QStringLiteral("yzViewport"))
         ->set_scientific_image(
-            model_scene_->yz_slice(property), QStringLiteral("中心 x 切面"));
+            annotate_section(
+                model_scene_->yz_slice(property, x), 2, x, y, z, crop),
+            QStringLiteral("x=%1 · %2 m").arg(x).arg(
+                x * model_scene_->summary().grid.dx_m));
 #endif
 }
 

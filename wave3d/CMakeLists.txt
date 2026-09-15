@@ -431,6 +431,7 @@ if(WAVE3D_BUILD_DESKTOP)
     if(WAVE3D_ENABLE_HDF5)
         add_library(
             wave3d_desktop_static_model STATIC
+            src/desktop/model_derivation.cpp
             src/desktop/static_model_scene.cpp)
         target_link_libraries(
             wave3d_desktop_static_model
@@ -475,6 +476,21 @@ if(WAVE3D_BUILD_DESKTOP)
             set_tests_properties(
                 wave3d_desktop_static_model_tests
                 PROPERTIES LABELS "desktop;io;model;visualization")
+
+            add_executable(
+                wave3d_desktop_model_derivation_tests
+                tests/test_desktop_model_derivation.cpp)
+            target_link_libraries(
+                wave3d_desktop_model_derivation_tests
+                PRIVATE
+                    wave3d_desktop_project
+                    wave3d_desktop_static_model)
+            add_test(
+                NAME wave3d_desktop_model_derivation_tests
+                COMMAND wave3d_desktop_model_derivation_tests)
+            set_tests_properties(
+                wave3d_desktop_model_derivation_tests
+                PROPERTIES LABELS "desktop;io;model;provenance")
         endif()
 
         add_executable(

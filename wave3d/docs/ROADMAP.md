@@ -529,6 +529,24 @@ HDF5-on and HDF5-off desktop suites, the full CUDA regression, and the real
 Overthrust WSLg capture passed their declared gates. The large viewport is
 still an explicitly labelled static preview; volume ray casting is deferred.
 
+## Increment 20 — Interactive model slices and immutable crop
+
+**Goal:** Select linked physical-grid slices and create a reproducible cropped
+HDF5 model without modifying its source.
+
+**Work:** Add arbitrary slice indices, crop bounds and overlays, exact
+three-property crop extraction, atomic derived-model writing, and a versioned
+checksum provenance manifest.
+
+**Acceptance:** The scene/crop/provenance/UI, optional-build, WSLg Overthrust,
+and CUDA regression checks in `INCREMENT_20_INTERACTIVE_CROP_PLAN.md` pass.
+
+**Status:** Verified on 2026-09-15. Linked arbitrary sections and crop outlines
+now drive exact three-property extraction. Derived HDF5 files and versioned
+checksum manifests publish without overwriting sources, and the project
+activates the derived model only after verification. All optional-build,
+desktop, CUDA, and real Overthrust visual gates passed.
+
 ## Deferred research phases
 
 After elastic forward qualification, separate future phases may implement

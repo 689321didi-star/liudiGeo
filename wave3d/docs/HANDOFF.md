@@ -1306,3 +1306,60 @@ Before the next implementation, predeclare Increment 20. Its narrow purpose
 should be interactive slice coordinates plus immutable crop definition and
 provenance; 3-D ray casting, experiment editors, CUDA worker ownership, live
 wavefields, and SEG-Y result viewing remain later increments.
+
+## Increment 20 interactive slices and immutable crop
+
+The model scene now accepts arbitrary physical-grid slice indices and exact
+half-open crop bounds. The right-side model dock exposes linked X/Y/Z indices
+and inclusive begin/end controls. Every section draws the same pale crosshair
+and orange crop outline; labels report the selected plane index and physical
+coordinate. Invalid ranges disable crop creation.
+
+Crop extraction copies Vp, Vs, and density in canonical `[z][y][x]` order,
+preserves spacing and numerical storage metadata, and leaves source arrays
+unchanged. `create_cropped_model_artifact` writes and rereads a temporary HDF5,
+atomically renames it into `models/`, and publishes a
+`wave3d.desktop.model_derivation.v1` manifest in `manifests/models/`. The
+manifest contains source/output references and SHA-256 values, half-open
+bounds, source-origin meter offsets, output dimensions/spacing, and UTC time.
+The derived local coordinate origin is zero. Existing names and unsafe stems
+are refused, and failures remove temporary or newly published artifacts.
+
+The window loads the verified result before atomically changing the project
+reference. The source HDF5 and earlier derived models remain available, so a
+chain of derivations stays auditable. Explicit `--slice-indices` and
+`--crop-bounds` options make visual regression capture repeatable.
+
+Final verification on 2026-09-15:
+
+```text
+ctest --test-dir build/desktop19 --output-on-failure
+# HDF5 enabled: 22/22 passed
+
+ctest --test-dir build/desktop18 --output-on-failure
+# HDF5 disabled: 19/19 passed
+
+ctest --test-dir build/desktop17-default --output-on-failure
+# desktop disabled: 17/17 passed
+
+QT_QPA_PLATFORM=xcb build/desktop19/wave3d_studio \
+  --project build/desktop19/review_project \
+  --slice-indices 70,120,80 \
+  --crop-bounds 40,160,30,170,10,150 \
+  --capture-shell build/desktop19/review/wave3d-interactive-crop.png
+# all four OpenGL contexts valid; 1440 x 936 PNG
+
+ctest --test-dir build/overthrust --output-on-failure
+# CUDA/YAML/HDF5/SEG-Y: 28/28 passed
+```
+
+The real Overthrust capture was inspected. The crosshair identifies one
+consistent `(70,120,80)` point in all three planes. The orange rectangles map
+the same `121 x 141 x 141` crop with 3000/3500/3500 m node-to-node extents.
+XY remains y-up, XZ/YZ remain depth-down, and the controls fit in a right dock
+without reducing scientific views below practical sizes.
+
+Before implementation continues, Increment 21 should be predeclared around
+one narrow goal. The recommended next goal is a true static OpenGL 3-D texture
+and volume ray caster consuming the already validated model scene; experiment
+editors and live CUDA frames should remain separate later increments.
