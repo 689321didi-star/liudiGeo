@@ -861,3 +861,29 @@ six-component symmetric tensors are supported. Strike/dip/rake conversion
 remains a visible disabled option until its convention and formula receive a
 separate scientific test. Receiver geometry and complete forward YAML are not
 invented by the draft layer.
+
+## D055 — Surface acquisition resolves before immutable run preparation
+
+**Status:** Accepted and verified, 2026-09-15
+
+The version-2 per-shot experiment draft adds one rectangular surface receiver
+grid in physical metres. It records x/y counts, inclusive physical endpoints,
+and the fixed `z=0 m` depth. Receiver generation is y outer and x fastest, uses
+checked products, rejects more than 1,100,000 desktop receiver points, and
+validates every generated coordinate through the shared physical-grid mapping.
+Version-1 drafts remain readable but carry no invented geometry; the desktop
+adds model-derived `101 x 101` defaults before the draft can resolve or save.
+
+The current production trace contract is receiver-major Vx/Vy/Vz float32 with
+SEG-Y Revision 1 output. Desktop estimates therefore report both raw
+three-component sample bytes and exact uncompressed SEG-Y bytes. A default
+time step is rounded downward to an integer microsecond so it remains CFL-safe
+and SEG-Y representable. Explicit non-integer-microsecond intervals and more
+than 65,535 samples are rejected by the existing SEG-Y validator.
+
+Preflight is available only when HDF5, YAML, and SEG-Y adapters are all built.
+It creates a new immutable run directory, writes the model-relative path and
+run-local output path into the established `wave3d.forward.v2` configuration,
+then reloads and compares its canonical YAML. Preflight does not start CUDA;
+worker ownership, progress, cancellation, and live frames require a separate
+increment.

@@ -1491,3 +1491,69 @@ Before implementation continues, predeclare Increment 23 around acquisition
 geometry and complete forward-configuration assembly. YAML round-trip,
 receiver overlays, storage estimates, and preflight belong together at that
 boundary; CUDA execution remains later.
+
+## Increment 23 acquisition geometry and forward preflight
+
+The per-shot JSON draft is now `wave3d.desktop.experiment.v2`. It adds a
+rectangular surface receiver grid with physical x/y endpoints, x/y counts,
+fixed `z=0 m`, and explicit Vx/Vy/Vz components. Version-1 drafts remain
+readable with an absent-acquisition marker; the desktop derives `101 x 101`
+full-surface defaults from the active model before the draft can resolve or be
+saved. Generation is y outer and x fastest, checks count arithmetic, enforces a
+1,100,000-point desktop safety bound, and validates every physical coordinate.
+
+The acquisition editor reports exact receiver/sample counts, raw
+three-component float32 payload, and uncompressed SEG-Y Revision 1 bytes. For
+the accepted Overthrust setup it reports 10,201 receivers, 3,000 samples,
+350.22 MiB of float32 samples, and a 357.23 MiB SEG-Y file. Default CFL-derived
+time steps round downward to integer microseconds; explicit incompatible
+sample intervals or counts are rejected by the production SEG-Y validator.
+
+Receivers appear in the 3-D volume and XY/XZ/YZ sections. Rendering uniformly
+samples dense arrays for legibility while diagnostic state and the resolved
+configuration retain all receivers. The final Overthrust review showed a
+uniform x/y surface array from 0 through 4975 m and consistent depth direction.
+
+When HDF5, YAML, and SEG-Y are enabled, the preflight action composes the
+existing `ForwardRunConfiguration`, publishes a new immutable run through
+`ProjectWorkspace::prepare_run`, reloads its `wave3d.forward.v2` YAML, and
+requires canonical equality. The config refers to the model relative to its
+run directory and writes output under that run. Start/pause/resume/stop remain
+disabled because GUI-thread-safe CUDA execution is not part of this increment.
+
+Final verification on 2026-09-15:
+
+```text
+ctest --test-dir build/desktop20 --output-on-failure
+# HDF5/YAML/SEG-Y desktop: 25/25 passed
+
+ctest --test-dir build/desktop23-no-segy --output-on-failure
+# SEG-Y disabled: 24/24 passed
+
+ctest --test-dir build/desktop19 --output-on-failure
+# HDF5 enabled, YAML disabled: 23/23 passed
+
+ctest --test-dir build/desktop18 --output-on-failure
+# HDF5 disabled: 20/20 passed
+
+ctest --test-dir build/desktop17-default --output-on-failure
+# desktop disabled: 17/17 passed
+
+ctest --test-dir build/overthrust --output-on-failure
+# CUDA/YAML/HDF5/SEG-Y: 28/28 passed
+
+QT_QPA_PLATFORM=xcb build/desktop20/wave3d_studio \
+  --project build/desktop19/review_project \
+  --slice-indices 100,100,0 \
+  --crop-bounds 0,199,0,199,0,186 \
+  --volume-camera 0.9,0.32,1.9 \
+  --module acquisition \
+  --capture-shell build/desktop20/review/wave3d-acquisition-editor.png
+# 1440 x 1062; all OpenGL and source/receiver marker gates passed
+```
+
+The recommended Increment 24 boundary is background CUDA forward execution
+from an immutable preflight run: worker ownership, bounded step batches,
+progress, pause/resume/cancel, failure-safe output publication, and final SEG-Y
+registration. Live CUDA-to-OpenGL wavefield transport should remain a following
+measured increment so execution control is independently verifiable.

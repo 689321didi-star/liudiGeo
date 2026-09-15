@@ -467,6 +467,18 @@ if(WAVE3D_BUILD_DESKTOP)
         target_compile_definitions(
             wave3d_desktop_shell PUBLIC WAVE3D_DESKTOP_HAS_HDF5=1)
     endif()
+    if(WAVE3D_ENABLE_YAML)
+        target_link_libraries(
+            wave3d_desktop_shell PUBLIC wave3d_io_yaml)
+        target_compile_definitions(
+            wave3d_desktop_shell PUBLIC WAVE3D_DESKTOP_HAS_YAML=1)
+    endif()
+    if(WAVE3D_ENABLE_SEGY)
+        target_link_libraries(
+            wave3d_desktop_shell PUBLIC wave3d_io_segy)
+        target_compile_definitions(
+            wave3d_desktop_shell PUBLIC WAVE3D_DESKTOP_HAS_SEGY=1)
+    endif()
 
     add_executable(wave3d_studio apps/studio/main.cpp)
     target_link_libraries(wave3d_studio PRIVATE wave3d_desktop_shell)

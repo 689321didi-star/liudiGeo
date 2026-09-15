@@ -490,7 +490,8 @@ and CUDA/OpenGL interoperation.
 Increment 22 adds `wave3d_desktop_experiment`, a Qt Core persistence and
 resolution layer below the Widgets shell. Each shot may own one mutable
 `source/<shot-id>.experiment.json` document with schema
-`wave3d.desktop.experiment.v1`. Atomic replacement is allowed while editing;
+`wave3d.desktop.experiment.v2` (the earlier version 1 remains readable for
+migration). Atomic replacement is allowed while editing;
 prepared run directories remain immutable and independent. The draft records
 which project model reference it was designed against so a later crop or model
 switch is visible before resaving.
@@ -501,8 +502,23 @@ Editable time, numerical, Ricker, coordinate, and moment values resolve into
 the existing `SimulationConfig` and `MomentTensorSource`; CFL, dispersion, and
 physical-domain validation are therefore shared with the command-line solver.
 The source marker is presentation state derived from the successfully resolved
-physical point. A complete `ForwardRunConfiguration` is not produced until a
-receiver set exists in a later acquisition increment.
+physical point.
+
+Increment 23 extends the draft and its resolved form with a surface rectangular
+receiver grid. Public values remain physical metres; resolution generates
+receiver coordinates in y-outer/x-fastest order and validates every point
+against the model grid. The default spans the full model surface with
+`101 x 101` receivers. Trace sizes use checked arithmetic for receiver-major
+three-component float32 samples and deterministic SEG-Y Revision 1 bytes.
+
+The Widgets editor shows exact receiver counts and storage estimates. Dense
+display markers are sampled uniformly along both receiver axes, while the
+resolved configuration retains every receiver. A valid HDF5/YAML/SEG-Y desktop
+build composes the existing `ForwardRunConfiguration`, writes it through the
+immutable `ProjectWorkspace::prepare_run` API, reloads it with the production
+YAML adapter, and requires an exact resolved-YAML round trip. CUDA ownership
+and execution remain outside the GUI thread and are not connected by this
+increment.
 
 Increment 11 verifies that behavior by configuring and building with the whole
 `optional/rtm` tree temporarily absent. RTM-off exposes only the forward views,

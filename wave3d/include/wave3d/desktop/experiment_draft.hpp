@@ -6,14 +6,38 @@
 
 #include <QString>
 
+#include <cstddef>
+#include <optional>
+#include <vector>
+
 namespace wave3d::desktop {
 
 inline constexpr auto kExperimentDraftSchema =
+    "wave3d.desktop.experiment.v2";
+inline constexpr auto kLegacyExperimentDraftSchema =
     "wave3d.desktop.experiment.v1";
 
 enum class DraftSourceMode {
     IsotropicExplosion,
     MomentTensor,
+};
+
+struct RectangularReceiverGrid {
+    std::size_t count_x{101};
+    std::size_t count_y{101};
+    double minimum_x_m{0.0};
+    double maximum_x_m{0.0};
+    double minimum_y_m{0.0};
+    double maximum_y_m{0.0};
+    double depth_m{0.0};
+};
+
+struct AcquisitionEstimate {
+    std::size_t receiver_count{0};
+    std::size_t sample_count{0};
+    std::size_t trace_value_count{0};
+    std::size_t raw_trace_bytes{0};
+    std::size_t segy_bytes{0};
 };
 
 struct ExperimentDraft {
@@ -30,12 +54,15 @@ struct ExperimentDraft {
     SymmetricMomentTensor moment_tensor_nm{
         1.0e12, 1.0e12, 1.0e12, 0.0, 0.0, 0.0};
     RickerWavelet wavelet{3.0, 1.0 / 3.0, 1.0};
+    std::optional<RectangularReceiverGrid> receiver_grid;
 };
 
 struct ResolvedExperimentDraft {
     SimulationConfig simulation{};
     MomentTensorSource source{};
     ElasticNumericalReport numerical{};
+    std::vector<PhysicalPoint3D> receivers;
+    AcquisitionEstimate acquisition{};
 };
 
 class ExperimentDraftStore final {
@@ -52,6 +79,15 @@ public:
         const ExperimentDraft& draft,
         const Grid3D& grid,
         const PhysicalModelExtrema& extrema);
+
+    [[nodiscard]] static RectangularReceiverGrid default_receiver_grid(
+        const Grid3D& grid);
+    [[nodiscard]] static std::vector<PhysicalPoint3D> generate_receivers(
+        const RectangularReceiverGrid& receiver_grid,
+        const Grid3D& grid);
+    [[nodiscard]] static AcquisitionEstimate acquisition_estimate(
+        std::size_t receiver_count,
+        std::size_t sample_count);
 
     [[nodiscard]] static QString relative_path(const QString& shot_id);
     [[nodiscard]] static bool exists(

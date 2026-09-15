@@ -172,7 +172,7 @@ int main(int argc, char** argv) {
         QStringLiteral("yaw,pitch,distance"));
     const QCommandLineOption module_option(
         QStringLiteral("module"),
-        QStringLiteral("打开审查模块：model、workspace 或 source"),
+        QStringLiteral("打开审查模块：model、workspace、source 或 acquisition"),
         QStringLiteral("name"));
     parser.addOption(inspect_option);
     parser.addOption(smoke_option);
@@ -229,7 +229,11 @@ int main(int argc, char** argv) {
                              ? 1
                              : module == QStringLiteral("workspace")
                                    ? 2
-                                   : module == QStringLiteral("source") ? 3 : -1;
+                                   : module == QStringLiteral("source")
+                                         ? 3
+                                         : module == QStringLiteral("acquisition")
+                                               ? 4
+                                               : -1;
         auto* navigation = window.findChild<QListWidget*>(
             QStringLiteral("moduleNavigation"));
         if (row < 0 || navigation == nullptr) {
@@ -278,6 +282,11 @@ int main(int argc, char** argv) {
         volume->property("sourceMarkerPosition").toList().size() == 3 &&
         !volume->property("sourceMarkerVisible").toBool()) {
         std::cerr << "Static source marker was not rendered\n";
+        return 1;
+    }
+    if (volume != nullptr && volume->property("receiverCount").toULongLong() > 0 &&
+        !volume->property("receiverMarkerVisible").toBool()) {
+        std::cerr << "Static receiver markers were not rendered\n";
         return 1;
     }
     return 0;

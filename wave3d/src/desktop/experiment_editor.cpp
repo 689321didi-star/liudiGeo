@@ -12,6 +12,7 @@
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
 #include <QSignalBlocker>
+#include <QSpinBox>
 #include <QStackedWidget>
 #include <QStandardItemModel>
 #include <QVBoxLayout>
@@ -67,6 +68,15 @@ double scientific_value(const QLineEdit* edit) {
 
 QString scientific_text(double value) {
     return QString::number(value, 'g', 15);
+}
+
+QString byte_text(std::size_t bytes) {
+    constexpr double mib = 1024.0 * 1024.0;
+    constexpr double gib = 1024.0 * mib;
+    if (bytes >= static_cast<std::size_t>(gib)) {
+        return QStringLiteral("%1 GiB").arg(bytes / gib, 0, 'f', 2);
+    }
+    return QStringLiteral("%1 MiB").arg(bytes / mib, 0, 'f', 2);
 }
 
 } // namespace
@@ -227,6 +237,67 @@ ExperimentEditor::ExperimentEditor(QWidget* parent) : QWidget(parent) {
     source_layout->addWidget(source_pages);
     layout->addWidget(source);
 
+    auto* acquisition = new QGroupBox(QStringLiteral("观测系统"), this);
+    acquisition->setObjectName(QStringLiteral("acquisitionEditorGroup"));
+    auto* acquisition_form = new QFormLayout(acquisition);
+    auto* geometry = new QComboBox(acquisition);
+    geometry->setObjectName(QStringLiteral("receiverGeometryCombo"));
+    geometry->addItem(QStringLiteral("规则矩形面阵"), 0);
+    geometry->addItem(QStringLiteral("接收器测线（后续）"), 1);
+    geometry->addItem(QStringLiteral("CSV 不规则阵列（后续）"), 2);
+    if (auto* items = qobject_cast<QStandardItemModel*>(geometry->model())) {
+        items->item(1)->setEnabled(false);
+        items->item(2)->setEnabled(false);
+    }
+    acquisition_form->addRow(QStringLiteral("几何类型："), geometry);
+    for (const auto& specification : std::array{
+             std::pair{QStringLiteral("X 方向数量："),
+                       QStringLiteral("receiverCountXSpin")},
+             std::pair{QStringLiteral("Y 方向数量："),
+                       QStringLiteral("receiverCountYSpin")}}) {
+        auto* spin = new QSpinBox(acquisition);
+        spin->setObjectName(specification.second);
+        spin->setRange(2, 1001);
+        spin->setKeyboardTracking(false);
+        acquisition_form->addRow(specification.first, spin);
+    }
+    for (const auto& specification : std::array{
+             std::pair{QStringLiteral("X 起点："),
+                       QStringLiteral("receiverMinXSpin")},
+             std::pair{QStringLiteral("X 终点："),
+                       QStringLiteral("receiverMaxXSpin")},
+             std::pair{QStringLiteral("Y 起点："),
+                       QStringLiteral("receiverMinYSpin")},
+             std::pair{QStringLiteral("Y 终点："),
+                       QStringLiteral("receiverMaxYSpin")}}) {
+        acquisition_form->addRow(
+            specification.first,
+            double_spin(
+                specification.second,
+                0.0,
+                1.0e12,
+                3,
+                QStringLiteral(" m"),
+                acquisition));
+    }
+    auto* receiver_depth = double_spin(
+        QStringLiteral("receiverDepthSpin"),
+        0.0,
+        0.0,
+        3,
+        QStringLiteral(" m"),
+        acquisition);
+    receiver_depth->setToolTip(QStringLiteral("当前求解范围固定为自由表面接收"));
+    acquisition_form->addRow(QStringLiteral("接收深度："), receiver_depth);
+    auto* components = new QLabel(QStringLiteral("Vx / Vy / Vz"), acquisition);
+    components->setObjectName(QStringLiteral("receiverComponentsLabel"));
+    acquisition_form->addRow(QStringLiteral("记录分量："), components);
+    auto* estimate = new QLabel(QStringLiteral("等待模型"), acquisition);
+    estimate->setObjectName(QStringLiteral("acquisitionEstimateLabel"));
+    estimate->setWordWrap(true);
+    acquisition_form->addRow(QStringLiteral("规模预估："), estimate);
+    layout->addWidget(acquisition);
+
     auto* validation = new QLabel(QStringLiteral("等待模型"), this);
     validation->setObjectName(QStringLiteral("experimentValidationLabel"));
     validation->setWordWrap(true);
@@ -244,6 +315,9 @@ ExperimentEditor::ExperimentEditor(QWidget* parent) : QWidget(parent) {
     const auto publish = [this] { publish_change(); };
     for (auto* spin : findChildren<QDoubleSpinBox*>()) {
         connect(spin, &QDoubleSpinBox::valueChanged, this, publish);
+    }
+    for (auto* spin : findChildren<QSpinBox*>()) {
+        connect(spin, &QSpinBox::valueChanged, this, publish);
     }
     for (auto* edit : findChildren<QLineEdit*>()) {
         connect(edit, &QLineEdit::textChanged, this, publish);
@@ -337,6 +411,21 @@ void ExperimentEditor::set_model_context(
         ->setCurrentIndex(
             draft.source_mode == DraftSourceMode::IsotropicExplosion ? 0 : 1);
     update_source_mode_page();
+    const auto receivers = draft.receiver_grid.value_or(
+        ExperimentDraftStore::default_receiver_grid(grid));
+    findChild<QSpinBox*>(QStringLiteral("receiverCountXSpin"))
+        ->setValue(static_cast<int>(receivers.count_x));
+    findChild<QSpinBox*>(QStringLiteral("receiverCountYSpin"))
+        ->setValue(static_cast<int>(receivers.count_y));
+    const std::array<std::pair<const char*, double>, 5> receiver_values{{
+        {"receiverMinXSpin", receivers.minimum_x_m},
+        {"receiverMaxXSpin", receivers.maximum_x_m},
+        {"receiverMinYSpin", receivers.minimum_y_m},
+        {"receiverMaxYSpin", receivers.maximum_y_m},
+        {"receiverDepthSpin", receivers.depth_m}}};
+    for (const auto& [name, value] : receiver_values) {
+        findChild<QDoubleSpinBox*>(QString::fromUtf8(name))->setValue(value);
+    }
     findChild<QLabel*>(QStringLiteral("experimentSaveStateLabel"))
         ->setText(model_reference_changed
                       ? QStringLiteral("草稿来自另一模型，请重新验证并保存")
@@ -359,6 +448,8 @@ void ExperimentEditor::clear_model_context() {
     findChild<QLabel*>(QStringLiteral("experimentSaveStateLabel"))
         ->setText(QStringLiteral("请先加载模型"));
     findChild<QLabel*>(QStringLiteral("experimentValidationLabel"))
+        ->setText(QStringLiteral("等待模型"));
+    findChild<QLabel*>(QStringLiteral("acquisitionEstimateLabel"))
         ->setText(QStringLiteral("等待模型"));
     setEnabled(false);
     populating_ = false;
@@ -405,6 +496,16 @@ ExperimentDraft ExperimentEditor::current_draft() const {
         findChild<QDoubleSpinBox*>(QStringLiteral("sourcePeakDelaySpin"))->value(),
         scientific_value(
             findChild<QLineEdit*>(QStringLiteral("sourcePeakRateEdit")))};
+    draft.receiver_grid = RectangularReceiverGrid{
+        static_cast<std::size_t>(
+            findChild<QSpinBox*>(QStringLiteral("receiverCountXSpin"))->value()),
+        static_cast<std::size_t>(
+            findChild<QSpinBox*>(QStringLiteral("receiverCountYSpin"))->value()),
+        findChild<QDoubleSpinBox*>(QStringLiteral("receiverMinXSpin"))->value(),
+        findChild<QDoubleSpinBox*>(QStringLiteral("receiverMaxXSpin"))->value(),
+        findChild<QDoubleSpinBox*>(QStringLiteral("receiverMinYSpin"))->value(),
+        findChild<QDoubleSpinBox*>(QStringLiteral("receiverMaxYSpin"))->value(),
+        findChild<QDoubleSpinBox*>(QStringLiteral("receiverDepthSpin"))->value()};
     return draft;
 }
 
@@ -424,6 +525,15 @@ void ExperimentEditor::show_validation(
                 .arg(report.cfl_fraction * 100.0, 0, 'f', 1)
                 .arg(minimum_ppw, 0, 'f', 2)
                 .arg(report.time_samples_per_period, 0, 'f', 1));
+    findChild<QLabel*>(QStringLiteral("acquisitionEstimateLabel"))
+        ->setText(
+            QStringLiteral(
+                "%1 个接收器 × %2 采样 × 3 分量\n"
+                "float32 道数据 %3；SEG-Y Rev1 %4")
+                .arg(resolved.acquisition.receiver_count)
+                .arg(resolved.acquisition.sample_count)
+                .arg(byte_text(resolved.acquisition.raw_trace_bytes))
+                .arg(byte_text(resolved.acquisition.segy_bytes)));
     findChild<QPushButton*>(QStringLiteral("saveExperimentDraftButton"))
         ->setEnabled(true);
     if (model_reference_changed) {
@@ -437,6 +547,8 @@ void ExperimentEditor::show_validation_error(const QString& message) {
         ->setText(QStringLiteral("参数无效：%1").arg(message));
     findChild<QPushButton*>(QStringLiteral("saveExperimentDraftButton"))
         ->setEnabled(false);
+    findChild<QLabel*>(QStringLiteral("acquisitionEstimateLabel"))
+        ->setText(QStringLiteral("无法生成观测系统或输出预估"));
 }
 
 void ExperimentEditor::mark_saved() {

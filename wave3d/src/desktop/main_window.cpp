@@ -4,10 +4,18 @@
 #include "wave3d/desktop/static_model_scene.hpp"
 #include "wave3d/desktop/volume_viewport.hpp"
 
+#ifdef WAVE3D_DESKTOP_HAS_YAML
+#include "wave3d/io/yaml_config.hpp"
+#endif
+#ifdef WAVE3D_DESKTOP_HAS_SEGY
+#include "wave3d/io/segy.hpp"
+#endif
+
 #include <QAction>
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QDir>
+#include <QDateTime>
 #include <QDockWidget>
 #include <QFormLayout>
 #include <QFrame>
@@ -220,7 +228,8 @@ QImage annotate_section(
     std::size_t y,
     std::size_t z,
     const ModelCropBounds& crop,
-    const std::optional<std::array<double, 3>>& source_index) {
+    const std::optional<std::array<double, 3>>& source_index,
+    const std::vector<std::array<double, 3>>& receiver_indices) {
     QPainter painter(&image);
     painter.setRenderHint(QPainter::Antialiasing, false);
     const auto ix = [](std::size_t value) { return static_cast<int>(value); };
@@ -283,6 +292,35 @@ QImage annotate_section(
         painter.drawEllipse(point, 3.5, 3.5);
         painter.drawLine(point + QPointF(-5.5, 0.0), point + QPointF(5.5, 0.0));
         painter.drawLine(point + QPointF(0.0, -5.5), point + QPointF(0.0, 5.5));
+    }
+    constexpr std::size_t maximum_section_markers = 1600;
+    const auto stride = receiver_indices.size() <= maximum_section_markers
+                            ? std::size_t{1}
+                            : (receiver_indices.size() +
+                               maximum_section_markers - 1) /
+                                  maximum_section_markers;
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setPen(QPen(QColor(192, 250, 255, 220), 1.0));
+    painter.setBrush(QColor(39, 205, 221, 205));
+    for (std::size_t index = 0; index < receiver_indices.size(); index += stride) {
+        const auto& receiver = receiver_indices[index];
+        const auto plane_distance = orientation == 0
+                                        ? std::abs(receiver[2] - z)
+                                        : orientation == 1
+                                              ? std::abs(receiver[1] - y)
+                                              : std::abs(receiver[0] - x);
+        if (orientation != 0 && plane_distance > 0.5) {
+            continue;
+        }
+        QPointF point;
+        if (orientation == 0) {
+            point = {receiver[0], image.height() - 1.0 - receiver[1]};
+        } else if (orientation == 1) {
+            point = {receiver[0], receiver[2]};
+        } else {
+            point = {receiver[1], receiver[2]};
+        }
+        painter.drawEllipse(point, 1.15, 1.15);
     }
     return image;
 }
@@ -658,6 +696,27 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
             QMessageBox::critical(this, QStringLiteral("无法导入模型"), error);
         }
     });
+    connect(validate, &QAction::triggered, this, [this] {
+        QString error;
+        if (!save_experiment_draft(&error)) {
+            QMessageBox::critical(this, QStringLiteral("无法保存实验草稿"), error);
+            return;
+        }
+        auto run_id = QStringLiteral("run-%1").arg(
+            QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyyMMdd-HHmmss")));
+        int suffix = 1;
+        while (QFileInfo::exists(
+            QDir(project_root_).filePath(QStringLiteral("runs/") + run_id))) {
+            run_id = QStringLiteral("run-%1-%2")
+                         .arg(
+                             QDateTime::currentDateTimeUtc().toString(
+                                 QStringLiteral("yyyyMMdd-HHmmss")))
+                         .arg(suffix++);
+        }
+        if (!preflight_experiment(run_id, &error)) {
+            QMessageBox::critical(this, QStringLiteral("实验预检失败"), error);
+        }
+    });
 
     connect(
         findChild<QComboBox*>(QStringLiteral("displayFieldSelector")),
@@ -765,16 +824,19 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
                 model_information_dock->raise();
                 return;
             }
-            if (row == 2 || row == 3) {
+            if (row == 2 || row == 3 || row == 4) {
                 experiment_editor_dock->show();
                 experiment_editor_dock->raise();
                 auto* scroll = findChild<QScrollArea*>(
                     QStringLiteral("experimentEditorScroll"));
                 if (row == 2) {
                     scroll->verticalScrollBar()->setValue(0);
-                } else {
+                } else if (row == 3) {
                     scroll->ensureWidgetVisible(findChild<QGroupBox*>(
                         QStringLiteral("sourceEditorGroup")));
+                } else {
+                    scroll->ensureWidgetVisible(findChild<QGroupBox*>(
+                        QStringLiteral("acquisitionEditorGroup")));
                 }
             }
         });
@@ -989,8 +1051,12 @@ bool MainWindow::save_experiment_draft(QString* error_message) {
         auto draft = experiment_editor(this)->current_draft();
         draft.model_reference = project_->model_reference;
         const auto& summary = model_scene_->summary();
-        static_cast<void>(ExperimentDraftStore::resolve(
-            draft, summary.grid, summary.extrema));
+        const auto checked = ExperimentDraftStore::resolve(
+            draft, summary.grid, summary.extrema);
+#ifdef WAVE3D_DESKTOP_HAS_SEGY
+        wave3d::io::require_segy_rev1_sample_axis(
+            checked.acquisition.sample_count, checked.simulation.time.dt_s);
+#endif
         ExperimentDraftStore::save(project_root_, draft);
         const auto verified = ExperimentDraftStore::load(
             project_root_, draft.shot_id);
@@ -1001,9 +1067,76 @@ bool MainWindow::save_experiment_draft(QString* error_message) {
         findChild<QTextEdit*>(QStringLiteral("runLog"))
             ->append(QStringLiteral("已保存实验草稿：%1")
                          .arg(ExperimentDraftStore::relative_path(draft.shot_id)));
-        statusBar()->showMessage(QStringLiteral("工作区与震源草稿已保存"));
+        statusBar()->showMessage(
+            QStringLiteral("工作区、震源与观测系统草稿已保存"));
         return true;
     } catch (const std::exception& error) {
+        if (error_message != nullptr) {
+            *error_message = QString::fromUtf8(error.what());
+        }
+        return false;
+    }
+#endif
+}
+
+bool MainWindow::preflight_experiment(
+    const QString& run_id,
+    QString* error_message) {
+#if !defined(WAVE3D_DESKTOP_HAS_HDF5) || !defined(WAVE3D_DESKTOP_HAS_YAML) || \
+    !defined(WAVE3D_DESKTOP_HAS_SEGY)
+    static_cast<void>(run_id);
+    if (error_message != nullptr) {
+        *error_message =
+            QStringLiteral("实验预检需要同时启用 HDF5、YAML 与 SEG-Y");
+    }
+    return false;
+#else
+    if (!project_ || !model_scene_ || !resolved_experiment_ ||
+        project_->shots.isEmpty()) {
+        if (error_message != nullptr) {
+            *error_message = QStringLiteral("请先完成有效的模型、震源和观测系统配置");
+        }
+        return false;
+    }
+    std::optional<PreparedRun> prepared;
+    try {
+        const auto model_path =
+            QStringLiteral("../../") + project_->model_reference;
+        wave3d::io::ForwardRunConfiguration configuration{
+            resolved_experiment_->simulation,
+            resolved_experiment_->source,
+            resolved_experiment_->receivers,
+            model_path.toStdString(),
+            "output"};
+        wave3d::io::require_valid_run_configuration(configuration);
+        const auto yaml = wave3d::io::resolved_yaml(configuration);
+        prepared = ProjectWorkspace::prepare_run(
+            project_root_,
+            *project_,
+            run_id,
+            project_->shots.front().id,
+            QByteArray::fromStdString(yaml));
+        const auto loaded = wave3d::io::load_yaml_run_configuration(
+            prepared->configuration_path.toStdString());
+        if (wave3d::io::resolved_yaml(loaded) != yaml) {
+            throw std::runtime_error(
+                "prepared YAML did not round trip to the resolved configuration");
+        }
+        findChild<QLabel*>(QStringLiteral("runStateLabel"))
+            ->setText(QStringLiteral("预检完成 · %1").arg(run_id));
+        findChild<QTextEdit*>(QStringLiteral("runLog"))
+            ->append(
+                QStringLiteral("正演预检完成：%1；%2 个接收器；配置 %3")
+                    .arg(run_id)
+                    .arg(resolved_experiment_->receivers.size())
+                    .arg(prepared->configuration_path));
+        statusBar()->showMessage(
+            QStringLiteral("预检完成 · 已生成不可变运行配置"));
+        return true;
+    } catch (const std::exception& error) {
+        if (prepared) {
+            QDir(prepared->directory).removeRecursively();
+        }
         if (error_message != nullptr) {
             *error_message = QString::fromUtf8(error.what());
         }
@@ -1086,6 +1219,8 @@ void MainWindow::clear_model_view() {
     experiment_model_reference_changed_ = false;
     volume_property_index_ = -1;
     volume_viewport(this)->clear_volume();
+    findChild<QAction*>(QStringLiteral("validateExperimentAction"))
+        ->setEnabled(false);
     experiment_editor(this)->clear_model_context();
     auto* property =
         findChild<QComboBox*>(QStringLiteral("modelPropertySelector"));
@@ -1132,6 +1267,8 @@ void MainWindow::clear_model_view() {
             ->setProperty("sourceMarkerVisible", false);
         findChild<QOpenGLWidget*>(viewport.first)
             ->setProperty("sourceMarkerOnPlane", false);
+        findChild<QOpenGLWidget*>(viewport.first)
+            ->setProperty("receiverCount", QVariant::fromValue<qulonglong>(0));
     }
 }
 
@@ -1278,10 +1415,22 @@ void MainWindow::update_experiment_validation() {
         const auto& summary = model_scene_->summary();
         resolved_experiment_ = ExperimentDraftStore::resolve(
             draft, summary.grid, summary.extrema);
+#ifdef WAVE3D_DESKTOP_HAS_SEGY
+        wave3d::io::require_segy_rev1_sample_axis(
+            resolved_experiment_->acquisition.sample_count,
+            resolved_experiment_->simulation.time.dt_s);
+#endif
         experiment_editor(this)->show_validation(
             *resolved_experiment_, experiment_model_reference_changed_);
+#if defined(WAVE3D_DESKTOP_HAS_HDF5) && defined(WAVE3D_DESKTOP_HAS_YAML) && \
+    defined(WAVE3D_DESKTOP_HAS_SEGY)
+        findChild<QAction*>(QStringLiteral("validateExperimentAction"))
+            ->setEnabled(true);
+#endif
     } catch (const std::exception& error) {
         resolved_experiment_.reset();
+        findChild<QAction*>(QStringLiteral("validateExperimentAction"))
+            ->setEnabled(false);
         experiment_editor(this)->show_validation_error(
             QString::fromUtf8(error.what()));
     }
@@ -1359,6 +1508,8 @@ void MainWindow::update_model_view() {
     volume->set_crop_bounds(model_scene_->normalized_crop_bounds(crop));
     std::optional<std::array<double, 3>> source_index;
     std::optional<std::array<float, 3>> source_texture;
+    std::vector<std::array<double, 3>> receiver_indices;
+    std::vector<std::array<float, 3>> receiver_textures;
     if (resolved_experiment_) {
         const auto& point = resolved_experiment_->source.physical_location;
         source_index = std::array<double, 3>{
@@ -1376,10 +1527,30 @@ void MainWindow::update_model_view() {
             normalized(point.x_m, grid.dx_m, grid.nx),
             normalized(point.y_m, grid.dy_m, grid.ny),
             normalized(point.z_m, grid.dz_m, grid.nz)};
+        receiver_indices.reserve(resolved_experiment_->receivers.size());
+        receiver_textures.reserve(resolved_experiment_->receivers.size());
+        for (const auto& receiver : resolved_experiment_->receivers) {
+            receiver_indices.push_back({
+                receiver.x_m / grid.dx_m,
+                receiver.y_m / grid.dy_m,
+                receiver.z_m / grid.dz_m});
+            receiver_textures.push_back({
+                normalized(receiver.x_m, grid.dx_m, grid.nx),
+                normalized(receiver.y_m, grid.dy_m, grid.ny),
+                normalized(receiver.z_m, grid.dz_m, grid.nz)});
+        }
     }
     volume->set_source_position(source_texture);
+    volume->set_receiver_positions(std::move(receiver_textures));
     auto xy = annotate_section(
-        model_scene_->xy_slice(property, z), 0, x, y, z, crop, source_index);
+        model_scene_->xy_slice(property, z),
+        0,
+        x,
+        y,
+        z,
+        crop,
+        source_index,
+        receiver_indices);
     scientific_viewport(this, QStringLiteral("xyViewport"))
         ->set_scientific_image(
             std::move(xy),
@@ -1394,7 +1565,8 @@ void MainWindow::update_model_view() {
                 y,
                 z,
                 crop,
-                source_index),
+                source_index,
+                receiver_indices),
             QStringLiteral("y=%1 · %2 m").arg(y).arg(
                 y * model_scene_->summary().grid.dy_m));
     scientific_viewport(this, QStringLiteral("yzViewport"))
@@ -1406,12 +1578,17 @@ void MainWindow::update_model_view() {
                 y,
                 z,
                 crop,
-                source_index),
+                source_index,
+                receiver_indices),
             QStringLiteral("x=%1 · %2 m").arg(x).arg(
                 x * model_scene_->summary().grid.dx_m));
     for (const char* name : {"xyViewport", "xzViewport", "yzViewport"}) {
         findChild<QOpenGLWidget*>(QString::fromUtf8(name))
             ->setProperty("sourceMarkerVisible", source_index.has_value());
+        findChild<QOpenGLWidget*>(QString::fromUtf8(name))
+            ->setProperty(
+                "receiverCount",
+                QVariant::fromValue<qulonglong>(receiver_indices.size()));
     }
     if (source_index) {
         findChild<QOpenGLWidget*>(QStringLiteral("xyViewport"))

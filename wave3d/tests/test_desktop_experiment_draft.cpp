@@ -3,10 +3,13 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QTemporaryDir>
 
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 
 namespace {
@@ -85,6 +88,31 @@ void test_defaults_and_resolution() {
             resolved.numerical.shear_points_per_wavelength[0] >= 5.0 &&
             resolved.numerical.time_samples_per_period >= 20.0,
         "default draft is not numerically valid");
+    expect(
+        draft.receiver_grid.has_value() &&
+            draft.receiver_grid->count_x == 101 &&
+            draft.receiver_grid->count_y == 101 &&
+            resolved.receivers.size() == 10201 &&
+            resolved.acquisition.receiver_count == 10201 &&
+            resolved.acquisition.sample_count == 3000,
+        "default 101 by 101 acquisition was not resolved");
+    expect(
+        resolved.receivers.front().x_m == 0.0 &&
+            resolved.receivers.front().y_m == 0.0 &&
+            resolved.receivers[100].x_m == 4975.0 &&
+            resolved.receivers[100].y_m == 0.0 &&
+            resolved.receivers[101].x_m == 0.0 &&
+            resolved.receivers[101].y_m == 49.75 &&
+            resolved.receivers.back().x_m == 4975.0 &&
+            resolved.receivers.back().y_m == 4975.0,
+        "surface receiver endpoints or x-fastest order changed");
+    expect(
+        resolved.acquisition.raw_trace_bytes ==
+                std::size_t{10201} * 3000 * 3 * sizeof(float) &&
+            resolved.acquisition.segy_bytes ==
+                3600 + std::size_t{10201} * 3 *
+                           (240 + 3000 * sizeof(float)),
+        "three-component trace or SEG-Y byte estimate is incorrect");
 
     auto manual = draft;
     manual.source_mode = wave3d::desktop::DraftSourceMode::MomentTensor;
@@ -126,6 +154,36 @@ void test_defaults_and_resolution() {
     expect_rejected(
         [&] { wave3d::desktop::ExperimentDraftStore::validate(invalid); },
         "zero manual moment tensor must be rejected");
+    invalid = draft;
+    invalid.receiver_grid->count_x = 1;
+    expect_rejected(
+        [&] { wave3d::desktop::ExperimentDraftStore::validate(invalid); },
+        "single-point receiver axis must be rejected");
+    invalid = draft;
+    invalid.receiver_grid->minimum_x_m = invalid.receiver_grid->maximum_x_m;
+    expect_rejected(
+        [&] { wave3d::desktop::ExperimentDraftStore::validate(invalid); },
+        "degenerate receiver aperture must be rejected");
+    invalid = draft;
+    invalid.receiver_grid->depth_m = 25.0;
+    expect_rejected(
+        [&] { wave3d::desktop::ExperimentDraftStore::validate(invalid); },
+        "non-surface receiver grid must be rejected");
+    invalid = draft;
+    invalid.receiver_grid->maximum_x_m = 5000.0;
+    expect_rejected(
+        [&] {
+            static_cast<void>(wave3d::desktop::ExperimentDraftStore::resolve(
+                invalid, grid(), extrema()));
+        },
+        "out-of-domain receiver aperture must be rejected");
+    expect_rejected(
+        [] {
+            static_cast<void>(
+                wave3d::desktop::ExperimentDraftStore::acquisition_estimate(
+                    std::numeric_limits<std::size_t>::max(), 2));
+        },
+        "receiver storage overflow must be rejected");
 }
 
 void test_atomic_persistence() {
@@ -160,7 +218,10 @@ void test_atomic_persistence() {
             loaded.model_reference == draft.model_reference &&
             loaded.dt_s == draft.dt_s &&
             loaded.source_location_m.z_m == draft.source_location_m.z_m &&
-            loaded.wavelet.peak_delay_s == draft.wavelet.peak_delay_s,
+            loaded.wavelet.peak_delay_s == draft.wavelet.peak_delay_s &&
+            loaded.receiver_grid.has_value() &&
+            loaded.receiver_grid->count_x == 101 &&
+            loaded.receiver_grid->maximum_y_m == 4975.0,
         "experiment JSON did not round trip exactly");
 
     draft.total_time_s = 4.25;
@@ -184,6 +245,34 @@ void test_atomic_persistence() {
         root.entryList(QStringList{QStringLiteral("*.XXXXXX")}, QDir::Files)
             .isEmpty(),
         "atomic draft save retained a temporary file");
+
+    const auto draft_path = root.filePath(
+        wave3d::desktop::ExperimentDraftStore::relative_path(
+            QStringLiteral("shot-001")));
+    auto legacy_root = QJsonDocument::fromJson(bytes(draft_path)).object();
+    legacy_root.insert(
+        QStringLiteral("schema"),
+        QString::fromUtf8(wave3d::desktop::kLegacyExperimentDraftSchema));
+    legacy_root.remove(QStringLiteral("acquisition"));
+    QFile legacy_file(draft_path);
+    expect(
+        legacy_file.open(QIODevice::WriteOnly | QIODevice::Truncate),
+        "cannot write legacy draft fixture");
+    expect(
+        legacy_file.write(QJsonDocument(legacy_root).toJson()) > 0,
+        "cannot publish legacy draft fixture");
+    legacy_file.close();
+    const auto legacy = wave3d::desktop::ExperimentDraftStore::load(
+        temporary.path(), QStringLiteral("shot-001"));
+    expect(
+        !legacy.receiver_grid.has_value(),
+        "version-1 draft did not retain its missing-acquisition migration marker");
+    expect_rejected(
+        [&] {
+            static_cast<void>(wave3d::desktop::ExperimentDraftStore::resolve(
+                legacy, grid(), extrema()));
+        },
+        "legacy draft without model-derived acquisition must not resolve");
 
     expect_rejected(
         [&] {

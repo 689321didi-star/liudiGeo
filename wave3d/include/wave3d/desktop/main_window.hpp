@@ -39,6 +39,9 @@ public:
         QString* error_message = nullptr);
     [[nodiscard]] bool save_experiment_draft(
         QString* error_message = nullptr);
+    [[nodiscard]] bool preflight_experiment(
+        const QString& run_id,
+        QString* error_message = nullptr);
 
     [[nodiscard]] const ProjectDocument* current_project() const noexcept;
     [[nodiscard]] const QString& current_project_root() const noexcept;

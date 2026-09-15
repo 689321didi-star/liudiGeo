@@ -170,11 +170,22 @@ void VolumeViewport::set_source_position(
     update();
 }
 
+void VolumeViewport::set_receiver_positions(
+    std::vector<std::array<float, 3>> normalized_positions) {
+    receiver_positions_ = std::move(normalized_positions);
+    setProperty(
+        "receiverCount",
+        QVariant::fromValue<qulonglong>(receiver_positions_.size()));
+    setProperty("displayedReceiverMarkerCount", 0);
+    update();
+}
+
 void VolumeViewport::clear_volume() {
     pending_volume_.reset();
     property_name_.clear();
     failure_message_.clear();
     set_source_position(std::nullopt);
+    set_receiver_positions({});
     if (property("openGlReady").toBool() && context() != nullptr &&
         context()->isValid()) {
         makeCurrent();
@@ -369,7 +380,9 @@ void VolumeViewport::paintGL() {
         message);
 
     setProperty("sourceMarkerVisible", false);
-    if (source_position_ && property("volumeTextureReady").toBool()) {
+    setProperty("receiverMarkerVisible", false);
+    setProperty("displayedReceiverMarkerCount", 0);
+    if (property("volumeTextureReady").toBool()) {
         const QVector3D camera(
             distance_ * std::cos(pitch_) * std::cos(yaw_),
             distance_ * std::cos(pitch_) * std::sin(yaw_),
@@ -379,33 +392,76 @@ void VolumeViewport::paintGL() {
                                forward, QVector3D(0.0F, 0.0F, 1.0F))
                                .normalized();
         const auto up = QVector3D::crossProduct(right, forward).normalized();
-        const QVector3D world(
-            ((*source_position_)[0] - 0.5F) * physical_aspect_[0],
-            ((*source_position_)[1] - 0.5F) * physical_aspect_[1],
-            (0.5F - (*source_position_)[2]) * physical_aspect_[2]);
-        const auto relative = world - camera;
-        const auto depth = QVector3D::dotProduct(relative, forward);
-        if (depth > 0.0F) {
+        const auto projected_point = [&](const std::array<float, 3>& position)
+            -> std::optional<QPointF> {
+            const QVector3D world(
+                (position[0] - 0.5F) * physical_aspect_[0],
+                (position[1] - 0.5F) * physical_aspect_[1],
+                (0.5F - position[2]) * physical_aspect_[2]);
+            const auto relative = world - camera;
+            const auto depth = QVector3D::dotProduct(relative, forward);
+            if (depth <= 0.0F) {
+                return std::nullopt;
+            }
             const auto viewport_ratio =
                 height() == 0 ? 1.0F : static_cast<float>(width()) / height();
             const auto ndc_x = QVector3D::dotProduct(relative, right) /
                                (0.58F * depth * viewport_ratio);
-            const auto ndc_y =
-                QVector3D::dotProduct(relative, up) / (0.58F * depth);
-            if (std::abs(ndc_x) <= 1.0F && std::abs(ndc_y) <= 1.0F) {
-                const QPointF point(
-                    (ndc_x + 1.0F) * 0.5F * width(),
-                    (1.0F - ndc_y) * 0.5F * height());
+            const auto ndc_y = QVector3D::dotProduct(relative, up) /
+                               (0.58F * depth);
+            if (std::abs(ndc_x) > 1.0F || std::abs(ndc_y) > 1.0F) {
+                return std::nullopt;
+            }
+            return QPointF(
+                (ndc_x + 1.0F) * 0.5F * width(),
+                (1.0F - ndc_y) * 0.5F * height());
+        };
+        int displayed = 0;
+        painter.setPen(QPen(QColor(176, 247, 255, 210), 1.0));
+        painter.setBrush(QColor(39, 205, 221, 190));
+        std::size_t row_size = receiver_positions_.size();
+        if (!receiver_positions_.empty()) {
+            row_size = 1;
+            while (row_size < receiver_positions_.size() &&
+                   std::abs(receiver_positions_[row_size][1] -
+                            receiver_positions_.front()[1]) < 1.0e-6F &&
+                   std::abs(receiver_positions_[row_size][2] -
+                            receiver_positions_.front()[2]) < 1.0e-6F) {
+                ++row_size;
+            }
+        }
+        const auto row_count =
+            row_size == 0 ? std::size_t{0}
+                          : receiver_positions_.size() / row_size;
+        const auto x_stride =
+            std::max(std::size_t{1}, (row_size + 24) / 25);
+        const auto y_stride =
+            std::max(std::size_t{1}, (row_count + 24) / 25);
+        for (std::size_t iy = 0; iy < row_count; iy += y_stride) {
+            for (std::size_t ix = 0; ix < row_size; ix += x_stride) {
+                const auto index = iy * row_size + ix;
+                const auto point = projected_point(receiver_positions_[index]);
+                if (point) {
+                    painter.drawEllipse(*point, 1.8, 1.8);
+                    ++displayed;
+                }
+            }
+        }
+        setProperty("displayedReceiverMarkerCount", displayed);
+        setProperty("receiverMarkerVisible", displayed > 0);
+        if (source_position_) {
+            const auto point = projected_point(*source_position_);
+            if (point) {
                 painter.setPen(QPen(QColor(255, 255, 255), 2.0));
                 painter.setBrush(QColor(255, 82, 104, 230));
-                painter.drawEllipse(point, 7.0, 7.0);
-                painter.drawLine(point + QPointF(-11.0, 0.0),
-                                 point + QPointF(11.0, 0.0));
-                painter.drawLine(point + QPointF(0.0, -11.0),
-                                 point + QPointF(0.0, 11.0));
+                painter.drawEllipse(*point, 7.0, 7.0);
+                painter.drawLine(*point + QPointF(-11.0, 0.0),
+                                 *point + QPointF(11.0, 0.0));
+                painter.drawLine(*point + QPointF(0.0, -11.0),
+                                 *point + QPointF(0.0, 11.0));
                 painter.setPen(QColor(255, 222, 226));
                 painter.drawText(
-                    QRectF(point.x() + 10.0, point.y() - 18.0, 80.0, 24.0),
+                    QRectF(point->x() + 10.0, point->y() - 18.0, 80.0, 24.0),
                     QStringLiteral("震源 S"));
                 setProperty("sourceMarkerVisible", true);
             }

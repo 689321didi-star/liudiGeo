@@ -6,6 +6,9 @@
 #ifdef WAVE3D_DESKTOP_HAS_HDF5
 #include "wave3d/io/hdf5.hpp"
 #endif
+#ifdef WAVE3D_DESKTOP_HAS_YAML
+#include "wave3d/io/yaml_config.hpp"
+#endif
 
 #include <QAction>
 #include <QApplication>
@@ -83,6 +86,17 @@ void test_shell_contract() {
             !require_child<QPushButton>(window, "saveExperimentDraftButton")
                  ->isEnabled(),
         "experiment editor must start disabled without a model");
+    const auto* receiver_geometry =
+        require_child<QComboBox>(window, "receiverGeometryCombo");
+    expect(
+        receiver_geometry->count() == 3 &&
+            !receiver_geometry->model()
+                 ->flags(receiver_geometry->model()->index(1, 0))
+                 .testFlag(Qt::ItemIsEnabled) &&
+            !receiver_geometry->model()
+                 ->flags(receiver_geometry->model()->index(2, 0))
+                 .testFlag(Qt::ItemIsEnabled),
+        "reserved line and CSV receiver modes are not visible and gated");
 
     const auto* four_view = require_child<QSplitter>(window, "fourViewSplitter");
     const auto* slices = require_child<QSplitter>(window, "sliceViewSplitter");
@@ -332,6 +346,24 @@ void test_hdf5_model_import() {
                 ->text()
                 .startsWith(QStringLiteral("参数有效")),
         "model did not configure a valid read-only-grid experiment draft");
+    expect(
+        require_child<QSpinBox>(window, "receiverCountXSpin")->value() == 101 &&
+            require_child<QSpinBox>(window, "receiverCountYSpin")->value() == 101 &&
+            require_child<QLabel>(window, "receiverComponentsLabel")->text() ==
+                QStringLiteral("Vx / Vy / Vz") &&
+            require_child<QLabel>(window, "acquisitionEstimateLabel")
+                ->text()
+                .contains(QStringLiteral("10201 个接收器")),
+        "model did not configure the 101 by 101 three-component acquisition");
+#if defined(WAVE3D_DESKTOP_HAS_YAML) && defined(WAVE3D_DESKTOP_HAS_SEGY)
+    expect(
+        require_child<QAction>(window, "validateExperimentAction")->isEnabled(),
+        "valid HDF5/YAML desktop experiment did not enable preflight");
+#else
+    expect(
+        !require_child<QAction>(window, "validateExperimentAction")->isEnabled(),
+        "desktop without the complete HDF5/YAML/SEG-Y adapters exposed preflight");
+#endif
     const auto* source_modes =
         require_child<QComboBox>(window, "sourceModeCombo");
     expect(
@@ -393,10 +425,15 @@ void test_hdf5_model_import() {
     expect(
         volume->property("sourceMarkerPosition").toList().size() == 3,
         "valid default source was not synchronized to the 3-D viewport");
+    expect(
+        volume->property("receiverCount").toULongLong() == 10201,
+        "default receivers were not synchronized to the 3-D viewport");
 
     require_child<QDoubleSpinBox>(window, "sourceXSpin")->setValue(15.0);
     require_child<QDoubleSpinBox>(window, "totalTimeSpin")->setValue(4.25);
     require_child<QComboBox>(window, "sourceModeCombo")->setCurrentIndex(1);
+    require_child<QSpinBox>(window, "receiverCountXSpin")->setValue(5);
+    require_child<QSpinBox>(window, "receiverCountYSpin")->setValue(4);
     for (const char* name : {
              "momentMxxEdit", "momentMyyEdit", "momentMzzEdit",
              "momentMxzEdit", "momentMyzEdit"}) {
@@ -423,8 +460,12 @@ void test_hdf5_model_import() {
             saved_draft.source_location_m.x_m == 15.0 &&
             saved_draft.source_mode ==
                 wave3d::desktop::DraftSourceMode::MomentTensor &&
-            saved_draft.moment_tensor_nm.m_xy_nm == 1.0e12,
-        "saved UI draft did not preserve workspace/source values");
+            saved_draft.moment_tensor_nm.m_xy_nm == 1.0e12 &&
+            saved_draft.receiver_grid.has_value() &&
+            saved_draft.receiver_grid->count_x == 5 &&
+            saved_draft.receiver_grid->count_y == 4 &&
+            volume->property("receiverCount").toULongLong() == 20,
+        "saved UI draft did not preserve workspace/source/acquisition values");
     const auto source_marker = volume->property("sourceMarkerPosition").toList();
     expect(
         source_marker.size() == 3 && source_marker[0].toFloat() == 0.5F &&
@@ -442,6 +483,63 @@ void test_hdf5_model_import() {
             volume->property("sourceMarkerPosition").toList().isEmpty(),
         "invalid CFL state remained saveable or retained a source marker");
     require_child<QDoubleSpinBox>(window, "timeStepMsSpin")->setValue(1.0);
+
+#ifdef WAVE3D_DESKTOP_HAS_SEGY
+    require_child<QDoubleSpinBox>(window, "timeStepMsSpin")->setValue(0.5005);
+    expect(
+        !require_child<QPushButton>(window, "saveExperimentDraftButton")
+             ->isEnabled() &&
+            require_child<QLabel>(window, "experimentValidationLabel")
+                ->text()
+                .contains(QStringLiteral("SEG-Y")),
+        "fractional-microsecond SEG-Y interval remained saveable");
+    require_child<QDoubleSpinBox>(window, "timeStepMsSpin")->setValue(1.0);
+#endif
+
+    require_child<QDoubleSpinBox>(window, "receiverMaxXSpin")->setValue(50.0);
+    expect(
+        !require_child<QPushButton>(window, "saveExperimentDraftButton")
+             ->isEnabled() &&
+            !require_child<QAction>(window, "validateExperimentAction")
+                 ->isEnabled() &&
+            volume->property("receiverCount").toULongLong() == 0,
+        "out-of-domain receiver aperture remained saveable or visible");
+    require_child<QDoubleSpinBox>(window, "receiverMaxXSpin")->setValue(30.0);
+
+#if defined(WAVE3D_DESKTOP_HAS_YAML) && defined(WAVE3D_DESKTOP_HAS_SEGY)
+    error.clear();
+    expect(
+        window.preflight_experiment(QStringLiteral("run-001"), &error),
+        "valid experiment preflight failed");
+    const auto prepared_config =
+        QDir(project_root).filePath(QStringLiteral("runs/run-001/config.yaml"));
+    const auto prepared_manifest =
+        QDir(project_root).filePath(QStringLiteral("runs/run-001/manifest.json"));
+    expect(
+        QFileInfo::exists(prepared_config) && QFileInfo::exists(prepared_manifest),
+        "preflight did not publish its immutable config and manifest");
+    const auto prepared = wave3d::io::load_yaml_run_configuration(
+        prepared_config.toStdString());
+    expect(
+        prepared.receiver_coordinates_m.size() == 20 &&
+            prepared.receiver_coordinates_m.front().x_m == 0.0 &&
+            prepared.receiver_coordinates_m.back().x_m == 30.0 &&
+            prepared.receiver_coordinates_m.back().y_m == 40.0 &&
+            prepared.model_hdf5_path == "../../models/fixture.h5" &&
+            prepared.output_directory == "output",
+        "preflight YAML did not round trip model, output, or receiver geometry");
+    error.clear();
+    expect(
+        !window.preflight_experiment(QStringLiteral("run-001"), &error) &&
+            !error.isEmpty(),
+        "preflight overwrote an existing immutable run");
+#else
+    error.clear();
+    expect(
+        !window.preflight_experiment(QStringLiteral("run-001"), &error) &&
+            !error.isEmpty(),
+        "incomplete-adapter preflight did not fail explicitly");
+#endif
 
     auto* slice_z = require_child<QSpinBox>(window, "sliceZSpin");
     expect(

@@ -1,5 +1,7 @@
 #include "wave3d/desktop/experiment_draft.hpp"
 
+#include "wave3d/core/checked_size.hpp"
+
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -12,11 +14,14 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
 namespace wave3d::desktop {
 namespace {
+
+constexpr std::size_t maximum_desktop_receiver_count = 1'100'000;
 
 [[noreturn]] void fail(const QString& message) {
     throw std::invalid_argument(message.toStdString());
@@ -84,6 +89,10 @@ void require_number_array(
 }
 
 QJsonObject draft_json(const ExperimentDraft& draft) {
+    if (!draft.receiver_grid) {
+        fail(QStringLiteral("experiment acquisition is missing"));
+    }
+    const auto& receivers = *draft.receiver_grid;
     return {
         {QStringLiteral("schema"), QString::fromUtf8(kExperimentDraftSchema)},
         {QStringLiteral("shot_id"), draft.shot_id},
@@ -113,7 +122,22 @@ QJsonObject draft_json(const ExperimentDraft& draft) {
                   {QStringLiteral("peak_delay_s"),
                    draft.wavelet.peak_delay_s},
                   {QStringLiteral("peak_rate_s_inv"),
-                   draft.wavelet.peak_rate_s_inv}}}}}};
+                   draft.wavelet.peak_rate_s_inv}}}}},
+        {QStringLiteral("acquisition"),
+         QJsonObject{
+             {QStringLiteral("mode"), QStringLiteral("surface_rectangular")},
+             {QStringLiteral("count_x"),
+              static_cast<qint64>(receivers.count_x)},
+             {QStringLiteral("count_y"),
+              static_cast<qint64>(receivers.count_y)},
+             {QStringLiteral("x_range_m"),
+              QJsonArray{receivers.minimum_x_m, receivers.maximum_x_m}},
+             {QStringLiteral("y_range_m"),
+              QJsonArray{receivers.minimum_y_m, receivers.maximum_y_m}},
+             {QStringLiteral("depth_m"), receivers.depth_m},
+             {QStringLiteral("components"),
+              QJsonArray{QStringLiteral("vx"), QStringLiteral("vy"),
+                         QStringLiteral("vz")}}}}};
 }
 
 QString absolute_path(const QString& root, const QString& shot_id) {
@@ -143,7 +167,12 @@ ExperimentDraft ExperimentDraftStore::defaults(
     draft.model_reference = model_reference;
     const auto limit = elastic_cfl_dt_limit_s(
         grid, extrema.maximum.vp_m_s, draft.cfl_safety_factor);
-    draft.dt_s = std::min(0.001, limit * 0.8);
+    const auto conservative_dt_s = std::min(0.001, limit * 0.8);
+    draft.dt_s = std::floor(conservative_dt_s * 1.0e6) / 1.0e6;
+    if (!(draft.dt_s > 0.0)) {
+        fail(QStringLiteral(
+            "model CFL limit is below the minimum SEG-Y microsecond interval"));
+    }
     const auto maximum_spacing = std::max(
         {static_cast<double>(grid.dx_m),
          static_cast<double>(grid.dy_m),
@@ -162,6 +191,7 @@ ExperimentDraft ExperimentDraftStore::defaults(
         static_cast<double>(grid.nx / 2) * grid.dx_m,
         static_cast<double>(grid.ny / 2) * grid.dy_m,
         static_cast<double>(grid.nz / 4) * grid.dz_m};
+    draft.receiver_grid = default_receiver_grid(grid);
     validate(draft);
     static_cast<void>(resolve(draft, grid, extrema));
     return draft;
@@ -214,6 +244,122 @@ void ExperimentDraftStore::validate(const ExperimentDraft& draft) {
     } else {
         require_valid_moment_tensor(draft.moment_tensor_nm);
     }
+    if (!draft.receiver_grid) {
+        fail(QStringLiteral("experiment acquisition is missing"));
+    }
+    const auto& receivers = *draft.receiver_grid;
+    const std::array<double, 5> receiver_values{
+        receivers.minimum_x_m,
+        receivers.maximum_x_m,
+        receivers.minimum_y_m,
+        receivers.maximum_y_m,
+        receivers.depth_m};
+    if (!std::all_of(
+            receiver_values.begin(), receiver_values.end(), [](double value) {
+                return std::isfinite(value);
+            })) {
+        fail(QStringLiteral("receiver coordinates must be finite"));
+    }
+    if (receivers.count_x < 2 || receivers.count_y < 2 ||
+        !(receivers.minimum_x_m < receivers.maximum_x_m) ||
+        !(receivers.minimum_y_m < receivers.maximum_y_m) ||
+        receivers.depth_m != 0.0) {
+        fail(QStringLiteral(
+            "surface receiver grid needs two or more points per axis, "
+            "increasing bounds, and depth 0 m"));
+    }
+    const auto receiver_count = detail::checked_size_product(
+        receivers.count_x,
+        receivers.count_y,
+        "receiver count overflows size_t");
+    if (receiver_count > maximum_desktop_receiver_count) {
+        fail(QStringLiteral(
+            "desktop receiver grid exceeds the 1,100,000 point safety limit"));
+    }
+}
+
+RectangularReceiverGrid ExperimentDraftStore::default_receiver_grid(
+    const Grid3D& grid) {
+    require_valid_grid_geometry(grid);
+    return {
+        101,
+        101,
+        0.0,
+        static_cast<double>(grid.nx - 1) * grid.dx_m,
+        0.0,
+        static_cast<double>(grid.ny - 1) * grid.dy_m,
+        0.0};
+}
+
+std::vector<PhysicalPoint3D> ExperimentDraftStore::generate_receivers(
+    const RectangularReceiverGrid& receiver_grid,
+    const Grid3D& grid) {
+    ExperimentDraft validation;
+    validation.shot_id = QStringLiteral("validation");
+    validation.model_reference = QStringLiteral("models/validation.h5");
+    validation.receiver_grid = receiver_grid;
+    validate(validation);
+    const auto count = detail::checked_size_product(
+        receiver_grid.count_x,
+        receiver_grid.count_y,
+        "receiver count overflows size_t");
+    std::vector<PhysicalPoint3D> result;
+    result.reserve(count);
+    for (std::size_t iy = 0; iy < receiver_grid.count_y; ++iy) {
+        const auto y_fraction = static_cast<double>(iy) /
+                                static_cast<double>(receiver_grid.count_y - 1);
+        const auto y = receiver_grid.minimum_y_m +
+                       y_fraction *
+                           (receiver_grid.maximum_y_m -
+                            receiver_grid.minimum_y_m);
+        for (std::size_t ix = 0; ix < receiver_grid.count_x; ++ix) {
+            const auto x_fraction = static_cast<double>(ix) /
+                                    static_cast<double>(receiver_grid.count_x - 1);
+            const PhysicalPoint3D point{
+                receiver_grid.minimum_x_m +
+                    x_fraction *
+                        (receiver_grid.maximum_x_m -
+                         receiver_grid.minimum_x_m),
+                y,
+                receiver_grid.depth_m};
+            static_cast<void>(physical_to_storage_coordinate(grid, point));
+            result.push_back(point);
+        }
+    }
+    return result;
+}
+
+AcquisitionEstimate ExperimentDraftStore::acquisition_estimate(
+    std::size_t receiver_count,
+    std::size_t sample_count) {
+    if (receiver_count == 0 || sample_count == 0) {
+        fail(QStringLiteral("receiver and sample counts must be positive"));
+    }
+    const auto component_traces = detail::checked_size_product(
+        receiver_count, std::size_t{3}, "component trace count overflows size_t");
+    const auto trace_values = detail::checked_size_product(
+        component_traces,
+        sample_count,
+        "three-component trace value count overflows size_t");
+    const auto raw_bytes = detail::checked_size_product(
+        trace_values, sizeof(float), "raw trace byte count overflows size_t");
+    const auto sample_bytes = detail::checked_size_product(
+        sample_count, sizeof(float), "SEG-Y sample bytes overflow size_t");
+    if (sample_bytes > std::numeric_limits<std::size_t>::max() - 240) {
+        fail(QStringLiteral("SEG-Y trace bytes overflow size_t"));
+    }
+    const auto trace_bytes = sample_bytes + 240;
+    const auto all_trace_bytes = detail::checked_size_product(
+        component_traces, trace_bytes, "SEG-Y trace bytes overflow size_t");
+    if (all_trace_bytes > std::numeric_limits<std::size_t>::max() - 3600) {
+        fail(QStringLiteral("SEG-Y file bytes overflow size_t"));
+    }
+    return {
+        receiver_count,
+        sample_count,
+        trace_values,
+        raw_bytes,
+        all_trace_bytes + 3600};
 }
 
 ResolvedExperimentDraft ExperimentDraftStore::resolve(
@@ -221,6 +367,9 @@ ResolvedExperimentDraft ExperimentDraftStore::resolve(
     const Grid3D& grid,
     const PhysicalModelExtrema& extrema) {
     validate(draft);
+    if (!draft.receiver_grid) {
+        fail(QStringLiteral("experiment acquisition is missing"));
+    }
     SimulationConfig simulation;
     simulation.grid = grid;
     simulation.time = {draft.dt_s, draft.total_time_s};
@@ -244,7 +393,15 @@ ResolvedExperimentDraft ExperimentDraftStore::resolve(
         draft.source_origin_time_s,
         moment,
         draft.wavelet);
-    return {simulation, source, elastic_numerical_report(simulation)};
+    auto receivers = generate_receivers(*draft.receiver_grid, grid);
+    auto acquisition = acquisition_estimate(
+        receivers.size(), simulation.time.step_count());
+    return {
+        simulation,
+        source,
+        elastic_numerical_report(simulation),
+        std::move(receivers),
+        acquisition};
 }
 
 QString ExperimentDraftStore::relative_path(const QString& shot_id) {
@@ -273,8 +430,9 @@ ExperimentDraft ExperimentDraftStore::load(
         fail(QStringLiteral("experiment draft is not valid JSON"));
     }
     const auto root = document.object();
-    if (root.value(QStringLiteral("schema")).toString() !=
-        QString::fromUtf8(kExperimentDraftSchema)) {
+    const auto schema = root.value(QStringLiteral("schema")).toString();
+    const bool legacy = schema == QString::fromUtf8(kLegacyExperimentDraftSchema);
+    if (!legacy && schema != QString::fromUtf8(kExperimentDraftSchema)) {
         fail(QStringLiteral("unsupported experiment draft schema"));
     }
     if (!root.value(QStringLiteral("shot_id")).isString() ||
@@ -343,7 +501,64 @@ ExperimentDraft ExperimentDraftStore::load(
         ricker.value(QStringLiteral("dominant_frequency_hz")).toDouble(),
         ricker.value(QStringLiteral("peak_delay_s")).toDouble(),
         ricker.value(QStringLiteral("peak_rate_s_inv")).toDouble()};
-    validate(draft);
+    if (!legacy) {
+        if (!root.value(QStringLiteral("acquisition")).isObject()) {
+            fail(QStringLiteral("experiment acquisition has invalid type"));
+        }
+        const auto acquisition =
+            root.value(QStringLiteral("acquisition")).toObject();
+        if (acquisition.value(QStringLiteral("mode")).toString() !=
+                QStringLiteral("surface_rectangular") ||
+            !acquisition.value(QStringLiteral("count_x")).isDouble() ||
+            !acquisition.value(QStringLiteral("count_y")).isDouble() ||
+            !acquisition.value(QStringLiteral("depth_m")).isDouble()) {
+            fail(QStringLiteral("experiment acquisition values are invalid"));
+        }
+        require_number_array(
+            acquisition.value(QStringLiteral("x_range_m")),
+            2,
+            QStringLiteral("acquisition.x_range_m"));
+        require_number_array(
+            acquisition.value(QStringLiteral("y_range_m")),
+            2,
+            QStringLiteral("acquisition.y_range_m"));
+        const auto components =
+            acquisition.value(QStringLiteral("components")).toArray();
+        if (components.size() != 3 ||
+            components[0].toString() != QStringLiteral("vx") ||
+            components[1].toString() != QStringLiteral("vy") ||
+            components[2].toString() != QStringLiteral("vz")) {
+            fail(QStringLiteral("experiment receiver components must be vx,vy,vz"));
+        }
+        const auto count_x = acquisition.value(QStringLiteral("count_x")).toDouble();
+        const auto count_y = acquisition.value(QStringLiteral("count_y")).toDouble();
+        if (count_x < 0.0 || count_y < 0.0 ||
+            std::floor(count_x) != count_x || std::floor(count_y) != count_y ||
+            count_x > static_cast<double>(std::numeric_limits<std::size_t>::max()) ||
+            count_y > static_cast<double>(std::numeric_limits<std::size_t>::max())) {
+            fail(QStringLiteral("experiment receiver counts must be integers"));
+        }
+        const auto x_range =
+            acquisition.value(QStringLiteral("x_range_m")).toArray();
+        const auto y_range =
+            acquisition.value(QStringLiteral("y_range_m")).toArray();
+        draft.receiver_grid = RectangularReceiverGrid{
+            static_cast<std::size_t>(count_x),
+            static_cast<std::size_t>(count_y),
+            x_range[0].toDouble(),
+            x_range[1].toDouble(),
+            y_range[0].toDouble(),
+            y_range[1].toDouble(),
+            acquisition.value(QStringLiteral("depth_m")).toDouble()};
+    }
+    if (legacy) {
+        auto legacy_validation = draft;
+        legacy_validation.receiver_grid =
+            RectangularReceiverGrid{2, 2, 0.0, 1.0, 0.0, 1.0, 0.0};
+        validate(legacy_validation);
+    } else {
+        validate(draft);
+    }
     if (draft.shot_id != shot_id) {
         fail(QStringLiteral("experiment draft shot identity does not match file"));
     }

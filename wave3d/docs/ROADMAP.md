@@ -590,6 +590,30 @@ contracts, and synchronizes a source marker across the four views. Real
 Overthrust numerical and visual review passed; HDF5-on passed 23/23,
 HDF5-off 20/20, desktop-off 17/17, and the full CUDA configuration 28/28.
 
+## Increment 23 — Acquisition geometry and forward preflight
+
+**Goal:** Complete one active shot with surface receiver geometry and publish a
+reviewable, immutable production configuration without starting CUDA.
+
+**Work:** Add a version-2 acquisition draft with version-1 migration, default
+`101 x 101` surface receivers, checked trace/SEG-Y estimates, acquisition
+editing, receiver overlays, production YAML assembly, SEG-Y sample-axis
+validation, and immutable preflight publication with YAML readback.
+
+**Acceptance:** The geometry/order, bounds, overflow, persistence, migration,
+output estimates, UI state, overlay, HDF5/YAML/SEG-Y preflight, optional-build,
+WSLg Overthrust, and full CUDA gates in
+`INCREMENT_23_ACQUISITION_PREFLIGHT_PLAN.md` pass.
+
+**Status:** Verified on 2026-09-15. The active shot now owns a validated
+rectangular surface acquisition with `101 x 101` defaults, exact
+three-component storage estimates, synchronized receiver overlays, and a
+complete immutable `wave3d.forward.v2` preflight configuration. Version-1
+drafts migrate without invented persisted geometry. The HDF5/YAML/SEG-Y desktop
+suite passed 25/25, all optional-build matrices passed, the complete CUDA suite
+passed 28/28, and the real Overthrust WSLg capture passed visual and OpenGL
+gates.
+
 ## Deferred research phases
 
 After elastic forward qualification, separate future phases may implement
