@@ -21,6 +21,63 @@ class DeviceCpmlProfile;
 class DeviceCpmlState;
 class DeviceTractionFreeSurface;
 
+class DeviceReadOnlyFloatView {
+public:
+    DeviceReadOnlyFloatView() noexcept = default;
+
+    DeviceReadOnlyFloatView(
+        const float* device_data,
+        std::size_t element_count) noexcept
+        : device_data_(device_data), element_count_(element_count) {}
+
+    [[nodiscard]] const float* data() const noexcept { return device_data_; }
+    [[nodiscard]] std::size_t size() const noexcept { return element_count_; }
+    [[nodiscard]] bool empty() const noexcept { return element_count_ == 0; }
+
+private:
+    const float* device_data_{nullptr};
+    std::size_t element_count_{0};
+};
+
+struct DeviceElasticWavefieldConstView {
+    Grid3D grid{};
+    DeviceReadOnlyFloatView vx_m_s;
+    DeviceReadOnlyFloatView vy_m_s;
+    DeviceReadOnlyFloatView vz_m_s;
+    DeviceReadOnlyFloatView sxx_pa;
+    DeviceReadOnlyFloatView syy_pa;
+    DeviceReadOnlyFloatView szz_pa;
+    DeviceReadOnlyFloatView sxy_pa;
+    DeviceReadOnlyFloatView sxz_pa;
+    DeviceReadOnlyFloatView syz_pa;
+
+    [[nodiscard]] std::size_t cell_count() const noexcept {
+        return vx_m_s.size();
+    }
+};
+
+inline void require_valid_device_elastic_wavefield_view(
+    const DeviceElasticWavefieldConstView& view) {
+    require_valid_grid_geometry(view.grid);
+    const auto cells = view.grid.allocated_cell_count();
+    const std::array<DeviceReadOnlyFloatView, 9> fields{{
+        view.vx_m_s,
+        view.vy_m_s,
+        view.vz_m_s,
+        view.sxx_pa,
+        view.syy_pa,
+        view.szz_pa,
+        view.sxy_pa,
+        view.sxz_pa,
+        view.syz_pa}};
+    for (const auto& field : fields) {
+        if (field.size() != cells || field.data() == nullptr) {
+            throw std::invalid_argument(
+                "CUDA read-only elastic field does not match its grid");
+        }
+    }
+}
+
 class DeviceElasticWavefield {
 public:
     explicit DeviceElasticWavefield(const Grid3D& grid)
@@ -90,6 +147,20 @@ public:
     [[nodiscard]] std::size_t bytes() const {
         return detail::checked_size_product(
             9, vx_m_s_.bytes(), "CUDA elastic wavefield bytes overflow");
+    }
+    [[nodiscard]] DeviceElasticWavefieldConstView const_view() const noexcept {
+        const auto cells = vx_m_s_.size();
+        return {
+            grid_,
+            {vx_m_s_.get(), cells},
+            {vy_m_s_.get(), cells},
+            {vz_m_s_.get(), cells},
+            {sxx_pa_.get(), cells},
+            {syy_pa_.get(), cells},
+            {szz_pa_.get(), cells},
+            {sxy_pa_.get(), cells},
+            {sxz_pa_.get(), cells},
+            {syz_pa_.get(), cells}};
     }
 
 private:

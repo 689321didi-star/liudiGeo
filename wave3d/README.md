@@ -63,7 +63,8 @@ ctest --test-dir build -C Release --output-on-failure
 CUDA support is opt-in and currently targets the RTX 5060 (`sm_120`):
 
 ```text
-cmake -S . -B build-cuda -DCMAKE_BUILD_TYPE=Release -DWAVE3D_ENABLE_CUDA=ON
+cmake -S . -B build-cuda -DCMAKE_BUILD_TYPE=Release \
+  -DWAVE3D_ENABLE_CUDA=ON -DWAVE3D_BUILD_QUALIFICATION_TOOLS=ON
 cmake --build build-cuda --config Release
 ctest --test-dir build-cuda -C Release --output-on-failure
 ./build-cuda/wave3d_cuda_info
@@ -82,6 +83,10 @@ Production I/O and RTM-ready checkpoint interfaces are independently opt-in:
 -DWAVE3D_ENABLE_SEGY=ON
 -DWAVE3D_ENABLE_RTM=ON
 ```
+
+`WAVE3D_BUILD_QUALIFICATION_TOOLS=ON` adds the one-off CUDA information and
+performance qualification programs. It is off by default and is not required
+by the production runner or desktop application.
 
 `WAVE3D_ENABLE_RTM` adds interfaces and mock tests only; it does not build an
 RTM executable.
@@ -113,6 +118,8 @@ expected dataset hashes are in
 [`docs/OVERTHRUST_SOURCE_AUDIT.md`](docs/OVERTHRUST_SOURCE_AUDIT.md).
 The completed CUDA/SEG-Y evidence is in
 [`docs/OVERTHRUST_FORWARD_QUALIFICATION.md`](docs/OVERTHRUST_FORWARD_QUALIFICATION.md).
+Local datasets and runs follow the fixed directory contract in
+[`data/README.md`](data/README.md).
 
 For the fixed 64-cubed, eight-step CUDA memory-check input, add `--smoke`
 before the MAT path. This is a validation profile, not the production model.
@@ -163,6 +170,58 @@ window with:
 ```text
 python3 tools/verify_overthrust_record.py path/to/overthrust_output
 ```
+
+Render any Wave3D three-component IEEE-float SEG-Y record as labeled SVG or
+plain PNG receiver gathers with the dependency-free plotting tool:
+
+```text
+python3 tools/plot_segy.py path/to/record.sgy record_gathers.svg
+```
+
+The panels are ordered VX/east, VY/north, and VZ/down. Time increases from top
+to bottom, receivers increase from left to right, and blue/white/red encode
+negative/zero/positive particle velocity. Each component is independently
+clipped at the 99.5th absolute-amplitude percentile by default; use
+`--clip-percentile` to change the display scale. The SVG opens directly in a
+web browser and embeds all raster data, so it remains a standalone file. For a
+square surface array, thin vertical lines separate each x-fastest receiver row
+after the two-dimensional geometry is flattened onto the gather axis. Add
+`--shared-scale` when the color strength must be comparable across VX, VY, and
+VZ; the default independent scales expose weaker component structure more
+clearly.
+
+For the audited Overthrust MAT source and its prepared HDF5 model, generate the
+original three views with the crop marked, the cropped Vp three views, and the
+prepared Vp/Vs/density section with:
+
+```text
+python3 tools/plot_overthrust_model.py \
+  data/overthrust/source/overthrust_3d_vp.mat \
+  data/overthrust/models/elastic_200x200x187.h5 \
+  data/overthrust/figures/model \
+  --h5dump /path/to/h5dump
+```
+
+The tool reads the original compressed MATLAB volume and the actual HDF5
+datasets. Its temporary decoded volume is removed after rendering.
+
+For a large square receiver array, select a single center line for a readable
+three-component gather and stream-verify the complete file while rendering
+surface diagnostic maps:
+
+```text
+python3 tools/plot_segy.py --receiver-row 50 --shared-scale \
+  data/overthrust/runs/forward_101x101/output/record.sgy \
+  data/overthrust/runs/forward_101x101/figures/center_xline_gather.svg
+python3 tools/verify_and_plot_segy_grid.py \
+  data/overthrust/runs/forward_101x101/output/record.sgy \
+  data/overthrust/runs/forward_101x101/figures/receiver_maps.svg \
+  --report data/overthrust/runs/forward_101x101/reports/segy_verification.txt \
+  --side 101 --spacing 40
+```
+
+The dense-grid verifier checks every trace header, coordinate, sample, travel
+window, and component before writing peak-amplitude and first-arrival maps.
 
 This is the general HDF5-driven production command. The qualification command
 below remains useful only for its fixed, documented target case.

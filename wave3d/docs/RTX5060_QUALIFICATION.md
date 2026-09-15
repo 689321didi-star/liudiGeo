@@ -9,7 +9,8 @@ attenuation, RTM, multi-GPU execution, or full-volume output at every step.
 
 ```text
 cmake -S . -B build-qualify -DCMAKE_BUILD_TYPE=Release \
-  -DWAVE3D_ENABLE_CUDA=ON -DWAVE3D_ENABLE_HDF5=ON
+  -DWAVE3D_ENABLE_CUDA=ON -DWAVE3D_ENABLE_HDF5=ON \
+  -DWAVE3D_BUILD_QUALIFICATION_TOOLS=ON
 cmake --build build-qualify --parallel
 ./build-qualify/wave3d_qualify_rtx5060 4000 /tmp/wave3d_traces.h5
 compute-sanitizer --tool memcheck --error-exitcode 1 \

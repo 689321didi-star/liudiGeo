@@ -9,8 +9,7 @@
 #include "wave3d/cuda/cpml.hpp"
 #include "wave3d/cuda/cuda_error.hpp"
 #include "wave3d/cuda/device_info.hpp"
-#include "wave3d/cuda/elastic_propagator.hpp"
-#include "wave3d/cuda/free_surface.hpp"
+#include "wave3d/cuda/forward_session.hpp"
 #include "wave3d/io/hdf5.hpp"
 #include "wave3d/io/segy.hpp"
 #include "wave3d/io/yaml_config.hpp"
@@ -21,6 +20,7 @@
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -151,49 +151,21 @@ CudaForwardRunReport run_cuda_forward_from_yaml(
     const auto cpml_profile = prepare_cpml_profile(
         model.grid, cpml_parameters);
 
-    cuda::DeviceElasticCoefficients device_coefficients(coefficients);
-    cuda::DeviceElasticWavefield wavefield(model.grid);
-    cuda::DeviceMomentTensorSource device_source(prepared_source);
-    cuda::DeviceReceiverSet device_receivers(prepared_receivers);
-    cuda::DeviceReceiverTraces device_traces(
-        receiver_set.receivers.size(),
-        steps,
-        configuration.simulation.time.dt_s);
-    cuda::DeviceCpmlProfile device_cpml_profile(cpml_profile);
-    cuda::DeviceCpmlState device_cpml_state(model.grid);
-    cuda::synchronize();
+    std::optional<TractionFreeSurface> surface;
+    if (free_surface) {
+        surface = prepare_traction_free_surface(model.grid);
+    }
+    cuda::CudaForwardSession session(
+        coefficients,
+        prepared_source,
+        prepared_receivers,
+        cpml_profile,
+        surface,
+        steps);
     const auto setup_end = Clock::now();
 
     const auto propagation_start = Clock::now();
-    if (free_surface) {
-        const auto surface = prepare_traction_free_surface(model.grid);
-        const cuda::DeviceTractionFreeSurface device_surface(surface);
-        for (std::size_t step = 0; step < steps; ++step) {
-            cuda::advance_elastic_free_surface_step(
-                wavefield,
-                device_coefficients,
-                device_source,
-                device_receivers,
-                device_traces,
-                device_cpml_profile,
-                device_cpml_state,
-                device_surface,
-                step);
-        }
-    } else {
-        for (std::size_t step = 0; step < steps; ++step) {
-            cuda::advance_elastic_cpml_step(
-                wavefield,
-                device_coefficients,
-                device_source,
-                device_receivers,
-                device_traces,
-                device_cpml_profile,
-                device_cpml_state,
-                step);
-        }
-    }
-    cuda::synchronize();
+    static_cast<void>(session.advance_remaining());
     const auto propagation_end = Clock::now();
 
     const auto trace_value_count = detail::checked_size_product(
@@ -204,7 +176,7 @@ CudaForwardRunReport run_cuda_forward_from_yaml(
     std::vector<float> vy(trace_value_count);
     std::vector<float> vz(trace_value_count);
     const auto download_start = Clock::now();
-    device_traces.download(vx, vy, vz);
+    session.download_receiver_traces(vx, vy, vz);
     const auto download_end = Clock::now();
 
     const io::ThreeComponentTraces host_traces{

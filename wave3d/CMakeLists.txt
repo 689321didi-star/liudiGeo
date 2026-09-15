@@ -3,6 +3,10 @@ cmake_minimum_required(VERSION 3.24)
 project(wave3d VERSION 0.1.0 LANGUAGES CXX)
 
 option(WAVE3D_BUILD_TESTS "Build Wave3D tests" ON)
+option(
+    WAVE3D_BUILD_QUALIFICATION_TOOLS
+    "Build one-off CUDA device and qualification executables"
+    OFF)
 option(WAVE3D_ENABLE_CUDA "Build the Wave3D CUDA foundation" OFF)
 option(WAVE3D_ENABLE_YAML "Build YAML run-configuration adapters" OFF)
 option(WAVE3D_ENABLE_HDF5 "Build HDF5 scientific-data adapters" OFF)
@@ -62,9 +66,6 @@ if(WAVE3D_ENABLE_OVERTHRUST)
             wave3d_io_hdf5
             wave3d_io_yaml)
 endif()
-
-add_executable(wave3d_forward apps/forward3d.cpp)
-target_link_libraries(wave3d_forward PRIVATE wave3d_core)
 
 if(WAVE3D_BUILD_TESTS)
     enable_testing()
@@ -265,11 +266,13 @@ if(WAVE3D_ENABLE_CUDA)
         wave3d_cuda
         STATIC
             src/cuda/device_info.cpp
+            src/cuda/forward_session.cpp
             cuda/fill.cu
             cuda/elastic_propagator.cu
             cuda/sponge.cu
             cuda/cpml.cu
-            cuda/free_surface.cu)
+            cuda/free_surface.cu
+            cuda/visualization.cu)
     target_link_libraries(wave3d_cuda PUBLIC wave3d_core CUDA::cudart)
     set_target_properties(
         wave3d_cuda
@@ -278,22 +281,30 @@ if(WAVE3D_ENABLE_CUDA)
             CUDA_STANDARD_REQUIRED YES
             CUDA_EXTENSIONS NO)
 
-    add_executable(wave3d_cuda_info apps/cuda_info.cpp)
-    target_link_libraries(wave3d_cuda_info PRIVATE wave3d_cuda)
+    if(WAVE3D_BUILD_QUALIFICATION_TOOLS)
+        add_executable(wave3d_cuda_info apps/cuda_info.cpp)
+        target_link_libraries(wave3d_cuda_info PRIVATE wave3d_cuda)
 
-    add_executable(wave3d_qualify_rtx5060 apps/qualify_rtx5060.cpp)
-    target_link_libraries(wave3d_qualify_rtx5060 PRIVATE wave3d_cuda)
-    if(WAVE3D_ENABLE_HDF5)
+        add_executable(wave3d_qualify_rtx5060 apps/qualify_rtx5060.cpp)
+        target_link_libraries(wave3d_qualify_rtx5060 PRIVATE wave3d_cuda)
+
+        add_executable(
+            wave3d_qualify_visualization
+            apps/qualify_visualization.cpp)
         target_link_libraries(
-            wave3d_qualify_rtx5060 PRIVATE wave3d_io_hdf5)
-        target_compile_definitions(
-            wave3d_qualify_rtx5060 PRIVATE WAVE3D_QUALIFY_HDF5=1)
-    endif()
-    if(WAVE3D_ENABLE_SEGY)
-        target_link_libraries(
-            wave3d_qualify_rtx5060 PRIVATE wave3d_io_segy)
-        target_compile_definitions(
-            wave3d_qualify_rtx5060 PRIVATE WAVE3D_QUALIFY_SEGY=1)
+            wave3d_qualify_visualization PRIVATE wave3d_cuda)
+        if(WAVE3D_ENABLE_HDF5)
+            target_link_libraries(
+                wave3d_qualify_rtx5060 PRIVATE wave3d_io_hdf5)
+            target_compile_definitions(
+                wave3d_qualify_rtx5060 PRIVATE WAVE3D_QUALIFY_HDF5=1)
+        endif()
+        if(WAVE3D_ENABLE_SEGY)
+            target_link_libraries(
+                wave3d_qualify_rtx5060 PRIVATE wave3d_io_segy)
+            target_compile_definitions(
+                wave3d_qualify_rtx5060 PRIVATE WAVE3D_QUALIFY_SEGY=1)
+        endif()
     endif()
 
     if(WAVE3D_BUILD_TESTS)
@@ -346,6 +357,30 @@ if(WAVE3D_ENABLE_CUDA)
         set_tests_properties(
             wave3d_cuda_free_surface_tests
             PROPERTIES LABELS "boundary;cuda;physics")
+
+        add_executable(
+            wave3d_cuda_forward_session_tests
+            tests/test_cuda_forward_session.cpp)
+        target_link_libraries(
+            wave3d_cuda_forward_session_tests PRIVATE wave3d_cuda)
+        add_test(
+            NAME wave3d_cuda_forward_session_tests
+            COMMAND wave3d_cuda_forward_session_tests)
+        set_tests_properties(
+            wave3d_cuda_forward_session_tests
+            PROPERTIES LABELS "cuda;interfaces;physics")
+
+        add_executable(
+            wave3d_cuda_visualization_tests
+            tests/test_cuda_visualization.cpp)
+        target_link_libraries(
+            wave3d_cuda_visualization_tests PRIVATE wave3d_cuda)
+        add_test(
+            NAME wave3d_cuda_visualization_tests
+            COMMAND wave3d_cuda_visualization_tests)
+        set_tests_properties(
+            wave3d_cuda_visualization_tests
+            PROPERTIES LABELS "cuda;interfaces;visualization")
     endif()
 endif()
 
