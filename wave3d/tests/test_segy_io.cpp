@@ -125,6 +125,8 @@ void test_single_file_standard_headers_and_samples() {
     const auto prefix = temporary_prefix();
     const auto path = prefix.string() + ".sgy";
     wave3d::io::write_segy(path, expected);
+    wave3d::io::require_ieee_segy_layout(
+        path, expected.receiver_count * 3, expected.sample_count);
 
     expect(std::filesystem::exists(path), "single SEG-Y output was not created");
     for (const char* suffix : {"_vx.sgy", "_vy.sgy", "_vz.sgy"}) {
@@ -243,6 +245,16 @@ void test_single_file_standard_headers_and_samples() {
 
     std::filesystem::resize_file(path, std::filesystem::file_size(path) - 1);
     bool truncated_threw = false;
+    try {
+        wave3d::io::require_ieee_segy_layout(
+            path, trace_count, expected.sample_count);
+    } catch (const std::invalid_argument&) {
+        truncated_threw = true;
+    }
+    expect(
+        truncated_threw,
+        "layout validation accepted truncated final SEG-Y sample data");
+    truncated_threw = false;
     try {
         static_cast<void>(wave3d::io::read_ieee_segy_samples(
             path, trace_count, expected.sample_count));

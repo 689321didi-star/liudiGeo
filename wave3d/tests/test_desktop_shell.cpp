@@ -15,6 +15,7 @@
 #include <QComboBox>
 #include <QDir>
 #include <QDoubleSpinBox>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QFrame>
@@ -30,6 +31,7 @@
 #include <QSpinBox>
 #include <QStandardPaths>
 #include <QTemporaryDir>
+#include <QThread>
 #include <QToolBar>
 
 #include <array>
@@ -507,6 +509,13 @@ void test_hdf5_model_import() {
     require_child<QDoubleSpinBox>(window, "receiverMaxXSpin")->setValue(30.0);
 
 #if defined(WAVE3D_DESKTOP_HAS_YAML) && defined(WAVE3D_DESKTOP_HAS_SEGY)
+#ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
+    require_child<QDoubleSpinBox>(window, "totalTimeSpin")->setValue(0.02);
+    error.clear();
+    expect(
+        window.save_experiment_draft(&error),
+        "short CUDA desktop fixture could not be saved");
+#endif
     error.clear();
     expect(
         window.preflight_experiment(QStringLiteral("run-001"), &error),
@@ -518,6 +527,43 @@ void test_hdf5_model_import() {
     expect(
         QFileInfo::exists(prepared_config) && QFileInfo::exists(prepared_manifest),
         "preflight did not publish its immutable config and manifest");
+#ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
+    expect(
+        require_child<QAction>(window, "startRunAction")->isEnabled() &&
+            require_child<QPushButton>(window, "startRunButton")->isEnabled(),
+        "complete production build did not enable the preflighted run");
+    error.clear();
+    expect(
+        window.start_prepared_run(&error),
+        "preflighted desktop run did not start");
+    expect(
+        !require_child<QWidget>(window, "experimentEditor")->isEnabled() &&
+            require_child<QPushButton>(window, "stopRunButton")->isEnabled(),
+        "active desktop run did not lock editing or enable stop");
+    const auto result_path =
+        QDir(project_root).filePath(QStringLiteral("runs/run-001/result.json"));
+    QElapsedTimer run_timer;
+    run_timer.start();
+    while (!QFileInfo::exists(result_path) && run_timer.elapsed() < 15000) {
+        QCoreApplication::processEvents();
+        QThread::msleep(5);
+    }
+    QCoreApplication::processEvents();
+    expect(
+        QFileInfo::exists(result_path) &&
+            QFileInfo::exists(QDir(project_root).filePath(
+                QStringLiteral("runs/run-001/output/record.sgy"))) &&
+            require_child<QLabel>(window, "runStateLabel")->text() ==
+                QStringLiteral("正演完成") &&
+            require_child<QProgressBar>(window, "runProgress")->value() == 100 &&
+            require_child<QWidget>(window, "experimentEditor")->isEnabled(),
+        "background desktop run did not publish and restore the UI");
+#else
+    expect(
+        !require_child<QAction>(window, "startRunAction")->isEnabled() &&
+            !require_child<QPushButton>(window, "startRunButton")->isEnabled(),
+        "desktop without CUDA execution exposed the start controls");
+#endif
     const auto prepared = wave3d::io::load_yaml_run_configuration(
         prepared_config.toStdString());
     expect(
@@ -568,7 +614,11 @@ void test_hdf5_model_import() {
         "reopening a project did not reload its referenced model");
     expect(
         require_child<QDoubleSpinBox>(reopened, "totalTimeSpin")->value() ==
+#ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
+                0.02 &&
+#else
                 4.25 &&
+#endif
             require_child<QDoubleSpinBox>(reopened, "sourceXSpin")->value() ==
                 15.0 &&
             require_child<QComboBox>(reopened, "sourceModeCombo")

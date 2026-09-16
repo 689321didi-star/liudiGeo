@@ -5,9 +5,8 @@
 #include "wave3d/acquisition/receiver_sampler.hpp"
 #include "wave3d/boundary/cpml.hpp"
 #include "wave3d/boundary/free_surface.hpp"
+#include "wave3d/core/checked_size.hpp"
 #include "wave3d/core/forward_memory_plan.hpp"
-#include "wave3d/cuda/cpml.hpp"
-#include "wave3d/cuda/cuda_error.hpp"
 #include "wave3d/cuda/device_info.hpp"
 #include "wave3d/cuda/forward_session.hpp"
 #include "wave3d/io/hdf5.hpp"
@@ -18,11 +17,10 @@
 #include "wave3d/numerics/elastic_validation.hpp"
 
 #include <chrono>
-#include <cstddef>
 #include <filesystem>
 #include <optional>
 #include <stdexcept>
-#include <string>
+#include <utility>
 #include <vector>
 
 namespace wave3d::task {
@@ -42,8 +40,7 @@ using Clock = std::chrono::steady_clock;
         .lexically_normal();
 }
 
-[[nodiscard]] MaterialExtrema model_extrema(
-    const PhysicalModel& model) {
+[[nodiscard]] MaterialExtrema model_extrema(const PhysicalModel& model) {
     const auto extrema = physical_model_extrema(model);
     return {
         extrema.minimum.vp_m_s,
@@ -81,133 +78,223 @@ void require_output_directory(const std::filesystem::path& path) {
 
 } // namespace
 
-CudaForwardRunReport run_cuda_forward_from_yaml(
-    const std::string& configuration_path) {
-    const auto input_start = Clock::now();
-    const auto absolute_configuration =
-        std::filesystem::absolute(configuration_path).lexically_normal();
-    auto configuration =
-        io::load_yaml_run_configuration(absolute_configuration.string());
-    const auto configuration_directory = absolute_configuration.parent_path();
-    const auto model_path = resolve_from_configuration(
-        configuration_directory, configuration.model_hdf5_path);
-    const auto output_directory = resolve_from_configuration(
-        configuration_directory, configuration.output_directory);
-    configuration.model_hdf5_path = model_path.string();
-    configuration.output_directory = output_directory.string();
+class CudaForwardJob::Impl final {
+public:
+    explicit Impl(const std::string& configuration_path) {
+        const auto input_start = Clock::now();
+        absolute_configuration_ =
+            std::filesystem::absolute(configuration_path).lexically_normal();
+        configuration_ =
+            io::load_yaml_run_configuration(absolute_configuration_.string());
+        const auto configuration_directory = absolute_configuration_.parent_path();
+        model_path_ = resolve_from_configuration(
+            configuration_directory, configuration_.model_hdf5_path);
+        output_directory_ = resolve_from_configuration(
+            configuration_directory, configuration_.output_directory);
+        configuration_.model_hdf5_path = model_path_.string();
+        configuration_.output_directory = output_directory_.string();
 
-    const auto model = io::read_hdf5_model(model_path.string());
-    if (!same_grid_geometry(model.grid, configuration.simulation.grid)) {
-        throw std::invalid_argument(
-            "YAML grid does not match the loaded HDF5 model grid");
+        const auto model = io::read_hdf5_model(model_path_.string());
+        if (!same_grid_geometry(model.grid, configuration_.simulation.grid)) {
+            throw std::invalid_argument(
+                "YAML grid does not match the loaded HDF5 model grid");
+        }
+        const auto actual_extrema = model_extrema(model);
+        require_matching_extrema(
+            configuration_.simulation.material, actual_extrema);
+        const auto numerical_errors =
+            validate_staggered_elastic(configuration_.simulation);
+        if (!numerical_errors.empty()) {
+            throw std::invalid_argument(numerical_errors.front());
+        }
+
+        const auto steps = configuration_.simulation.time.step_count();
+        io::require_segy_rev1_sample_axis(
+            steps, configuration_.simulation.time.dt_s);
+        const auto input_end = Clock::now();
+
+        const auto device = cuda::query_device(0);
+        ForwardMemoryPlanRequest memory_request{};
+        memory_request.grid = model.grid;
+        memory_request.receiver_count =
+            configuration_.receiver_coordinates_m.size();
+        memory_request.time_step_count = steps;
+        memory_request.available_device_bytes = device.free_memory_bytes;
+        memory_request.boundary_kind =
+            ForwardMemoryPlanRequest::BoundaryKind::Cpml;
+        const auto memory_plan = make_elastic_forward_memory_plan(memory_request);
+        memory_plan.require_fit();
+
+        require_output_directory(output_directory_);
+        output_path_ = output_directory_ / "record.sgy";
+        temporary_output_path_ = output_directory_ / "record.sgy.tmp";
+        if (std::filesystem::exists(output_path_)) {
+            throw std::runtime_error(
+                "refusing to overwrite completed SEG-Y output: " +
+                output_path_.string());
+        }
+        std::error_code remove_error;
+        std::filesystem::remove(temporary_output_path_, remove_error);
+
+        const auto setup_start = Clock::now();
+        const auto coefficients = prepare_elastic_coefficients(model);
+        const auto prepared_source = prepare_moment_tensor_source_stencils(
+            model.grid, configuration_.source);
+        const auto receiver_set = prepare_receiver_set(
+            model.grid, configuration_.receiver_coordinates_m);
+        const auto prepared_receivers = prepare_receiver_stencils(
+            model.grid, receiver_set);
+        const bool free_surface =
+            configuration_.simulation.top_boundary == TopBoundary::FreeSurface;
+        const CpmlParameters cpml_parameters{
+            configuration_.simulation.time.dt_s,
+            static_cast<double>(actual_extrema.max_vp_m_s),
+            configuration_.source.wavelet.dominant_frequency_hz,
+            1.0e-3,
+            2.0,
+            1.0,
+            {true, true, true, true, !free_surface, true}};
+        const auto cpml_profile = prepare_cpml_profile(
+            model.grid, cpml_parameters);
+        std::optional<TractionFreeSurface> surface;
+        if (free_surface) {
+            surface = prepare_traction_free_surface(model.grid);
+        }
+        session_ = std::make_unique<cuda::CudaForwardSession>(
+            coefficients,
+            prepared_source,
+            prepared_receivers,
+            cpml_profile,
+            surface,
+            steps);
+        const auto setup_end = Clock::now();
+
+        report_.configuration_path = absolute_configuration_.string();
+        report_.model_hdf5_path = model_path_.string();
+        report_.output_segy_path = output_path_.string();
+        report_.device_name = device.name;
+        report_.physical_cell_count = model.grid.physical_cell_count();
+        report_.allocated_cell_count = model.grid.allocated_cell_count();
+        report_.receiver_count = configuration_.receiver_coordinates_m.size();
+        report_.sample_count = steps;
+        report_.planned_required_bytes = memory_plan.required_bytes;
+        report_.planned_budget_bytes = memory_plan.budget_bytes;
+        report_.input_load_ms = milliseconds(input_end - input_start);
+        report_.setup_ms = milliseconds(setup_end - setup_start);
     }
-    const auto actual_extrema = model_extrema(model);
-    require_matching_extrema(
-        configuration.simulation.material, actual_extrema);
-    const auto numerical_errors =
-        validate_staggered_elastic(configuration.simulation);
-    if (!numerical_errors.empty()) {
-        throw std::invalid_argument(numerical_errors.front());
+
+    ~Impl() {
+        if (!published_) {
+            std::error_code error;
+            std::filesystem::remove(temporary_output_path_, error);
+        }
     }
 
-    const auto steps = configuration.simulation.time.step_count();
-    io::require_segy_rev1_sample_axis(
-        steps, configuration.simulation.time.dt_s);
-    const auto input_end = Clock::now();
+    io::ForwardRunConfiguration configuration_{};
+    std::filesystem::path absolute_configuration_;
+    std::filesystem::path model_path_;
+    std::filesystem::path output_directory_;
+    std::filesystem::path output_path_;
+    std::filesystem::path temporary_output_path_;
+    std::unique_ptr<cuda::CudaForwardSession> session_;
+    CudaForwardRunReport report_{};
+    Clock::duration propagation_duration_{};
+    bool finalized_{false};
+    bool published_{false};
+};
 
-    const auto device = cuda::query_device(0);
-    ForwardMemoryPlanRequest memory_request{};
-    memory_request.grid = model.grid;
-    memory_request.receiver_count = configuration.receiver_coordinates_m.size();
-    memory_request.time_step_count = steps;
-    memory_request.available_device_bytes = device.free_memory_bytes;
-    memory_request.boundary_kind =
-        ForwardMemoryPlanRequest::BoundaryKind::Cpml;
-    const auto memory_plan =
-        make_elastic_forward_memory_plan(memory_request);
-    memory_plan.require_fit();
+CudaForwardJob::CudaForwardJob(const std::string& configuration_path)
+    : impl_(std::make_unique<Impl>(configuration_path)) {}
 
-    require_output_directory(output_directory);
-    const auto output_path = output_directory / "record.sgy";
+CudaForwardJob::~CudaForwardJob() = default;
+CudaForwardJob::CudaForwardJob(CudaForwardJob&&) noexcept = default;
+CudaForwardJob& CudaForwardJob::operator=(CudaForwardJob&&) noexcept = default;
 
-    const auto setup_start = Clock::now();
-    const auto coefficients = prepare_elastic_coefficients(model);
-    const auto prepared_source = prepare_moment_tensor_source_stencils(
-        model.grid, configuration.source);
-    const auto receiver_set = prepare_receiver_set(
-        model.grid, configuration.receiver_coordinates_m);
-    const auto prepared_receivers = prepare_receiver_stencils(
-        model.grid, receiver_set);
-    const bool free_surface =
-        configuration.simulation.top_boundary == TopBoundary::FreeSurface;
-    const CpmlParameters cpml_parameters{
-        configuration.simulation.time.dt_s,
-        static_cast<double>(actual_extrema.max_vp_m_s),
-        configuration.source.wavelet.dominant_frequency_hz,
-        1.0e-3,
-        2.0,
-        1.0,
-        {true, true, true, true, !free_surface, true}};
-    const auto cpml_profile = prepare_cpml_profile(
-        model.grid, cpml_parameters);
+std::size_t CudaForwardJob::total_steps() const noexcept {
+    return impl_ ? impl_->session_->total_steps() : 0;
+}
 
-    std::optional<TractionFreeSurface> surface;
-    if (free_surface) {
-        surface = prepare_traction_free_surface(model.grid);
+std::size_t CudaForwardJob::completed_steps() const noexcept {
+    return impl_ ? impl_->session_->completed_steps() : 0;
+}
+
+bool CudaForwardJob::finished() const noexcept {
+    return impl_ && impl_->session_->finished();
+}
+
+void CudaForwardJob::advance(std::size_t maximum_steps) {
+    if (!impl_ || impl_->finalized_) {
+        throw std::logic_error("CUDA forward job is no longer advanceable");
     }
-    cuda::CudaForwardSession session(
-        coefficients,
-        prepared_source,
-        prepared_receivers,
-        cpml_profile,
-        surface,
-        steps);
-    const auto setup_end = Clock::now();
+    const auto start = Clock::now();
+    static_cast<void>(impl_->session_->advance(maximum_steps));
+    impl_->propagation_duration_ += Clock::now() - start;
+}
 
-    const auto propagation_start = Clock::now();
-    static_cast<void>(session.advance_remaining());
-    const auto propagation_end = Clock::now();
+CudaForwardRunReport CudaForwardJob::finalize() {
+    if (!impl_ || impl_->finalized_) {
+        throw std::logic_error("CUDA forward job has already been finalized");
+    }
+    if (!impl_->session_->finished()) {
+        throw std::logic_error("CUDA forward job cannot finalize before completion");
+    }
 
     const auto trace_value_count = detail::checked_size_product(
-        configuration.receiver_coordinates_m.size(),
-        steps,
+        impl_->report_.receiver_count,
+        impl_->report_.sample_count,
         "production receiver trace size overflow");
     std::vector<float> vx(trace_value_count);
     std::vector<float> vy(trace_value_count);
     std::vector<float> vz(trace_value_count);
     const auto download_start = Clock::now();
-    session.download_receiver_traces(vx, vy, vz);
+    impl_->session_->download_receiver_traces(vx, vy, vz);
     const auto download_end = Clock::now();
 
     const io::ThreeComponentTraces host_traces{
-        configuration.receiver_coordinates_m.size(),
-        steps,
-        configuration.simulation.time.dt_s,
-        configuration.receiver_coordinates_m,
-        configuration.source,
+        impl_->report_.receiver_count,
+        impl_->report_.sample_count,
+        impl_->configuration_.simulation.time.dt_s,
+        impl_->configuration_.receiver_coordinates_m,
+        impl_->configuration_.source,
         std::move(vx),
         std::move(vy),
         std::move(vz)};
     const auto write_start = Clock::now();
-    io::write_segy(output_path.string(), host_traces);
+    try {
+        io::write_segy(impl_->temporary_output_path_.string(), host_traces);
+        const auto trace_count = detail::checked_size_product(
+            impl_->report_.receiver_count,
+            std::size_t{3},
+            "SEG-Y trace count overflow");
+        io::require_ieee_segy_layout(
+            impl_->temporary_output_path_.string(),
+            trace_count,
+            impl_->report_.sample_count);
+        std::filesystem::rename(
+            impl_->temporary_output_path_, impl_->output_path_);
+        impl_->published_ = true;
+    } catch (...) {
+        std::error_code error;
+        std::filesystem::remove(impl_->temporary_output_path_, error);
+        throw;
+    }
     const auto write_end = Clock::now();
 
-    return {
-        absolute_configuration.string(),
-        model_path.string(),
-        output_path.string(),
-        device.name,
-        model.grid.physical_cell_count(),
-        model.grid.allocated_cell_count(),
-        configuration.receiver_coordinates_m.size(),
-        steps,
-        memory_plan.required_bytes,
-        memory_plan.budget_bytes,
-        milliseconds(input_end - input_start),
-        milliseconds(setup_end - setup_start),
-        milliseconds(propagation_end - propagation_start),
-        milliseconds(download_end - download_start),
-        milliseconds(write_end - write_start)};
+    impl_->report_.propagation_ms = milliseconds(impl_->propagation_duration_);
+    impl_->report_.trace_download_ms =
+        milliseconds(download_end - download_start);
+    impl_->report_.segy_write_ms = milliseconds(write_end - write_start);
+    impl_->finalized_ = true;
+    return impl_->report_;
+}
+
+CudaForwardRunReport run_cuda_forward_from_yaml(
+    const std::string& configuration_path) {
+    CudaForwardJob job(configuration_path);
+    while (!job.finished()) {
+        job.advance(job.total_steps() - job.completed_steps());
+    }
+    return job.finalize();
 }
 
 } // namespace wave3d::task

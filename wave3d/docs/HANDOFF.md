@@ -1557,3 +1557,73 @@ from an immutable preflight run: worker ownership, bounded step batches,
 progress, pause/resume/cancel, failure-safe output publication, and final SEG-Y
 registration. Live CUDA-to-OpenGL wavefield transport should remain a following
 measured increment so execution control is independently verifiable.
+
+## Increment 24 background CUDA forward execution
+
+The production task now exposes `CudaForwardJob`, which prepares exactly the
+same validated YAML/HDF5 problem as `wave3d_run`, owns one
+`CudaForwardSession`, advances caller-selected batches, and finalizes once.
+The command-line entry point retains its prior behavior by advancing all
+remaining steps through that job. The desktop uses one-step batches on a
+dedicated `QThread`; the worker creates and destroys every CUDA resource on
+that thread and accepts pause, resume, and cooperative stop only after a batch
+synchronizes.
+
+Preflight retains the prepared run in the main window and enables Start only
+in the complete CUDA/HDF5/YAML/SEG-Y build. Starting locks project/model/
+experiment mutations, keeps the Qt event loop responsive, polls copied
+progress state, and restores editing on completion, cancellation, or failure.
+The final download and publication phase is shown separately because it is no
+longer a stoppable propagation boundary. Closing the application requests stop
+and waits for the current step rather than terminating the worker.
+
+SEG-Y finalization writes `output/record.sgy.tmp`, validates exact file size,
+format code, binary sample count, every trace sample count, and absence of
+extra data, then atomically renames it to `record.sgy`. A separate immutable
+`result.json` uses schema `wave3d.desktop.run_result.v1`. Completion stores the
+run-relative SEG-Y path, byte count, SHA-256, receiver/sample shape, device,
+and timings; cancelled and failed states cannot claim a product. The original
+`config.yaml` and `manifest.json` remain unchanged.
+
+Final verification on 2026-09-16:
+
+```text
+cmake --build build/desktop24 -j2
+ctest --test-dir build/desktop24 --output-on-failure
+# combined Qt/CUDA/HDF5/YAML/SEG-Y: 34/34 passed
+# includes a real small CUDA run started and completed through MainWindow
+
+ctest --test-dir build/desktop24 \
+  -R 'wave3d_(segy_io|cuda_forward_run|desktop_(project|shell|forward_worker))_tests' \
+  --output-on-failure
+# final focused lifecycle/publication gates: 5/5 passed
+
+cmake --build build/desktop20 -j2
+ctest --test-dir build/desktop20 \
+  -R 'wave3d_(segy_io|desktop_(project|shell))_tests' --output-on-failure
+# CUDA-off HDF5/YAML/SEG-Y boundary: 3/3 affected tests passed
+
+cmake --build build/desktop23-no-segy -j2
+ctest --test-dir build/desktop23-no-segy \
+  -R 'wave3d_desktop_(project|shell)_tests' --output-on-failure
+# SEG-Y-off boundary: 2/2 affected tests passed
+
+cmake --build build/desktop19 -j2
+ctest --test-dir build/desktop19 \
+  -R 'wave3d_desktop_(project|shell)_tests' --output-on-failure
+# YAML-off boundary: 2/2 affected tests passed
+
+cmake --build build/desktop18 -j2
+ctest --test-dir build/desktop18 \
+  -R 'wave3d_desktop_(project|shell)_tests' --output-on-failure
+# HDF5-off boundary: 2/2 affected tests passed
+
+cmake --build build/desktop17-default -j2
+# desktop-off default boundary compiled; no work required
+```
+
+No screenshot was produced because this increment changes execution lifecycle
+and product publication rather than the accepted visual layout. Increment 25
+should add pinned-host live wavefield staging to the same one-step worker
+boundary, synchronize the volume and three sections by frame identity, and
+measure whether CUDA/OpenGL interoperation is justified afterward.

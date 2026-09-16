@@ -10,10 +10,14 @@
 #include <optional>
 
 class QCloseEvent;
+class QTimer;
 
 namespace wave3d::desktop {
 
 class StaticModelScene;
+#ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
+class ForwardRunWorker;
+#endif
 
 class MainWindow final : public QMainWindow {
 public:
@@ -42,6 +46,8 @@ public:
     [[nodiscard]] bool preflight_experiment(
         const QString& run_id,
         QString* error_message = nullptr);
+    [[nodiscard]] bool start_prepared_run(
+        QString* error_message = nullptr);
 
     [[nodiscard]] const ProjectDocument* current_project() const noexcept;
     [[nodiscard]] const QString& current_project_root() const noexcept;
@@ -57,12 +63,20 @@ private:
     void update_crop_summary();
     void update_model_view();
     void populate_model_information();
+    void invalidate_prepared_run();
+    void poll_forward_run();
+    void set_run_editing_locked(bool locked);
     void save_window_settings();
 
     QString project_root_;
     std::optional<ProjectDocument> project_;
     std::unique_ptr<StaticModelScene> model_scene_;
     std::optional<ResolvedExperimentDraft> resolved_experiment_;
+    std::optional<PreparedRun> prepared_run_;
+#ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
+    std::unique_ptr<ForwardRunWorker> forward_worker_;
+#endif
+    QTimer* run_poll_timer_{nullptr};
     bool experiment_model_reference_changed_{false};
     int volume_property_index_{-1};
 };

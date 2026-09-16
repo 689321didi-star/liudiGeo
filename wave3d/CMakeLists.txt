@@ -479,6 +479,15 @@ if(WAVE3D_BUILD_DESKTOP)
         target_compile_definitions(
             wave3d_desktop_shell PUBLIC WAVE3D_DESKTOP_HAS_SEGY=1)
     endif()
+    if(WAVE3D_ENABLE_CUDA AND WAVE3D_ENABLE_YAML AND WAVE3D_ENABLE_HDF5 AND
+       WAVE3D_ENABLE_SEGY)
+        target_sources(
+            wave3d_desktop_shell PRIVATE src/desktop/forward_run_worker.cpp)
+        target_link_libraries(
+            wave3d_desktop_shell PUBLIC wave3d_forward_run)
+        target_compile_definitions(
+            wave3d_desktop_shell PUBLIC WAVE3D_DESKTOP_HAS_CUDA_FORWARD=1)
+    endif()
 
     add_executable(wave3d_studio apps/studio/main.cpp)
     target_link_libraries(wave3d_studio PRIVATE wave3d_desktop_shell)
@@ -551,5 +560,20 @@ if(WAVE3D_BUILD_DESKTOP)
             PROPERTIES
                 LABELS "desktop;interfaces"
                 ENVIRONMENT "QT_QPA_PLATFORM=minimal")
+
+        if(WAVE3D_ENABLE_CUDA AND WAVE3D_ENABLE_YAML AND WAVE3D_ENABLE_HDF5 AND
+           WAVE3D_ENABLE_SEGY)
+            add_executable(
+                wave3d_desktop_forward_worker_tests
+                tests/test_desktop_forward_worker.cpp)
+            target_link_libraries(
+                wave3d_desktop_forward_worker_tests PRIVATE wave3d_desktop_shell)
+            add_test(
+                NAME wave3d_desktop_forward_worker_tests
+                COMMAND wave3d_desktop_forward_worker_tests)
+            set_tests_properties(
+                wave3d_desktop_forward_worker_tests
+                PROPERTIES LABELS "desktop;cuda;interfaces")
+        endif()
     endif()
 endif()

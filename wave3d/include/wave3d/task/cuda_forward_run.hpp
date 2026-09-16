@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <memory>
 #include <string>
 
 namespace wave3d::task {
@@ -21,6 +22,27 @@ struct CudaForwardRunReport {
     double propagation_ms{0.0};
     double trace_download_ms{0.0};
     double segy_write_ms{0.0};
+};
+
+class CudaForwardJob final {
+public:
+    explicit CudaForwardJob(const std::string& configuration_path);
+    ~CudaForwardJob();
+
+    CudaForwardJob(const CudaForwardJob&) = delete;
+    CudaForwardJob& operator=(const CudaForwardJob&) = delete;
+    CudaForwardJob(CudaForwardJob&&) noexcept;
+    CudaForwardJob& operator=(CudaForwardJob&&) noexcept;
+
+    [[nodiscard]] std::size_t total_steps() const noexcept;
+    [[nodiscard]] std::size_t completed_steps() const noexcept;
+    [[nodiscard]] bool finished() const noexcept;
+    void advance(std::size_t maximum_steps);
+    [[nodiscard]] CudaForwardRunReport finalize();
+
+private:
+    class Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
 [[nodiscard]] CudaForwardRunReport run_cuda_forward_from_yaml(

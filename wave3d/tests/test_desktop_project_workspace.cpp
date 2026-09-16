@@ -140,6 +140,49 @@ void test_project_round_trip_and_run_contract() {
                 expected_digest,
         "run manifest identity or digest is incorrect");
 
+    const auto product_path =
+        QDir(run.directory).filePath(QStringLiteral("output/record.sgy"));
+    QFile product_file(product_path);
+    expect(product_file.open(QIODevice::WriteOnly), "cannot create result fixture");
+    const QByteArray product_bytes("segy-fixture");
+    expect(
+        product_file.write(product_bytes) == product_bytes.size(),
+        "cannot write result fixture");
+    product_file.close();
+    wave3d::desktop::RunProduct product;
+    product.relative_path = QStringLiteral("output/record.sgy");
+    product.sha256 = QString::fromLatin1(
+        QCryptographicHash::hash(product_bytes, QCryptographicHash::Sha256).toHex());
+    product.byte_count = product_bytes.size();
+    product.receiver_count = 12;
+    product.sample_count = 40;
+    product.device_name = QStringLiteral("fixture GPU");
+    product.propagation_ms = 25.0;
+    const auto result_path = wave3d::desktop::ProjectWorkspace::publish_run_result(
+        run,
+        {wave3d::desktop::RunTerminalState::Completed, QString(), product});
+    const auto result = read_object(result_path);
+    expect(
+        result.value(QStringLiteral("schema")).toString() ==
+                QString::fromUtf8(wave3d::desktop::kDesktopRunResultSchema) &&
+            result.value(QStringLiteral("state")).toString() ==
+                QStringLiteral("completed") &&
+            result.value(QStringLiteral("product"))
+                    .toObject()
+                    .value(QStringLiteral("sha256"))
+                    .toString() == product.sha256,
+        "terminal run result did not preserve product identity");
+    expect_rejected(
+        [&] {
+            static_cast<void>(
+                wave3d::desktop::ProjectWorkspace::publish_run_result(
+                    run,
+                    {wave3d::desktop::RunTerminalState::Completed,
+                     QString(),
+                     product}));
+        },
+        "terminal run result must never be overwritten");
+
     expect_rejected(
         [&] {
             static_cast<void>(wave3d::desktop::ProjectWorkspace::prepare_run(
@@ -186,6 +229,40 @@ void test_project_round_trip_and_run_contract() {
                 QByteArray{}));
         },
         "empty resolved configuration must be rejected");
+
+    const auto cancelled = wave3d::desktop::ProjectWorkspace::prepare_run(
+        root,
+        loaded,
+        QStringLiteral("cancelled_001"),
+        QStringLiteral("shot-001"),
+        configuration);
+    const auto cancelled_path =
+        wave3d::desktop::ProjectWorkspace::publish_run_result(
+            cancelled,
+            {wave3d::desktop::RunTerminalState::Cancelled,
+             QStringLiteral("用户停止"),
+             std::nullopt});
+    expect(
+        read_object(cancelled_path).value(QStringLiteral("state")).toString() ==
+            QStringLiteral("cancelled"),
+        "cancelled run result state is incorrect");
+
+    const auto failed = wave3d::desktop::ProjectWorkspace::prepare_run(
+        root,
+        loaded,
+        QStringLiteral("failed_001"),
+        QStringLiteral("shot-001"),
+        configuration);
+    expect_rejected(
+        [&] {
+            static_cast<void>(
+                wave3d::desktop::ProjectWorkspace::publish_run_result(
+                    failed,
+                    {wave3d::desktop::RunTerminalState::Failed,
+                     QString(),
+                     std::nullopt}));
+        },
+        "failed run result without a diagnostic must be rejected");
     expect(
         !QFileInfo::exists(directory.filePath(QStringLiteral("escape"))) &&
             !QFileInfo::exists(directory.filePath(QStringLiteral("runs/unknown_shot"))) &&

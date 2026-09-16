@@ -16,6 +16,11 @@ void write_segy(
     const std::string& path,
     const ThreeComponentTraces& traces);
 
+void require_ieee_segy_layout(
+    const std::string& path,
+    std::size_t expected_trace_count,
+    std::size_t expected_samples_per_trace);
+
 [[nodiscard]] std::vector<float> read_ieee_segy_samples(
     const std::string& path,
     std::size_t expected_trace_count,

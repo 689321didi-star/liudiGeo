@@ -4,6 +4,10 @@
 #include "wave3d/desktop/static_model_scene.hpp"
 #include "wave3d/desktop/volume_viewport.hpp"
 
+#ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
+#include "wave3d/desktop/forward_run_worker.hpp"
+#endif
+
 #ifdef WAVE3D_DESKTOP_HAS_YAML
 #include "wave3d/io/yaml_config.hpp"
 #endif
@@ -14,6 +18,7 @@
 #include <QAction>
 #include <QCloseEvent>
 #include <QComboBox>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QDateTime>
 #include <QDockWidget>
@@ -48,6 +53,7 @@
 #include <QSplitter>
 #include <QStatusBar>
 #include <QTextEdit>
+#include <QTimer>
 #include <QToolBar>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -643,6 +649,12 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
     run->setObjectName(QStringLiteral("startRunAction"));
     run->setEnabled(false);
 
+    run_poll_timer_ = new QTimer(this);
+    run_poll_timer_->setInterval(100);
+    connect(run_poll_timer_, &QTimer::timeout, this, [this] {
+        poll_forward_run();
+    });
+
     connect(new_project, &QAction::triggered, this, [this] {
         const auto root = QFileDialog::getExistingDirectory(
             this, QStringLiteral("选择新的空项目目录"));
@@ -717,6 +729,51 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
             QMessageBox::critical(this, QStringLiteral("实验预检失败"), error);
         }
     });
+    connect(run, &QAction::triggered, this, [this] {
+        QString error;
+        if (!start_prepared_run(&error)) {
+            QMessageBox::critical(this, QStringLiteral("无法开始正演"), error);
+        }
+    });
+    connect(
+        findChild<QPushButton*>(QStringLiteral("startRunButton")),
+        &QPushButton::clicked,
+        this,
+        [this] {
+            QString error;
+            if (!start_prepared_run(&error)) {
+                QMessageBox::critical(this, QStringLiteral("无法开始正演"), error);
+            }
+        });
+#ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
+    connect(
+        findChild<QPushButton*>(QStringLiteral("pauseRunButton")),
+        &QPushButton::clicked,
+        this,
+        [this] {
+            if (forward_worker_) {
+                forward_worker_->request_pause();
+            }
+        });
+    connect(
+        findChild<QPushButton*>(QStringLiteral("resumeRunButton")),
+        &QPushButton::clicked,
+        this,
+        [this] {
+            if (forward_worker_) {
+                forward_worker_->request_resume();
+            }
+        });
+    connect(
+        findChild<QPushButton*>(QStringLiteral("stopRunButton")),
+        &QPushButton::clicked,
+        this,
+        [this] {
+            if (forward_worker_) {
+                forward_worker_->request_stop();
+            }
+        });
+#endif
 
     connect(
         findChild<QComboBox*>(QStringLiteral("displayFieldSelector")),
@@ -861,7 +918,14 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
     }
 }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow() {
+#ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
+    if (forward_worker_) {
+        forward_worker_->request_stop();
+        forward_worker_->wait();
+    }
+#endif
+}
 
 bool MainWindow::create_project(
     const QString& root_directory,
@@ -1122,6 +1186,14 @@ bool MainWindow::preflight_experiment(
             throw std::runtime_error(
                 "prepared YAML did not round trip to the resolved configuration");
         }
+        prepared_run_ = *prepared;
+#ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
+        findChild<QAction*>(QStringLiteral("startRunAction"))->setEnabled(true);
+        findChild<QPushButton*>(QStringLiteral("startRunButton"))->setEnabled(true);
+#else
+        findChild<QAction*>(QStringLiteral("startRunAction"))->setToolTip(
+            QStringLiteral("当前构建未启用 CUDA 正演执行"));
+#endif
         findChild<QLabel*>(QStringLiteral("runStateLabel"))
             ->setText(QStringLiteral("预检完成 · %1").arg(run_id));
         findChild<QTextEdit*>(QStringLiteral("runLog"))
@@ -1145,6 +1217,245 @@ bool MainWindow::preflight_experiment(
 #endif
 }
 
+bool MainWindow::start_prepared_run(QString* error_message) {
+#ifndef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
+    if (error_message != nullptr) {
+        *error_message = QStringLiteral(
+            "当前构建需要同时启用 CUDA、HDF5、YAML 与 SEG-Y 才能执行正演");
+    }
+    return false;
+#else
+    if (!prepared_run_) {
+        if (error_message != nullptr) {
+            *error_message = QStringLiteral("请先完成实验预检并生成不可变运行配置");
+        }
+        return false;
+    }
+    if (forward_worker_ && forward_worker_->isRunning()) {
+        if (error_message != nullptr) {
+            *error_message = QStringLiteral("已有正演任务正在运行");
+        }
+        return false;
+    }
+    try {
+        forward_worker_ = std::make_unique<ForwardRunWorker>(
+            prepared_run_->configuration_path, 1);
+        findChild<QProgressBar*>(QStringLiteral("runProgress"))->setValue(0);
+        findChild<QLabel*>(QStringLiteral("runStateLabel"))
+            ->setText(QStringLiteral("正在准备 CUDA 正演"));
+        findChild<QAction*>(QStringLiteral("startRunAction"))->setEnabled(false);
+        findChild<QPushButton*>(QStringLiteral("startRunButton"))->setEnabled(false);
+        findChild<QPushButton*>(QStringLiteral("pauseRunButton"))->setEnabled(false);
+        findChild<QPushButton*>(QStringLiteral("resumeRunButton"))->setEnabled(false);
+        findChild<QPushButton*>(QStringLiteral("stopRunButton"))->setEnabled(true);
+        set_run_editing_locked(true);
+        findChild<QTextEdit*>(QStringLiteral("runLog"))
+            ->append(QStringLiteral("后台正演已启动：%1")
+                         .arg(prepared_run_->configuration_path));
+        statusBar()->showMessage(QStringLiteral("CUDA 正演准备中"));
+        forward_worker_->start();
+        run_poll_timer_->start();
+        return true;
+    } catch (const std::exception& error) {
+        forward_worker_.reset();
+        set_run_editing_locked(false);
+        if (error_message != nullptr) {
+            *error_message = QString::fromUtf8(error.what());
+        }
+        return false;
+    }
+#endif
+}
+
+void MainWindow::invalidate_prepared_run() {
+#ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
+    if (forward_worker_ && forward_worker_->isRunning()) {
+        return;
+    }
+#endif
+    const bool had_prepared = prepared_run_.has_value();
+    prepared_run_.reset();
+    findChild<QAction*>(QStringLiteral("startRunAction"))->setEnabled(false);
+    findChild<QPushButton*>(QStringLiteral("startRunButton"))->setEnabled(false);
+    if (had_prepared) {
+        findChild<QLabel*>(QStringLiteral("runStateLabel"))
+            ->setText(QStringLiteral("配置已修改 · 请重新预检"));
+    }
+}
+
+void MainWindow::set_run_editing_locked(bool locked) {
+    findChild<QAction*>(QStringLiteral("newProjectAction"))->setEnabled(!locked);
+    findChild<QAction*>(QStringLiteral("openProjectAction"))->setEnabled(!locked);
+    findChild<QAction*>(QStringLiteral("importHdf5ModelAction"))
+        ->setEnabled(!locked && project_.has_value());
+    experiment_editor(this)->setEnabled(!locked && model_scene_ != nullptr);
+    if (locked) {
+        findChild<QAction*>(QStringLiteral("validateExperimentAction"))
+            ->setEnabled(false);
+        findChild<QPushButton*>(QStringLiteral("createCropButton"))
+            ->setEnabled(false);
+    } else {
+        update_crop_summary();
+        update_experiment_validation();
+    }
+}
+
+void MainWindow::poll_forward_run() {
+#ifndef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
+    return;
+#else
+    if (!forward_worker_) {
+        run_poll_timer_->stop();
+        return;
+    }
+    const auto snapshot = forward_worker_->snapshot();
+    auto* progress = findChild<QProgressBar*>(QStringLiteral("runProgress"));
+    if (snapshot.total_steps > 0) {
+        const auto percent = static_cast<int>(
+            std::min<std::size_t>(
+                100,
+                snapshot.completed_steps * 100 / snapshot.total_steps));
+        progress->setValue(percent);
+    }
+
+    auto* pause = findChild<QPushButton*>(QStringLiteral("pauseRunButton"));
+    auto* resume = findChild<QPushButton*>(QStringLiteral("resumeRunButton"));
+    auto* stop = findChild<QPushButton*>(QStringLiteral("stopRunButton"));
+    auto* state_label = findChild<QLabel*>(QStringLiteral("runStateLabel"));
+    pause->setEnabled(snapshot.state == ForwardRunState::Running);
+    resume->setEnabled(snapshot.state == ForwardRunState::Paused);
+    stop->setEnabled(
+        snapshot.state == ForwardRunState::Preparing ||
+        snapshot.state == ForwardRunState::Running ||
+        snapshot.state == ForwardRunState::Paused);
+
+    switch (snapshot.state) {
+    case ForwardRunState::Idle:
+        state_label->setText(QStringLiteral("空闲"));
+        break;
+    case ForwardRunState::Preparing:
+        state_label->setText(QStringLiteral("正在准备 CUDA 正演"));
+        break;
+    case ForwardRunState::Running:
+        state_label->setText(
+            QStringLiteral("传播中 · %1 / %2 步")
+                .arg(snapshot.completed_steps)
+                .arg(snapshot.total_steps));
+        break;
+    case ForwardRunState::Paused:
+        state_label->setText(
+            QStringLiteral("已暂停 · %1 / %2 步")
+                .arg(snapshot.completed_steps)
+                .arg(snapshot.total_steps));
+        break;
+    case ForwardRunState::Stopping:
+        state_label->setText(QStringLiteral("正在停止 · 等待当前步完成"));
+        break;
+    case ForwardRunState::Finalizing:
+        state_label->setText(QStringLiteral("正在校验并发布 SEG-Y"));
+        break;
+    case ForwardRunState::Completed:
+        state_label->setText(QStringLiteral("正演完成 · 正在登记结果"));
+        break;
+    case ForwardRunState::Cancelled:
+        state_label->setText(QStringLiteral("已停止"));
+        break;
+    case ForwardRunState::Failed:
+        state_label->setText(QStringLiteral("正演失败"));
+        break;
+    }
+
+    const bool terminal = snapshot.state == ForwardRunState::Completed ||
+                          snapshot.state == ForwardRunState::Cancelled ||
+                          snapshot.state == ForwardRunState::Failed;
+    if (!terminal || forward_worker_->isRunning()) {
+        return;
+    }
+    forward_worker_->wait();
+    run_poll_timer_->stop();
+
+    QString terminal_message;
+    try {
+        if (!prepared_run_) {
+            throw std::logic_error("completed worker has no prepared run identity");
+        }
+        RunTerminalResult result;
+        if (snapshot.state == ForwardRunState::Completed) {
+            if (!snapshot.report) {
+                throw std::logic_error("completed worker has no production report");
+            }
+            const auto& report = *snapshot.report;
+            QFile product(QString::fromStdString(report.output_segy_path));
+            if (!product.open(QIODevice::ReadOnly)) {
+                throw std::runtime_error("cannot read completed SEG-Y product");
+            }
+            QCryptographicHash hash(QCryptographicHash::Sha256);
+            if (!hash.addData(&product)) {
+                throw std::runtime_error("cannot checksum completed SEG-Y product");
+            }
+            const QFileInfo information(product);
+            RunProduct run_product;
+            run_product.relative_path = QDir(prepared_run_->directory)
+                                            .relativeFilePath(
+                                                information.absoluteFilePath());
+            run_product.sha256 = QString::fromLatin1(hash.result().toHex());
+            run_product.byte_count = information.size();
+            run_product.receiver_count = report.receiver_count;
+            run_product.sample_count = report.sample_count;
+            run_product.device_name = QString::fromStdString(report.device_name);
+            run_product.input_load_ms = report.input_load_ms;
+            run_product.setup_ms = report.setup_ms;
+            run_product.propagation_ms = report.propagation_ms;
+            run_product.trace_download_ms = report.trace_download_ms;
+            run_product.segy_write_ms = report.segy_write_ms;
+            result = {RunTerminalState::Completed, QString(), run_product};
+            terminal_message = QStringLiteral(
+                                   "正演完成：%1 个接收器 × %2 个采样；SEG-Y %3")
+                                   .arg(report.receiver_count)
+                                   .arg(report.sample_count)
+                                   .arg(information.absoluteFilePath());
+            progress->setValue(100);
+        } else if (snapshot.state == ForwardRunState::Cancelled) {
+            result = {
+                RunTerminalState::Cancelled,
+                QStringLiteral("用户在批次边界停止任务"),
+                std::nullopt};
+            terminal_message = QStringLiteral("正演已停止，未发布 SEG-Y 产品");
+        } else {
+            result = {
+                RunTerminalState::Failed,
+                snapshot.diagnostic,
+                std::nullopt};
+            terminal_message =
+                QStringLiteral("正演失败：%1").arg(snapshot.diagnostic);
+        }
+        const auto result_path =
+            ProjectWorkspace::publish_run_result(*prepared_run_, result);
+        terminal_message += QStringLiteral("；结果记录 %1").arg(result_path);
+        if (snapshot.state == ForwardRunState::Completed) {
+            state_label->setText(QStringLiteral("正演完成"));
+        } else if (snapshot.state == ForwardRunState::Cancelled) {
+            state_label->setText(QStringLiteral("已停止"));
+        } else {
+            state_label->setText(QStringLiteral("正演失败"));
+        }
+    } catch (const std::exception& error) {
+        terminal_message = QStringLiteral("运行结果登记失败：%1")
+                               .arg(QString::fromUtf8(error.what()));
+        state_label->setText(QStringLiteral("结果登记失败"));
+    }
+
+    findChild<QTextEdit*>(QStringLiteral("runLog"))->append(terminal_message);
+    statusBar()->showMessage(terminal_message);
+    forward_worker_.reset();
+    prepared_run_.reset();
+    pause->setEnabled(false);
+    resume->setEnabled(false);
+    stop->setEnabled(false);
+    set_run_editing_locked(false);
+#endif
+}
+
 const ProjectDocument* MainWindow::current_project() const noexcept {
     return project_ ? &*project_ : nullptr;
 }
@@ -1154,6 +1465,13 @@ const QString& MainWindow::current_project_root() const noexcept {
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
+#ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
+    if (forward_worker_ && forward_worker_->isRunning()) {
+        forward_worker_->request_stop();
+        forward_worker_->wait();
+        poll_forward_run();
+    }
+#endif
     save_window_settings();
     QMainWindow::closeEvent(event);
 }
@@ -1216,6 +1534,7 @@ void MainWindow::activate_project(
 void MainWindow::clear_model_view() {
     model_scene_.reset();
     resolved_experiment_.reset();
+    invalidate_prepared_run();
     experiment_model_reference_changed_ = false;
     volume_property_index_ = -1;
     volume_viewport(this)->clear_volume();
@@ -1405,6 +1724,7 @@ void MainWindow::update_experiment_validation() {
 #ifndef WAVE3D_DESKTOP_HAS_HDF5
     return;
 #else
+    invalidate_prepared_run();
     if (!project_ || !model_scene_) {
         resolved_experiment_.reset();
         return;

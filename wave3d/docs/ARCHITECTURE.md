@@ -520,6 +520,23 @@ YAML adapter, and requires an exact resolved-YAML round trip. CUDA ownership
 and execution remain outside the GUI thread and are not connected by this
 increment.
 
+Increment 24 composes that immutable configuration through a reusable
+`CudaForwardJob`. The job owns input validation, memory planning, one stable
+`CudaForwardSession`, bounded advance, trace download, and final SEG-Y
+publication. The command-line runner advances the same job in one remaining
+batch; the desktop worker advances one step per batch so pause, resume, stop,
+and progress are observed only at a completed CUDA synchronization boundary.
+
+The Qt worker creates and destroys the job entirely on its own thread. The GUI
+polls a mutex-protected lifecycle snapshot and never calls a solver operation.
+After propagation, SEG-Y is written to `record.sgy.tmp`, checked for exact byte
+shape and essential Revision 1 headers, then atomically renamed. The immutable
+configuration and run manifest remain unchanged; a separate terminal
+`wave3d.desktop.run_result.v1` record stores completion, cancellation, or
+failure. A completed record additionally binds the SEG-Y path, size, SHA-256,
+trace shape, device, and timings. Live wavefield transport remains a separate
+consumer of this lifecycle.
+
 Increment 11 verifies that behavior by configuring and building with the whole
 `optional/rtm` tree temporarily absent. RTM-off exposes only the forward views,
 observer, factory, and receiver reader; RTM-on adds the header-only checkpoint

@@ -887,3 +887,24 @@ run-local output path into the established `wave3d.forward.v2` configuration,
 then reloads and compares its canonical YAML. Preflight does not start CUDA;
 worker ownership, progress, cancellation, and live frames require a separate
 increment.
+
+## D056 — Desktop forward execution owns CUDA on one cooperative worker
+
+**Status:** Accepted and verified, 2026-09-16
+
+The complete CUDA/HDF5/YAML/SEG-Y desktop build creates one incremental
+production job on a `QThread`. That thread exclusively owns model loading,
+CUDA allocation, bounded propagation, trace download, SEG-Y writing, and CUDA
+teardown. The main thread reads copied lifecycle snapshots and controls the
+worker with mutex-protected pause, resume, and stop requests. Requests are
+consumed between synchronized one-step batches; no thread or kernel is forcibly
+terminated.
+
+The prepared YAML and `wave3d.desktop.run.v1` manifest stay immutable. Success
+writes `record.sgy.tmp`, verifies its exact dimensions and essential Revision 1
+headers, then atomically publishes `record.sgy`. A separate, atomically written
+`wave3d.desktop.run_result.v1` records the terminal state. Only completed runs
+may claim an output, and that claim includes the run-relative path, byte count,
+SHA-256, receiver/sample counts, device, and timing fields. Cancelled or failed
+runs retain a diagnostic and cannot expose a partial file as a completed
+product.

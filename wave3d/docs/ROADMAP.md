@@ -614,6 +614,28 @@ suite passed 25/25, all optional-build matrices passed, the complete CUDA suite
 passed 28/28, and the real Overthrust WSLg capture passed visual and OpenGL
 gates.
 
+## Increment 24 — Background CUDA forward execution
+
+**Goal:** Execute one immutable preflight configuration without blocking the
+desktop and publish only a verified terminal product.
+
+**Work:** Refactor the production task into an incremental CUDA job; add
+one-step worker batches, progress, pause/resume/stop, editor locking,
+failure-safe temporary SEG-Y output, and a checksummed terminal result record.
+
+**Acceptance:** The job, worker lifecycle, workspace terminal record, desktop
+state, real small CUDA run, optional builds, and complete regression gates in
+`INCREMENT_24_BACKGROUND_FORWARD_EXECUTION_PLAN.md` pass.
+
+**Status:** Verified on 2026-09-16. The command-line runner and desktop now
+share one incremental production job. The worker owns CUDA entirely off the UI
+thread and consumes controls at synchronized one-step boundaries. Successful
+runs validate and atomically publish SEG-Y plus a checksummed
+`wave3d.desktop.run_result.v1`; cancellation and failure publish terminal state
+without claiming an output. The combined Qt/CUDA/HDF5/YAML/SEG-Y suite passed
+34/34, including an actual desktop-driven CUDA run, and all affected optional
+build boundaries passed.
+
 ## Deferred research phases
 
 After elastic forward qualification, separate future phases may implement

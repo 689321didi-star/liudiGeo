@@ -118,8 +118,26 @@ void test_hdf5_to_single_segy_pipeline() {
     wave3d::io::write_resolved_yaml(
         configuration_path.string(), configuration());
 
-    const auto report = wave3d::task::run_cuda_forward_from_yaml(
-        configuration_path.string());
+    wave3d::task::CudaForwardJob job(configuration_path.string());
+    expect(
+        job.total_steps() == 40 && job.completed_steps() == 0 && !job.finished(),
+        "incremental production job has incorrect initial progress");
+    bool rejected_early_finalize = false;
+    try {
+        static_cast<void>(job.finalize());
+    } catch (const std::logic_error&) {
+        rejected_early_finalize = true;
+    }
+    expect(
+        rejected_early_finalize,
+        "incremental production job allowed early SEG-Y publication");
+    while (!job.finished()) {
+        job.advance(3);
+    }
+    expect(
+        job.completed_steps() == job.total_steps(),
+        "multi-batch production job did not reach exact completion");
+    const auto report = job.finalize();
     const auto expected_output = temporary.path() / "result" / "record.sgy";
     expect(
         report.output_segy_path == expected_output.string() &&
@@ -143,6 +161,8 @@ void test_hdf5_to_single_segy_pipeline() {
     expect(
         !std::filesystem::exists(
             expected_output.parent_path() / "record_vx.sgy") &&
+            !std::filesystem::exists(
+                expected_output.parent_path() / "record.sgy.tmp") &&
             !std::filesystem::exists(expected_output.string() + ".json"),
         "production pipeline created legacy SEG-Y outputs");
 

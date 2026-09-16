@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <limits>
@@ -349,6 +350,66 @@ void write_segy(
     const ThreeComponentTraces& traces) {
     require_valid_traces(traces);
     write_three_component_record(path, traces);
+}
+
+void require_ieee_segy_layout(
+    const std::string& path,
+    std::size_t expected_trace_count,
+    std::size_t expected_samples_per_trace) {
+    if (expected_trace_count == 0 || expected_samples_per_trace == 0 ||
+        expected_samples_per_trace > 65535) {
+        throw std::invalid_argument("expected SEG-Y dimensions are invalid");
+    }
+    const auto sample_bytes = detail::checked_size_product(
+        expected_samples_per_trace,
+        sizeof(float),
+        "SEG-Y trace byte count overflow");
+    const auto trace_bytes = detail::checked_size_add(
+        std::size_t{240}, sample_bytes, "SEG-Y trace byte count overflow");
+    const auto expected_bytes = detail::checked_size_add(
+        std::size_t{3600},
+        detail::checked_size_product(
+            expected_trace_count,
+            trace_bytes,
+            "SEG-Y file byte count overflow"),
+        "SEG-Y file byte count overflow");
+    std::error_code size_error;
+    const auto actual_bytes = std::filesystem::file_size(path, size_error);
+    if (size_error || actual_bytes != expected_bytes) {
+        throw std::invalid_argument("SEG-Y file size does not match its dimensions");
+    }
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        throw std::runtime_error("cannot open SEG-Y input: " + path);
+    }
+    std::vector<unsigned char> headers(3600);
+    input.read(
+        reinterpret_cast<char*>(headers.data()),
+        static_cast<std::streamsize>(headers.size()));
+    if (input.gcount() != static_cast<std::streamsize>(headers.size()) ||
+        get_u16(headers, 3200 + 24) != 5 ||
+        get_u16(headers, 3200 + 20) != expected_samples_per_trace) {
+        throw std::invalid_argument(
+            "SEG-Y must have complete headers, format 5, and matching samples");
+    }
+    for (std::size_t trace = 0; trace < expected_trace_count; ++trace) {
+        std::vector<unsigned char> trace_header(240);
+        input.read(
+            reinterpret_cast<char*>(trace_header.data()),
+            static_cast<std::streamsize>(trace_header.size()));
+        if (input.gcount() != static_cast<std::streamsize>(trace_header.size()) ||
+            get_u16(trace_header, 114) != expected_samples_per_trace) {
+            throw std::invalid_argument("SEG-Y trace header is truncated/mismatched");
+        }
+        input.seekg(static_cast<std::streamoff>(sample_bytes), std::ios::cur);
+        if (!input) {
+            throw std::invalid_argument("SEG-Y sample data is truncated");
+        }
+    }
+    char extra = 0;
+    if (input.get(extra)) {
+        throw std::invalid_argument("SEG-Y file has unexpected extra traces/data");
+    }
 }
 
 std::vector<float> read_ieee_segy_samples(

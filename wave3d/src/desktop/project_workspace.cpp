@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <stdexcept>
 #include <string>
 
@@ -94,6 +95,39 @@ QJsonObject project_json(const ProjectDocument& project) {
 
 QString current_utc() {
     return QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+}
+
+QString terminal_state_name(RunTerminalState state) {
+    switch (state) {
+    case RunTerminalState::Completed:
+        return QStringLiteral("completed");
+    case RunTerminalState::Cancelled:
+        return QStringLiteral("cancelled");
+    case RunTerminalState::Failed:
+        return QStringLiteral("failed");
+    }
+    fail(QStringLiteral("unknown terminal run state"));
+}
+
+void validate_run_product(const RunProduct& product) {
+    static const QRegularExpression digest(QStringLiteral("^[0-9a-f]{64}$"));
+    if (!safe_relative_path(product.relative_path) ||
+        product.relative_path.isEmpty() ||
+        !digest.match(product.sha256).hasMatch() || product.byte_count <= 0 ||
+        product.receiver_count == 0 || product.sample_count == 0 ||
+        product.device_name.trimmed().isEmpty()) {
+        fail(QStringLiteral("completed run product metadata is invalid"));
+    }
+    for (const auto value : {
+             product.input_load_ms,
+             product.setup_ms,
+             product.propagation_ms,
+             product.trace_download_ms,
+             product.segy_write_ms}) {
+        if (!std::isfinite(value) || value < 0.0) {
+            fail(QStringLiteral("run timing metadata is invalid"));
+        }
+    }
 }
 
 } // namespace
@@ -308,6 +342,81 @@ PreparedRun ProjectWorkspace::prepare_run(
         run.removeRecursively();
         throw;
     }
+}
+
+QString ProjectWorkspace::publish_run_result(
+    const PreparedRun& run,
+    const RunTerminalResult& result) {
+    const QDir directory(run.directory);
+    if (!directory.exists() ||
+        QFileInfo(run.configuration_path).absolutePath() != directory.absolutePath() ||
+        QFileInfo(run.manifest_path).absolutePath() != directory.absolutePath() ||
+        !QFileInfo(run.configuration_path).isFile() ||
+        !QFileInfo(run.manifest_path).isFile()) {
+        fail(QStringLiteral("prepared run paths are incomplete or inconsistent"));
+    }
+    if (result.state == RunTerminalState::Completed) {
+        if (!result.product || !result.diagnostic.isEmpty()) {
+            fail(QStringLiteral("completed run requires one product and no diagnostic"));
+        }
+        validate_run_product(*result.product);
+        const auto product_path = directory.filePath(result.product->relative_path);
+        if (!QFileInfo(product_path).isFile() ||
+            QFileInfo(product_path).size() != result.product->byte_count) {
+            fail(QStringLiteral("completed run product file is missing or changed"));
+        }
+        QFile product_file(product_path);
+        if (!product_file.open(QIODevice::ReadOnly)) {
+            fail(QStringLiteral("completed run product cannot be read"));
+        }
+        QCryptographicHash hash(QCryptographicHash::Sha256);
+        if (!hash.addData(&product_file) ||
+            QString::fromLatin1(hash.result().toHex()) != result.product->sha256) {
+            fail(QStringLiteral("completed run product checksum does not match"));
+        }
+    } else if (result.product) {
+        fail(QStringLiteral("cancelled or failed run cannot claim a product"));
+    } else if (result.state == RunTerminalState::Failed &&
+               result.diagnostic.trimmed().isEmpty()) {
+        fail(QStringLiteral("failed run requires a diagnostic"));
+    }
+
+    QJsonObject root{
+        {QStringLiteral("schema"), QString::fromUtf8(kDesktopRunResultSchema)},
+        {QStringLiteral("state"), terminal_state_name(result.state)},
+        {QStringLiteral("completed_utc"), current_utc()}};
+    if (!result.diagnostic.isEmpty()) {
+        root.insert(QStringLiteral("diagnostic"), result.diagnostic);
+    }
+    if (result.product) {
+        const auto& product = *result.product;
+        root.insert(
+            QStringLiteral("product"),
+            QJsonObject{
+                {QStringLiteral("kind"), QStringLiteral("segy_rev1_3c")},
+                {QStringLiteral("path"), product.relative_path},
+                {QStringLiteral("sha256"), product.sha256},
+                {QStringLiteral("bytes"), product.byte_count},
+                {QStringLiteral("receiver_count"),
+                 static_cast<qint64>(product.receiver_count)},
+                {QStringLiteral("sample_count"),
+                 static_cast<qint64>(product.sample_count)},
+                {QStringLiteral("device_name"), product.device_name},
+                {QStringLiteral("timings_ms"),
+                 QJsonObject{
+                     {QStringLiteral("input_load"), product.input_load_ms},
+                     {QStringLiteral("setup"), product.setup_ms},
+                     {QStringLiteral("propagation"), product.propagation_ms},
+                     {QStringLiteral("trace_download"), product.trace_download_ms},
+                     {QStringLiteral("segy_write"), product.segy_write_ms}}}});
+    }
+
+    const auto path = directory.filePath(QStringLiteral("result.json"));
+    if (QFileInfo::exists(path)) {
+        fail(QStringLiteral("terminal run result already exists"));
+    }
+    write_atomically(path, QJsonDocument(root).toJson(QJsonDocument::Indented));
+    return path;
 }
 
 } // namespace wave3d::desktop
