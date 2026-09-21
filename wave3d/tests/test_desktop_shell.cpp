@@ -24,6 +24,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QFrame>
+#include <QGroupBox>
 #include <QLabel>
 #include <QKeyEvent>
 #include <QLineEdit>
@@ -32,6 +33,8 @@
 #include <QOpenGLWidget>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QSettings>
 #include <QSlider>
 #include <QSplitter>
@@ -42,6 +45,7 @@
 #include <QThread>
 #include <QToolBar>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <iostream>
@@ -137,12 +141,14 @@ void test_shell_contract() {
     QCoreApplication::processEvents();
     expect(
         !require_child<QDockWidget>(window, "resultsDock")->isHidden() &&
+            require_child<QWidget>(window, "workspaceCentral")->isHidden() &&
             window.minimumSizeHint().height() <= 920,
         "selected results workspace must stay near the review viewport");
     navigation->setCurrentRow(2);
     QCoreApplication::processEvents();
     expect(
         require_child<QDockWidget>(window, "resultsDock")->isHidden() &&
+            !require_child<QWidget>(window, "workspaceCentral")->isHidden() &&
             !require_child<QDockWidget>(window, "logDock")->isHidden(),
         "leaving results must restore the normal workspace dock");
 
@@ -168,11 +174,30 @@ void test_shell_contract() {
 
     expect(navigation->count() == 8, "required desktop modules are missing");
     expect(
-        navigation->item(3)->text() == QStringLiteral("震源与炮集"),
-        "multi-shot navigation entry is missing");
+        navigation->item(0)->text() == QStringLiteral("项目概览") &&
+            navigation->item(3)->text() == QStringLiteral("震源"),
+        "single-shot navigation labels are incorrect");
     expect(
-        navigation->item(5)->text() == QStringLiteral("任务队列"),
-        "optional run queue navigation entry is missing");
+        navigation->item(5)->text() == QStringLiteral("任务队列（后续）") &&
+            !navigation->item(5)->flags().testFlag(Qt::ItemIsEnabled) &&
+            !navigation->item(5)->toolTip().isEmpty(),
+        "deferred run queue must be visible but non-interactive");
+    for (const char* name : {
+             "toggleExperimentWorkspaceAction", "toggleModelInformationAction",
+             "toggleExperimentEditorAction", "toggleRunLogAction",
+             "toggleResultsWorkspaceAction", "resetLayoutAction"}) {
+        static_cast<void>(require_child<QAction>(window, name));
+    }
+    auto* editor_dock =
+        require_child<QDockWidget>(window, "experimentEditorDock");
+    editor_dock->setFloating(true);
+    require_child<QAction>(window, "resetLayoutAction")->trigger();
+    QCoreApplication::processEvents();
+    expect(
+        !editor_dock->isFloating() &&
+            require_child<QDockWidget>(window, "resultsDock")->isHidden() &&
+            !require_child<QDockWidget>(window, "experimentDock")->isHidden(),
+        "reset layout did not recover the required desktop docks");
 
     const auto* snapshot = require_child<QAction>(window, "snapshotAction");
     expect(
@@ -284,20 +309,28 @@ void test_project_window_state() {
     window.resize(1180, 760);
     window.show();
     QApplication::processEvents();
+    require_child<QListWidget>(window, "moduleNavigation")->setCurrentRow(6);
+    QApplication::processEvents();
     expect(window.close(), "desktop window refused normal close");
     settings.sync();
     expect(
         !settings.value(QStringLiteral("desktop/geometry")).toByteArray().isEmpty() &&
             !settings.value(QStringLiteral("desktop/window_state"))
                  .toByteArray()
-                 .isEmpty(),
-        "window geometry or dock state was not persisted on close");
+                 .isEmpty() &&
+            settings.value(QStringLiteral("desktop/current_module")).toInt() == 6,
+        "window geometry, dock state, or active module was not persisted on close");
 
     wave3d::desktop::MainWindow reopened;
     expect(
         reopened.current_project() != nullptr &&
             reopened.current_project_root() == QDir(root).absolutePath(),
         "last project was not reopened from desktop settings");
+    expect(
+        require_child<QListWidget>(reopened, "moduleNavigation")->currentRow() == 6 &&
+            !require_child<QDockWidget>(reopened, "resultsDock")->isHidden() &&
+            require_child<QWidget>(reopened, "workspaceCentral")->isHidden(),
+        "reopened desktop did not restore a consistent active module");
     expect(
         require_child<QComboBox>(reopened, "displayFieldSelector")
                 ->currentData()
@@ -549,6 +582,45 @@ void test_hdf5_model_import() {
     auto* frequency =
         require_child<QDoubleSpinBox>(window, "designFrequencySpin");
     window.show();
+    auto* module_navigation =
+        require_child<QListWidget>(window, "moduleNavigation");
+    auto* editor_scroll =
+        require_child<QScrollArea>(window, "experimentEditorScroll");
+    const auto expect_editor_section_top = [&](int row, const char* object_name) {
+        module_navigation->setCurrentRow(row);
+        QApplication::processEvents();
+        auto* target = require_child<QGroupBox>(window, object_name);
+        const auto requested =
+            target->mapTo(editor_scroll->widget(), QPoint{}).y();
+        const auto expected = std::min(
+            requested, editor_scroll->verticalScrollBar()->maximum());
+        expect(
+            std::abs(editor_scroll->verticalScrollBar()->value() - expected) <= 1,
+            "experiment navigation did not align the selected section top");
+    };
+    expect_editor_section_top(2, "workspaceEditorGroup");
+    expect_editor_section_top(3, "sourceEditorGroup");
+    expect_editor_section_top(4, "acquisitionEditorGroup");
+    module_navigation->setCurrentRow(7);
+    QApplication::processEvents();
+    auto* model_scroll =
+        require_child<QScrollArea>(window, "modelInformationScroll");
+    auto* rendering_group =
+        require_child<QGroupBox>(window, "volumeRenderingGroup");
+    expect(
+        std::abs(
+            model_scroll->verticalScrollBar()->value() -
+            std::min(
+                rendering_group->mapTo(model_scroll->widget(), QPoint{}).y(),
+                model_scroll->verticalScrollBar()->maximum())) <= 1,
+        "display navigation did not reveal the transfer controls");
+    module_navigation->setCurrentRow(6);
+    QApplication::processEvents();
+    expect(
+        !require_child<QDockWidget>(window, "resultsDock")->isHidden(),
+        "results navigation did not expose the gather workspace");
+    module_navigation->setCurrentRow(3);
+    QApplication::processEvents();
     editor_dock->setFloating(true);
     editor_dock->show();
     editor_dock->raise();
@@ -863,11 +935,15 @@ void test_hdf5_model_import() {
     expect(
         reopened.current_project() != nullptr &&
             reopened.current_project()->model_reference ==
-                QStringLiteral("models/fixture.h5") &&
+                QStringLiteral("models/fixture.h5"),
+        "reopening a project did not reload its referenced model identity");
+    require_child<QListWidget>(reopened, "moduleNavigation")->setCurrentRow(0);
+    QApplication::processEvents();
+    expect(
             require_child<QOpenGLWidget>(reopened, "xyViewport")
                 ->property("hasScientificImage")
                 .toBool(),
-        "reopening a project did not reload its referenced model");
+        "leaving restored results did not reload the referenced model view");
     expect(
         require_child<QDoubleSpinBox>(reopened, "totalTimeSpin")->value() ==
 #ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD

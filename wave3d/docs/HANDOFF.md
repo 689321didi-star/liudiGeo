@@ -2044,3 +2044,47 @@ creates one independent floating editor instead of moving the complete tab
 group. The shell test floats the real model-backed editor, focuses its design-
 frequency control, sends a Qt key event, verifies the value changes, and docks
 the editor again.
+
+## Release-candidate desktop UI audit
+
+**Status:** Verified on WSL2/WSLg on 2026-09-21; D048 native Linux gate remains
+open.
+
+The complete single-shot shell was reviewed at 1440 by 900 with the real
+Overthrust project. Navigation now raises the correct dock and aligns the
+workspace, source, acquisition, or display section with the top of its scroll
+area. The deferred multi-task queue is visibly disabled. Results get a larger
+gather area and no longer compete with hidden OpenGL views during capture or
+smoke checks.
+
+The View menu can reopen every closable dock and restore the default layout.
+Persisted dock data uses a new state version, also records the selected module,
+and reloads the model view when leaving a restored Results page. Width limits
+are applied to dock contents so docked and floating frames remain interactive.
+Disabled and keyboard-focused controls now have explicit dark-theme states.
+
+Validation:
+
+```text
+cmake --build build/desktop24 -j2
+ctest --test-dir build/desktop24 --output-on-failure -j2
+# complete CUDA/YAML/HDF5/SEG-Y desktop: 37/37 passed
+
+cmake --build build/desktop19 -j2
+ctest --test-dir build/desktop19 --output-on-failure -j2
+# HDF5-only desktop boundary: 23/23 passed
+
+QT_QPA_PLATFORM=xcb ctest --test-dir build/desktop24 \
+  -R '^wave3d_desktop_shell_tests$' --output-on-failure
+# real XCB widget/input regression: 1/1 passed
+
+QT_QPA_PLATFORM=xcb build/desktop24/wave3d_studio \
+  --project build/desktop19/review_project --module workspace --smoke-test
+QT_QPA_PLATFORM=xcb build/desktop24/wave3d_studio \
+  --project build/desktop19/review_project --module results --smoke-test
+# both exited successfully with real OpenGL contexts where visible
+```
+
+Reviewed 1440 by 900 XCB captures cover source, 101 by 101 acquisition, and the
+completed three-component SEG-Y result. This WSLg evidence does not replace the
+native Linux screenshot, input, font, and frame-pacing checks required by D048.

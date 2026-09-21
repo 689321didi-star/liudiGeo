@@ -52,6 +52,9 @@ bool capture_shell(wave3d::desktop::MainWindow& window, const QString& path) {
     auto image = window.grab();
     QPainter painter(&image);
     for (auto* viewport : window.findChildren<QOpenGLWidget*>()) {
+        if (!viewport->isVisible()) {
+            continue;
+        }
         const auto top_left = viewport->mapTo(&window, QPoint{});
         painter.drawImage(
             QRect(top_left, viewport->size()), viewport->grabFramebuffer());
@@ -172,7 +175,9 @@ int main(int argc, char** argv) {
         QStringLiteral("yaw,pitch,distance"));
     const QCommandLineOption module_option(
         QStringLiteral("module"),
-        QStringLiteral("打开审查模块：model、workspace、source 或 acquisition"),
+        QStringLiteral(
+            "打开审查模块：project、model、workspace、source、acquisition、"
+            "results 或 display"),
         QStringLiteral("name"));
     parser.addOption(inspect_option);
     parser.addOption(smoke_option);
@@ -225,17 +230,22 @@ int main(int argc, char** argv) {
     }
     if (parser.isSet(module_option)) {
         const auto module = parser.value(module_option);
-        const auto row = module == QStringLiteral("model")
-                             ? 1
-                             : module == QStringLiteral("workspace")
-                                   ? 2
-                                   : module == QStringLiteral("source")
-                                         ? 3
-                                         : module == QStringLiteral("acquisition")
-                                               ? 4
-                                               : module == QStringLiteral("results")
-                                                     ? 6
-                                               : -1;
+        int row = -1;
+        if (module == QStringLiteral("project")) {
+            row = 0;
+        } else if (module == QStringLiteral("model")) {
+            row = 1;
+        } else if (module == QStringLiteral("workspace")) {
+            row = 2;
+        } else if (module == QStringLiteral("source")) {
+            row = 3;
+        } else if (module == QStringLiteral("acquisition")) {
+            row = 4;
+        } else if (module == QStringLiteral("results")) {
+            row = 6;
+        } else if (module == QStringLiteral("display")) {
+            row = 7;
+        }
         auto* navigation = window.findChild<QListWidget*>(
             QStringLiteral("moduleNavigation"));
         if (row < 0 || navigation == nullptr) {
@@ -263,7 +273,8 @@ int main(int argc, char** argv) {
         return result;
     }
     for (const auto* viewport : window.findChildren<QOpenGLWidget*>()) {
-        if (!viewport->property("openGlReady").toBool()) {
+        if (viewport->isVisible() &&
+            !viewport->property("openGlReady").toBool()) {
             std::cerr << "OpenGL context was not created for "
                       << viewport->objectName().toStdString() << '\n';
             return 1;
@@ -271,22 +282,23 @@ int main(int argc, char** argv) {
     }
     const auto* volume =
         window.findChild<QOpenGLWidget*>(QStringLiteral("volumeViewport"));
-    if (window.current_project() != nullptr &&
+    if (volume != nullptr && volume->isVisible() &&
+        window.current_project() != nullptr &&
         !window.current_project()->model_reference.isEmpty() &&
-        (volume == nullptr ||
-         !volume->property("volumeShaderReady").toBool() ||
+        (!volume->property("volumeShaderReady").toBool() ||
          !volume->property("volumeTextureReady").toBool() ||
          !volume->property("volumeFrameReady").toBool())) {
         std::cerr << "Static volume renderer did not produce a valid frame\n";
         return 1;
     }
-    if (volume != nullptr &&
+    if (volume != nullptr && volume->isVisible() &&
         volume->property("sourceMarkerPosition").toList().size() == 3 &&
         !volume->property("sourceMarkerVisible").toBool()) {
         std::cerr << "Static source marker was not rendered\n";
         return 1;
     }
-    if (volume != nullptr && volume->property("receiverCount").toULongLong() > 0 &&
+    if (volume != nullptr && volume->isVisible() &&
+        volume->property("receiverCount").toULongLong() > 0 &&
         !volume->property("receiverMarkerVisible").toBool()) {
         std::cerr << "Static receiver markers were not rendered\n";
         return 1;

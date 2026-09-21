@@ -74,6 +74,8 @@
 namespace wave3d::desktop {
 namespace {
 
+constexpr int kWindowStateVersion = 2;
+
 #if defined(WAVE3D_DESKTOP_HAS_HDF5) && defined(WAVE3D_DESKTOP_HAS_SEGY)
 std::optional<SegyModelConversionRequest> prompt_segy_model_conversion(
     QWidget* parent,
@@ -524,14 +526,17 @@ QDockWidget* make_experiment_dock(QMainWindow* window) {
     auto* navigation = new QListWidget(contents);
     navigation->setObjectName(QStringLiteral("moduleNavigation"));
     navigation->addItems({
-        QStringLiteral("项目"),
+        QStringLiteral("项目概览"),
         QStringLiteral("模型与裁剪"),
         QStringLiteral("工作区"),
-        QStringLiteral("震源与炮集"),
+        QStringLiteral("震源"),
         QStringLiteral("观测系统"),
-        QStringLiteral("任务队列"),
+        QStringLiteral("任务队列（后续）"),
         QStringLiteral("结果"),
         QStringLiteral("显示设置")});
+    auto* queue_item = navigation->item(5);
+    queue_item->setFlags(queue_item->flags() & ~Qt::ItemIsEnabled);
+    queue_item->setToolTip(QStringLiteral("多任务队列不属于当前单炮版本"));
     navigation->setCurrentRow(0);
     navigation->setMinimumWidth(230);
     navigation->setMinimumHeight(272);
@@ -590,7 +595,6 @@ QDockWidget* make_log_dock(QMainWindow* window) {
 QDockWidget* make_model_information_dock(QMainWindow* window) {
     auto* dock = new QDockWidget(QStringLiteral("模型信息"), window);
     dock->setObjectName(QStringLiteral("modelInformationDock"));
-    dock->setMinimumWidth(250);
     auto* contents = new QWidget(dock);
     auto* layout = new QVBoxLayout(contents);
     auto* form = new QFormLayout;
@@ -662,6 +666,7 @@ QDockWidget* make_model_information_dock(QMainWindow* window) {
     layout->addWidget(crop);
 
     auto* rendering = new QGroupBox(QStringLiteral("三维传递函数"), contents);
+    rendering->setObjectName(QStringLiteral("volumeRenderingGroup"));
     auto* rendering_form = new QFormLayout(rendering);
     auto* opacity = new QSlider(Qt::Horizontal, rendering);
     opacity->setObjectName(QStringLiteral("volumeOpacitySlider"));
@@ -686,6 +691,7 @@ QDockWidget* make_model_information_dock(QMainWindow* window) {
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setMinimumWidth(250);
     scroll->setWidget(contents);
     dock->setWidget(scroll);
     return dock;
@@ -694,12 +700,12 @@ QDockWidget* make_model_information_dock(QMainWindow* window) {
 QDockWidget* make_experiment_editor_dock(QMainWindow* window) {
     auto* dock = new QDockWidget(QStringLiteral("实验设置"), window);
     dock->setObjectName(QStringLiteral("experimentEditorDock"));
-    dock->setMinimumWidth(340);
     auto* scroll = new QScrollArea(dock);
     scroll->setObjectName(QStringLiteral("experimentEditorScroll"));
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setMinimumWidth(340);
     scroll->setWidget(new ExperimentEditor(scroll));
     dock->setWidget(scroll);
     return dock;
@@ -708,9 +714,34 @@ QDockWidget* make_experiment_editor_dock(QMainWindow* window) {
 QDockWidget* make_results_dock(QMainWindow* window) {
     auto* dock = new QDockWidget(QStringLiteral("结果工作区"), window);
     dock->setObjectName(QStringLiteral("resultsDock"));
-    dock->setMinimumWidth(620);
-    dock->setWidget(new ResultWorkspace(dock));
+    auto* workspace = new ResultWorkspace(dock);
+    workspace->setMinimumWidth(540);
+    dock->setWidget(workspace);
     return dock;
+}
+
+void focus_dock(QDockWidget* dock) {
+    const auto apply = [dock] {
+        dock->show();
+        dock->raise();
+        if (dock->isFloating()) {
+            dock->activateWindow();
+        }
+    };
+    apply();
+    QTimer::singleShot(0, dock, apply);
+}
+
+void scroll_to_widget_top(QScrollArea* scroll, QWidget* target) {
+    if (scroll == nullptr || target == nullptr || scroll->widget() == nullptr) {
+        return;
+    }
+    const auto apply = [scroll, target] {
+        const auto top = target->mapTo(scroll->widget(), QPoint{}).y();
+        scroll->verticalScrollBar()->setValue(top);
+    };
+    apply();
+    QTimer::singleShot(0, scroll, apply);
 }
 
 } // namespace
@@ -724,6 +755,7 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
         QMainWindow::AnimatedDocks | QMainWindow::AllowTabbedDocks);
 
     auto* central = new QWidget(this);
+    central->setObjectName(QStringLiteral("workspaceCentral"));
     auto* central_layout = new QVBoxLayout(central);
     central_layout->setContentsMargins(10, 10, 10, 10);
     central_layout->setSpacing(9);
@@ -777,18 +809,35 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
     auto* model_information_dock = make_model_information_dock(this);
     auto* experiment_editor_dock = make_experiment_editor_dock(this);
     auto* results_dock = make_results_dock(this);
-    addDockWidget(Qt::LeftDockWidgetArea, experiment_dock);
-    addDockWidget(Qt::BottomDockWidgetArea, log_dock);
-    addDockWidget(Qt::RightDockWidgetArea, model_information_dock);
-    addDockWidget(Qt::RightDockWidgetArea, experiment_editor_dock);
-    addDockWidget(Qt::BottomDockWidgetArea, results_dock);
-    tabifyDockWidget(model_information_dock, experiment_editor_dock);
-    model_information_dock->raise();
-    tabifyDockWidget(log_dock, results_dock);
-    log_dock->raise();
-    results_dock->hide();
-    resizeDocks({log_dock}, {145}, Qt::Vertical);
-    resizeDocks({model_information_dock}, {270}, Qt::Horizontal);
+    const auto reset_layout = [this, central, experiment_dock, log_dock,
+                               model_information_dock, experiment_editor_dock,
+                               results_dock] {
+        for (auto* dock : {experiment_dock, log_dock, model_information_dock,
+                           experiment_editor_dock, results_dock}) {
+            dock->setFloating(false);
+            removeDockWidget(dock);
+        }
+        addDockWidget(Qt::LeftDockWidgetArea, experiment_dock);
+        addDockWidget(Qt::BottomDockWidgetArea, log_dock);
+        addDockWidget(Qt::RightDockWidgetArea, model_information_dock);
+        addDockWidget(Qt::RightDockWidgetArea, experiment_editor_dock);
+        addDockWidget(Qt::BottomDockWidgetArea, results_dock);
+        tabifyDockWidget(model_information_dock, experiment_editor_dock);
+        tabifyDockWidget(log_dock, results_dock);
+        experiment_dock->show();
+        model_information_dock->show();
+        experiment_editor_dock->show();
+        log_dock->show();
+        results_dock->hide();
+        central->show();
+        model_information_dock->raise();
+        log_dock->raise();
+        resizeDocks({log_dock}, {145}, Qt::Vertical);
+        resizeDocks({model_information_dock}, {270}, Qt::Horizontal);
+        findChild<QListWidget*>(QStringLiteral("moduleNavigation"))
+            ->setCurrentRow(0);
+    };
+    reset_layout();
 #ifndef WAVE3D_DESKTOP_HAS_SEGY
     result_workspace(this)->set_segy_available(false);
 #endif
@@ -814,6 +863,24 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
 #if !defined(WAVE3D_DESKTOP_HAS_HDF5) || !defined(WAVE3D_DESKTOP_HAS_SEGY)
     convert_segy->setToolTip(QStringLiteral("当前构建需要同时启用 HDF5 与 SEG-Y"));
 #endif
+
+    auto* view_menu = menuBar()->addMenu(QStringLiteral("视图"));
+    const std::array<std::pair<QDockWidget*, const char*>, 5> dock_actions{{
+        {experiment_dock, "toggleExperimentWorkspaceAction"},
+        {model_information_dock, "toggleModelInformationAction"},
+        {experiment_editor_dock, "toggleExperimentEditorAction"},
+        {log_dock, "toggleRunLogAction"},
+        {results_dock, "toggleResultsWorkspaceAction"}}};
+    for (const auto& [dock, object_name] : dock_actions) {
+        auto* action = dock->toggleViewAction();
+        action->setObjectName(QString::fromUtf8(object_name));
+        view_menu->addAction(action);
+    }
+    view_menu->addSeparator();
+    auto* reset_layout_action =
+        view_menu->addAction(QStringLiteral("重置默认布局"));
+    reset_layout_action->setObjectName(QStringLiteral("resetLayoutAction"));
+    connect(reset_layout_action, &QAction::triggered, this, reset_layout);
 
     auto* run_menu = menuBar()->addMenu(QStringLiteral("运行"));
     auto* snapshot = run_menu->addAction(QStringLiteral("保存波场快照（预留）"));
@@ -1132,37 +1199,59 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
         findChild<QListWidget*>(QStringLiteral("moduleNavigation")),
         &QListWidget::currentRowChanged,
         this,
-        [this, log_dock, model_information_dock, experiment_editor_dock,
-         results_dock](int row) {
+        [this, central, log_dock, model_information_dock,
+         experiment_editor_dock, results_dock](int row) {
             if (row != 6) {
                 results_dock->hide();
-                log_dock->show();
-                log_dock->raise();
+                const auto workspace_was_hidden = central->isHidden();
+                central->show();
+                if (workspace_was_hidden) {
+                    QTimer::singleShot(0, this, [this] { update_model_view(); });
+                }
+                focus_dock(log_dock);
+                resizeDocks({log_dock}, {145}, Qt::Vertical);
             }
-            if (row == 1) {
-                model_information_dock->show();
-                model_information_dock->raise();
+            if (row == 0 || row == 1 || row == 7) {
+                focus_dock(model_information_dock);
+                auto* scroll = findChild<QScrollArea*>(
+                    QStringLiteral("modelInformationScroll"));
+                if (row == 7) {
+                    scroll_to_widget_top(
+                        scroll,
+                        findChild<QGroupBox*>(
+                            QStringLiteral("volumeRenderingGroup")));
+                } else {
+                    scroll->verticalScrollBar()->setValue(0);
+                }
                 return;
             }
             if (row == 2 || row == 3 || row == 4) {
-                experiment_editor_dock->show();
-                experiment_editor_dock->raise();
+                focus_dock(experiment_editor_dock);
                 auto* scroll = findChild<QScrollArea*>(
                     QStringLiteral("experimentEditorScroll"));
                 if (row == 2) {
-                    scroll->verticalScrollBar()->setValue(0);
+                    scroll_to_widget_top(
+                        scroll,
+                        findChild<QGroupBox*>(
+                            QStringLiteral("workspaceEditorGroup")));
                 } else if (row == 3) {
-                    scroll->ensureWidgetVisible(findChild<QGroupBox*>(
-                        QStringLiteral("sourceEditorGroup")));
+                    scroll_to_widget_top(
+                        scroll,
+                        findChild<QGroupBox*>(
+                            QStringLiteral("sourceEditorGroup")));
                 } else {
-                    scroll->ensureWidgetVisible(findChild<QGroupBox*>(
-                        QStringLiteral("acquisitionEditorGroup")));
+                    scroll_to_widget_top(
+                        scroll,
+                        findChild<QGroupBox*>(
+                            QStringLiteral("acquisitionEditorGroup")));
                 }
                 return;
             }
             if (row == 6) {
-                results_dock->show();
-                results_dock->raise();
+                central->hide();
+                log_dock->hide();
+                focus_dock(results_dock);
+                resizeDocks({results_dock}, {650}, Qt::Vertical);
             }
         });
 
@@ -1170,8 +1259,23 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
     if (restore_last_project) {
         restoreGeometry(
             settings.value(QStringLiteral("desktop/geometry")).toByteArray());
-        restoreState(
-            settings.value(QStringLiteral("desktop/window_state")).toByteArray());
+        const auto state =
+            settings.value(QStringLiteral("desktop/window_state")).toByteArray();
+        if (!state.isEmpty() &&
+            !restoreState(state, kWindowStateVersion)) {
+            reset_layout();
+        }
+        const auto module_row =
+            settings.value(QStringLiteral("desktop/current_module"), 0).toInt();
+        auto* navigation = findChild<QListWidget*>(
+            QStringLiteral("moduleNavigation"));
+        if (module_row >= 0 && module_row < navigation->count() &&
+            navigation->item(module_row)->flags().testFlag(Qt::ItemIsEnabled)) {
+            if (navigation->currentRow() == module_row) {
+                navigation->setCurrentRow(-1);
+            }
+            navigation->setCurrentRow(module_row);
+        }
     } else {
         resize(1440, 900);
     }
@@ -2423,7 +2527,12 @@ void MainWindow::update_model_view() {
 void MainWindow::save_window_settings() {
     QSettings settings;
     settings.setValue(QStringLiteral("desktop/geometry"), saveGeometry());
-    settings.setValue(QStringLiteral("desktop/window_state"), saveState());
+    settings.setValue(
+        QStringLiteral("desktop/window_state"),
+        saveState(kWindowStateVersion));
+    settings.setValue(
+        QStringLiteral("desktop/current_module"),
+        findChild<QListWidget*>(QStringLiteral("moduleNavigation"))->currentRow());
 }
 
 } // namespace wave3d::desktop

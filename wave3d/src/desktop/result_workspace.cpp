@@ -606,7 +606,7 @@ public:
         runs_->setSelectionBehavior(QAbstractItemView::SelectRows);
         runs_->setSelectionMode(QAbstractItemView::SingleSelection);
         runs_->setEditTriggers(QAbstractItemView::NoEditTriggers);
-        runs_->setMaximumHeight(185);
+        runs_->setMaximumHeight(135);
         layout->addWidget(runs_);
 
         auto* controls = new QHBoxLayout;

@@ -26,6 +26,10 @@ void apply_scientific_theme(QApplication& application) {
     palette.setColor(QPalette::Highlight, QColor(25, 155, 210));
     palette.setColor(QPalette::HighlightedText, QColor(255, 255, 255));
     palette.setColor(QPalette::PlaceholderText, QColor(111, 132, 148));
+    palette.setColor(
+        QPalette::Disabled, QPalette::Text, QColor(101, 119, 131));
+    palette.setColor(
+        QPalette::Disabled, QPalette::ButtonText, QColor(101, 119, 131));
     application.setPalette(palette);
 
     application.setStyleSheet(QStringLiteral(R"(
@@ -44,10 +48,12 @@ void apply_scientific_theme(QApplication& application) {
         QMainWindow::separator:hover { background: #278cb4; }
         QGroupBox { background: #121d29; border: 1px solid #273a4a; border-radius: 8px; margin-top: 14px; padding: 12px 10px 10px 10px; font-weight: 600; }
         QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; color: #9fc7dd; }
-        QListWidget, QTextEdit, QComboBox { background: #0a1119; border: 1px solid #273a4a; border-radius: 7px; padding: 5px; selection-background-color: #174d69; selection-color: #ffffff; }
+        QListWidget, QTextEdit, QPlainTextEdit, QTableWidget, QLineEdit, QComboBox { background: #0a1119; border: 1px solid #273a4a; border-radius: 7px; padding: 5px; selection-background-color: #174d69; selection-color: #ffffff; }
         QListWidget::item { min-height: 31px; border-radius: 5px; padding-left: 9px; }
         QListWidget::item:hover { background: #162736; }
         QListWidget::item:selected { background: #175270; }
+        QListWidget::item:disabled { color: #657783; background: transparent; }
+        QListWidget:focus, QTextEdit:focus, QPlainTextEdit:focus, QTableWidget:focus, QLineEdit:focus, QComboBox:focus { border-color: #42a7d3; }
         QComboBox { min-height: 28px; padding-left: 9px; }
         QComboBox::drop-down { border: none; width: 24px; }
         QPushButton { min-height: 30px; background: #1a3446; border: 1px solid #31556b; border-radius: 7px; padding: 3px 12px; }
