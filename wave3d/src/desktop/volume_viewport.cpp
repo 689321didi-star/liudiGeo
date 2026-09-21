@@ -659,9 +659,10 @@ void VolumeViewport::mouseMoveEvent(QMouseEvent* event) {
     if (event->buttons().testFlag(Qt::LeftButton)) {
         const auto current = event->position().toPoint();
         const auto delta = current - last_mouse_position_;
-        yaw_ += static_cast<float>(delta.x()) * 0.008F;
+        // Treat dragging as grabbing the volume rather than orbiting the camera.
+        yaw_ -= static_cast<float>(delta.x()) * 0.008F;
         pitch_ = std::clamp(
-            pitch_ - static_cast<float>(delta.y()) * 0.008F, -1.35F, 1.35F);
+            pitch_ + static_cast<float>(delta.y()) * 0.008F, -1.35F, 1.35F);
         last_mouse_position_ = current;
         update_camera_diagnostics();
         update();

@@ -751,10 +751,14 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
 
     auto* horizontal = new QSplitter(Qt::Horizontal, central);
     horizontal->setObjectName(QStringLiteral("fourViewSplitter"));
+    horizontal->setHandleWidth(7);
+    horizontal->setOpaqueResize(true);
     horizontal->addWidget(new VolumeViewport(horizontal));
 
     auto* slices = new QSplitter(Qt::Vertical, horizontal);
     slices->setObjectName(QStringLiteral("sliceViewSplitter"));
+    slices->setHandleWidth(7);
+    slices->setOpaqueResize(true);
     slices->addWidget(new ScientificViewport(
         QStringLiteral("XY 切面"), QStringLiteral("xyViewport"), slices));
     slices->addWidget(new ScientificViewport(
@@ -1173,6 +1177,7 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
         resize(1440, 900);
     }
 
+    statusBar()->setSizeGripEnabled(true);
     statusBar()->showMessage(QStringLiteral("空闲 · 速度模 · 未加载模型"));
     const auto last_project =
         settings.value(QStringLiteral("desktop/last_project")).toString();

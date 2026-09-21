@@ -27,6 +27,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMouseEvent>
 #include <QOpenGLWidget>
 #include <QProgressBar>
 #include <QPushButton>
@@ -35,11 +36,13 @@
 #include <QSplitter>
 #include <QSpinBox>
 #include <QStandardPaths>
+#include <QStatusBar>
 #include <QTemporaryDir>
 #include <QThread>
 #include <QToolBar>
 
 #include <array>
+#include <cmath>
 #include <iostream>
 #include <stdexcept>
 
@@ -116,6 +119,10 @@ void test_shell_contract() {
     expect(
         slices->orientation() == Qt::Vertical && slices->count() == 3,
         "desktop shell must stack three orthogonal slices");
+    expect(
+        four_view->handleWidth() >= 7 && slices->handleWidth() >= 7 &&
+            window.statusBar()->isSizeGripEnabled(),
+        "window and viewport resize handles must remain directly draggable");
     expect(
         window.minimumSizeHint().height() <= 900,
         "desktop shell must fit the accepted 1440 by 900 review viewport");
@@ -510,6 +517,29 @@ void test_hdf5_model_import() {
             volume->property("volumeCameraPitch").toFloat() == 0.42F &&
             volume->property("volumeCameraDistance").toFloat() == 1.75F,
         "volume camera reset did not restore the review view");
+    QMouseEvent press(
+        QEvent::MouseButtonPress,
+        QPointF(100.0, 100.0),
+        QPointF(100.0, 100.0),
+        Qt::LeftButton,
+        Qt::LeftButton,
+        Qt::NoModifier);
+    QApplication::sendEvent(volume, &press);
+    QMouseEvent move(
+        QEvent::MouseMove,
+        QPointF(120.0, 110.0),
+        QPointF(120.0, 110.0),
+        Qt::NoButton,
+        Qt::LeftButton,
+        Qt::NoModifier);
+    QApplication::sendEvent(volume, &move);
+    expect(
+        std::abs(volume->property("volumeCameraYaw").toFloat() - 0.49F) <
+                1.0e-5F &&
+            std::abs(
+                volume->property("volumeCameraPitch").toFloat() - 0.50F) <
+                1.0e-5F,
+        "volume drag must move the grabbed volume in the mouse direction");
     require_child<QSlider>(window, "volumeOpacitySlider")->setValue(70);
     require_child<QSlider>(window, "volumeThresholdSlider")->setValue(20);
     expect(

@@ -2006,3 +2006,34 @@ Overthrust candidate screenshot. This cannot satisfy D048's native Linux gate.
 Do not mark Increment 31 or the single-shot release complete until the same
 commit passes the native desktop smoke, result opening, screenshot, font/input,
 and frame-pacing checks listed in the qualification document.
+
+## Release-candidate desktop interaction fixes
+
+**Status:** Verified on 2026-09-21.
+
+Left-dragging the 3-D viewport now treats the pointer as grabbing the rendered
+volume: dragging right/down decreases yaw and increases pitch respectively.
+The main four-view and three-section splitters use visible seven-pixel handles,
+Qt dock separators use the same enlarged hover target, and the status bar
+exposes a native size grip for resizing the whole window. Results/navigation
+and persisted geometry behavior are unchanged.
+
+Validation:
+
+```text
+cmake --build build/desktop24 -j2 --target \
+  wave3d_desktop_shell_tests wave3d_studio
+ctest --test-dir build/desktop24 -R wave3d_desktop_shell_tests \
+  --output-on-failure
+# complete desktop: 1/1 passed
+
+cmake --build build/desktop19 -j2 --target wave3d_desktop_shell_tests
+ctest --test-dir build/desktop19 -R wave3d_desktop_shell_tests \
+  --output-on-failure
+# HDF5-only desktop boundary: 1/1 passed
+```
+
+The shell test sends a real Qt press/move event and checks the inverted yaw and
+pitch values. It also protects splitter handle width and the native window size
+grip contract. The real Overthrust project also passed the WSLg/XCB OpenGL
+smoke after rebuilding the application.

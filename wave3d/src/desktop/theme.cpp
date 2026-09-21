@@ -40,6 +40,8 @@ void apply_scientific_theme(QApplication& application) {
         QToolButton:disabled { color: #657783; background: transparent; }
         QDockWidget { color: #cbdbe7; font-weight: 600; }
         QDockWidget::title { background: #111c28; border-bottom: 1px solid #263746; padding: 9px 12px; }
+        QMainWindow::separator { background: #1e2e3b; width: 7px; height: 7px; }
+        QMainWindow::separator:hover { background: #278cb4; }
         QGroupBox { background: #121d29; border: 1px solid #273a4a; border-radius: 8px; margin-top: 14px; padding: 12px 10px 10px 10px; font-weight: 600; }
         QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; color: #9fc7dd; }
         QListWidget, QTextEdit, QComboBox { background: #0a1119; border: 1px solid #273a4a; border-radius: 7px; padding: 5px; selection-background-color: #174d69; selection-color: #ffffff; }
@@ -57,6 +59,8 @@ void apply_scientific_theme(QApplication& application) {
         QProgressBar { min-height: 9px; max-height: 9px; border: none; border-radius: 4px; background: #26343e; text-align: center; }
         QProgressBar::chunk { background: #22a9da; border-radius: 4px; }
         QSplitter::handle { background: #1e2e3b; }
+        QSplitter::handle:horizontal { width: 7px; }
+        QSplitter::handle:vertical { height: 7px; }
         QSplitter::handle:hover { background: #278cb4; }
         QFrame#workspaceHeader { background: #111d29; border: 1px solid #263b4c; border-radius: 9px; }
         QLabel#workspaceTitle { font-size: 18px; font-weight: 700; color: #f1f7fb; }
