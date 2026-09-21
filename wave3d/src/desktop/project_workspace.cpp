@@ -111,12 +111,32 @@ QString terminal_state_name(RunTerminalState state) {
 
 void validate_run_product(const RunProduct& product) {
     static const QRegularExpression digest(QStringLiteral("^[0-9a-f]{64}$"));
-    if (!safe_relative_path(product.relative_path) ||
-        product.relative_path.isEmpty() ||
-        !digest.match(product.sha256).hasMatch() || product.byte_count <= 0 ||
-        product.receiver_count == 0 || product.sample_count == 0 ||
+    if (product.files.size() != 3 || product.receiver_count == 0 ||
+        product.sample_count == 0 ||
         product.device_name.trimmed().isEmpty()) {
         fail(QStringLiteral("completed run product metadata is invalid"));
+    }
+    QVector<QString> components;
+    QVector<QString> paths;
+    for (const auto& file : product.files) {
+        if ((file.component != QStringLiteral("vx") &&
+             file.component != QStringLiteral("vy") &&
+             file.component != QStringLiteral("vz")) ||
+            components.contains(file.component) ||
+            !safe_relative_path(file.relative_path) ||
+            file.relative_path.isEmpty() || paths.contains(file.relative_path) ||
+            QFileInfo(file.relative_path).fileName() !=
+                QStringLiteral("record_%1.sgy").arg(file.component) ||
+            !digest.match(file.sha256).hasMatch() || file.byte_count <= 0) {
+            fail(QStringLiteral("completed run SEG-Y member metadata is invalid"));
+        }
+        components.push_back(file.component);
+        paths.push_back(file.relative_path);
+    }
+    for (const auto* component : {"vx", "vy", "vz"}) {
+        if (!components.contains(QString::fromUtf8(component))) {
+            fail(QStringLiteral("completed run is missing a SEG-Y component"));
+        }
     }
     for (const auto value : {
              product.input_load_ms,
@@ -360,19 +380,23 @@ QString ProjectWorkspace::publish_run_result(
             fail(QStringLiteral("completed run requires one product and no diagnostic"));
         }
         validate_run_product(*result.product);
-        const auto product_path = directory.filePath(result.product->relative_path);
-        if (!QFileInfo(product_path).isFile() ||
-            QFileInfo(product_path).size() != result.product->byte_count) {
-            fail(QStringLiteral("completed run product file is missing or changed"));
-        }
-        QFile product_file(product_path);
-        if (!product_file.open(QIODevice::ReadOnly)) {
-            fail(QStringLiteral("completed run product cannot be read"));
-        }
-        QCryptographicHash hash(QCryptographicHash::Sha256);
-        if (!hash.addData(&product_file) ||
-            QString::fromLatin1(hash.result().toHex()) != result.product->sha256) {
-            fail(QStringLiteral("completed run product checksum does not match"));
+        for (const auto& file : result.product->files) {
+            const auto product_path = directory.filePath(file.relative_path);
+            if (!QFileInfo(product_path).isFile() ||
+                QFileInfo(product_path).size() != file.byte_count) {
+                fail(QStringLiteral(
+                    "completed run product file is missing or changed"));
+            }
+            QFile product_file(product_path);
+            if (!product_file.open(QIODevice::ReadOnly)) {
+                fail(QStringLiteral("completed run product cannot be read"));
+            }
+            QCryptographicHash hash(QCryptographicHash::Sha256);
+            if (!hash.addData(&product_file) ||
+                QString::fromLatin1(hash.result().toHex()) != file.sha256) {
+                fail(QStringLiteral(
+                    "completed run product checksum does not match"));
+            }
         }
     } else if (result.product) {
         fail(QStringLiteral("cancelled or failed run cannot claim a product"));
@@ -390,13 +414,20 @@ QString ProjectWorkspace::publish_run_result(
     }
     if (result.product) {
         const auto& product = *result.product;
+        QJsonArray files;
+        for (const auto& file : product.files) {
+            files.append(QJsonObject{
+                {QStringLiteral("component"), file.component},
+                {QStringLiteral("path"), file.relative_path},
+                {QStringLiteral("sha256"), file.sha256},
+                {QStringLiteral("bytes"), file.byte_count}});
+        }
         root.insert(
             QStringLiteral("product"),
             QJsonObject{
-                {QStringLiteral("kind"), QStringLiteral("segy_rev1_3c")},
-                {QStringLiteral("path"), product.relative_path},
-                {QStringLiteral("sha256"), product.sha256},
-                {QStringLiteral("bytes"), product.byte_count},
+                {QStringLiteral("kind"),
+                 QStringLiteral("segy_rev1_three_component_files")},
+                {QStringLiteral("files"), files},
                 {QStringLiteral("receiver_count"),
                  static_cast<qint64>(product.receiver_count)},
                 {QStringLiteral("sample_count"),

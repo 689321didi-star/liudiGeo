@@ -576,7 +576,11 @@ void test_hdf5_model_import() {
     expect(
         QFileInfo::exists(result_path) &&
             QFileInfo::exists(QDir(project_root).filePath(
-                QStringLiteral("runs/run-001/output/record.sgy"))) &&
+                QStringLiteral("runs/run-001/output/record_vx.sgy"))) &&
+            QFileInfo::exists(QDir(project_root).filePath(
+                QStringLiteral("runs/run-001/output/record_vy.sgy"))) &&
+            QFileInfo::exists(QDir(project_root).filePath(
+                QStringLiteral("runs/run-001/output/record_vz.sgy"))) &&
             require_child<QLabel>(window, "runStateLabel")->text() ==
                 QStringLiteral("正演完成") &&
             require_child<QProgressBar>(window, "runProgress")->value() == 100 &&

@@ -288,10 +288,11 @@ Canonical HDF5 model datasets are shaped `[nz, ny, nx]` and contain
 `/vp`, `/vs`, and `/rho` with units and coordinate attributes.
 Canonical trace datasets are shaped `[1, nreceiver, nt]` for each component in
 the single-source forward format. Sparse snapshots store explicit padded-grid
-indices rather than silently implying a dense volume. SEG-Y is one big-endian
-Revision 1 IEEE-float common-source file. Its traces are receiver-major and
-component-interleaved as VX/in-line code 14, VY/cross-line code 13, and
-VZ/vertical code 12. Standard headers declare SI units, axes, ordering,
+indices rather than silently implying a dense volume. SEG-Y output is three
+big-endian Revision 1 IEEE-float common-source files, one each for VX, VY, and
+VZ. Every file has one trace per receiver in receiver order and uses
+identification code 13 for VX/in-line, 14 for VY/cross-line, or 12 for
+VZ/vertical. Standard headers declare SI units, axes, ordering,
 coordinates, source metadata, and the first-sample convention. Sampling must
 be exactly representable in Revision 1's integer-microsecond field. The
 separate model converter accepts only fixed-length IEEE-float volumes and
@@ -301,9 +302,10 @@ The optional production task is built only when CUDA, YAML, HDF5, and SEG-Y
 are all enabled. `wave3d_run CONFIG.yaml` resolves relative paths against the
 configuration directory, reads a canonical HDF5 model, requires exact grid and
 declared/calculated extrema agreement, applies the existing memory gate, runs
-the accepted CUDA CPML/free-surface composition, and writes
-`<output_directory>/record.sgy`. This orchestration owns no numerical kernel
-and does not add file-format knowledge to propagation.
+the accepted CUDA CPML/free-surface composition, and writes `record_vx.sgy`,
+`record_vy.sgy`, and `record_vz.sgy` in the output directory. This
+orchestration owns no numerical kernel and does not add file-format knowledge
+to propagation.
 
 ### `diagnostics`
 
@@ -529,13 +531,13 @@ and progress are observed only at a completed CUDA synchronization boundary.
 
 The Qt worker creates and destroys the job entirely on its own thread. The GUI
 polls a mutex-protected lifecycle snapshot and never calls a solver operation.
-After propagation, SEG-Y is written to `record.sgy.tmp`, checked for exact byte
-shape and essential Revision 1 headers, then atomically renamed. The immutable
-configuration and run manifest remain unchanged; a separate terminal
-`wave3d.desktop.run_result.v1` record stores completion, cancellation, or
-failure. A completed record additionally binds the SEG-Y path, size, SHA-256,
-trace shape, device, and timings. Live wavefield transport remains a separate
-consumer of this lifecycle.
+After propagation, all three SEG-Y members are written to temporary files and
+checked for exact byte shape, component code, and essential Revision 1
+headers. They are published only after all checks succeed; a failure removes
+the whole new set. The immutable configuration and run manifest remain
+unchanged. A terminal `wave3d.desktop.run_result.v2` record binds the three
+paths, sizes, SHA-256 values, common trace shape, device, and timings. Live
+wavefield transport remains a separate consumer of this lifecycle.
 
 Increment 25 makes that consumer explicit. A visualization-enabled
 `CudaForwardJob` reserves its scalar device workspace during memory planning

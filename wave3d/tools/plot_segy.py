@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render a Wave3D three-component SEG-Y record without third-party packages."""
+"""Render three Wave3D component SEG-Y files without third-party packages."""
 
 from __future__ import annotations
 
@@ -15,9 +15,9 @@ import zlib
 
 
 COMPONENTS = (
-    (14, "VX / east"),
-    (13, "VY / north"),
-    (12, "VZ / down"),
+    (13, "VX / east", "record_vx.sgy"),
+    (14, "VY / north", "record_vy.sgy"),
+    (12, "VZ / down", "record_vz.sgy"),
 )
 
 
@@ -40,40 +40,47 @@ def i16(data: bytes, offset: int) -> int:
 
 
 def read_wave3d_segy(
-    path: Path,
+    directory: Path,
     receiver_row: int | None = None,
     receiver_column: int | None = None,
 ) -> SegyRecord:
-    file_bytes = path.stat().st_size
-    if file_bytes < 3600:
-        raise ValueError("file is shorter than the SEG-Y headers")
-    with path.open("rb") as source:
-        file_header = source.read(3600)
-    if len(file_header) != 3600:
-        raise ValueError("cannot read the SEG-Y headers")
-    sample_count = u16(file_header, 3220)
-    dt_us = u16(file_header, 3216)
-    format_code = u16(file_header, 3224)
-    extended_headers = i16(file_header, 3504)
-    if sample_count == 0 or dt_us == 0:
-        raise ValueError("SEG-Y sample count and interval must be positive")
-    if format_code != 5:
-        raise ValueError(
-            f"only big-endian IEEE float32 format code 5 is supported; found {format_code}"
-        )
-    if extended_headers != 0:
-        raise ValueError(
-            f"extended textual headers are not supported; found {extended_headers}"
-        )
-
+    if not directory.is_dir():
+        raise ValueError("input must be a directory containing the three SEG-Y files")
+    paths = [directory / filename for _, _, filename in COMPONENTS]
+    headers: list[bytes] = []
+    receiver_counts: list[int] = []
+    sample_counts: list[int] = []
+    intervals_us: list[int] = []
+    for path in paths:
+        file_bytes = path.stat().st_size
+        if file_bytes < 3600:
+            raise ValueError(f"{path.name} is shorter than the SEG-Y headers")
+        with path.open("rb") as source:
+            file_header = source.read(3600)
+        if len(file_header) != 3600:
+            raise ValueError(f"cannot read the {path.name} SEG-Y headers")
+        sample_count = u16(file_header, 3220)
+        dt_us = u16(file_header, 3216)
+        if sample_count == 0 or dt_us == 0:
+            raise ValueError(f"{path.name} has an invalid sample axis")
+        if u16(file_header, 3224) != 5:
+            raise ValueError(f"{path.name} is not big-endian IEEE float32")
+        if i16(file_header, 3504) != 0:
+            raise ValueError(f"{path.name} has unsupported extended text headers")
+        trace_bytes = 240 + 4 * sample_count
+        payload_bytes = file_bytes - 3600
+        if payload_bytes % trace_bytes != 0:
+            raise ValueError(f"{path.name} has an inconsistent fixed-trace size")
+        headers.append(file_header)
+        receiver_counts.append(payload_bytes // trace_bytes)
+        sample_counts.append(sample_count)
+        intervals_us.append(dt_us)
+    if len(set(receiver_counts)) != 1 or len(set(sample_counts)) != 1 or len(set(intervals_us)) != 1:
+        raise ValueError("VX, VY, and VZ files have different trace or sample axes")
+    receiver_count = receiver_counts[0]
+    sample_count = sample_counts[0]
+    dt_us = intervals_us[0]
     trace_bytes = 240 + 4 * sample_count
-    payload_bytes = file_bytes - 3600
-    if payload_bytes % trace_bytes != 0:
-        raise ValueError("file size is inconsistent with fixed-length traces")
-    trace_count = payload_bytes // trace_bytes
-    if trace_count % len(COMPONENTS) != 0:
-        raise ValueError("trace count is not divisible into VX/VY/VZ triplets")
-    receiver_count = trace_count // len(COMPONENTS)
     receiver_side = math.isqrt(receiver_count)
     square_receiver_grid = receiver_side * receiver_side == receiver_count
     if receiver_row is not None or receiver_column is not None:
@@ -108,37 +115,43 @@ def read_wave3d_segy(
         )
 
     grouped: dict[int, list[tuple[float, ...]]] = {
-        code: [] for code, _ in COMPONENTS
+        code: [] for code, _, _ in COMPONENTS
     }
     unpack_format = f">{sample_count}f"
-    with path.open("rb") as source:
-        for receiver in selected_receivers:
-            for component, (expected_code, _) in enumerate(COMPONENTS):
-                trace = receiver * len(COMPONENTS) + component
-                offset = 3600 + trace * trace_bytes
+    reference_geometry: dict[int, bytes] = {}
+    for (expected_code, _, _), path in zip(COMPONENTS, paths):
+        with path.open("rb") as source:
+            for receiver in selected_receivers:
+                offset = 3600 + receiver * trace_bytes
                 source.seek(offset)
                 trace_header = source.read(240)
                 sample_bytes = source.read(4 * sample_count)
                 if len(trace_header) != 240 or len(sample_bytes) != 4 * sample_count:
-                    raise ValueError(f"trace {trace + 1} is truncated")
+                    raise ValueError(f"{path.name} trace {receiver + 1} is truncated")
                 code = i16(trace_header, 28)
                 if code != expected_code:
                     raise ValueError(
-                        f"trace {trace + 1} has component code {code}; "
-                        f"expected receiver-major VX/VY/VZ code {expected_code}"
+                        f"{path.name} trace {receiver + 1} has component code {code}; "
+                        f"expected {expected_code}"
                     )
-                trace_sample_count = u16(trace_header, 114)
-                trace_dt_us = u16(trace_header, 116)
-                if trace_sample_count != sample_count or trace_dt_us != dt_us:
+                if u16(trace_header, 114) != sample_count or u16(trace_header, 116) != dt_us:
                     raise ValueError(
-                        f"trace {trace + 1} sample axis differs from the binary header"
+                        f"{path.name} trace {receiver + 1} sample axis differs from its binary header"
                     )
+                geometry = trace_header[40:90]
+                if receiver in reference_geometry and reference_geometry[receiver] != geometry:
+                    raise ValueError(
+                        f"receiver {receiver} geometry differs across component files"
+                    )
+                reference_geometry[receiver] = geometry
                 values = struct.unpack(unpack_format, sample_bytes)
                 if not all(math.isfinite(value) for value in values):
-                    raise ValueError(f"trace {trace + 1} contains a non-finite sample")
+                    raise ValueError(
+                        f"{path.name} trace {receiver + 1} contains a non-finite sample"
+                    )
                 grouped[code].append(values)
 
-    counts = {len(grouped[code]) for code, _ in COMPONENTS}
+    counts = {len(grouped[code]) for code, _, _ in COMPONENTS}
     if len(counts) != 1 or counts == {0}:
         raise ValueError("VX, VY, and VZ trace counts are unequal or empty")
     return SegyRecord(
@@ -331,7 +344,7 @@ def svg_document(
         )
     )
 
-    for index, ((code, label), panel, clip) in enumerate(
+    for index, ((code, label, _), panel, clip) in enumerate(
         zip(COMPONENTS, panels, clips)
     ):
         x = margin_left + index * (panel_width + panel_gap)
@@ -401,12 +414,14 @@ def svg_document(
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Render Wave3D VX/VY/VZ receiver gathers from a SEG-Y Revision 1 "
-            "IEEE-float record. SVG includes labels; PNG contains the three "
+            "Render Wave3D VX/VY/VZ receiver gathers from three SEG-Y Revision 1 "
+            "IEEE-float files. SVG includes labels; PNG contains the three "
             "panels in VX, VY, VZ order."
         )
     )
-    parser.add_argument("input", type=Path, help="input record.sgy")
+    parser.add_argument(
+        "input", type=Path, help="directory containing record_vx/vy/vz.sgy"
+    )
     parser.add_argument("output", type=Path, help="output .svg or .png")
     parser.add_argument(
         "--height",
@@ -467,7 +482,7 @@ def main() -> int:
             shared_clip = component_clip(
                 [
                     trace
-                    for code, _ in COMPONENTS
+                    for code, _, _ in COMPONENTS
                     for trace in record.traces[code]
                 ],
                 arguments.clip_percentile,
@@ -476,7 +491,7 @@ def main() -> int:
         else:
             clips = [
                 component_clip(record.traces[code], arguments.clip_percentile)
-                for code, _ in COMPONENTS
+                for code, _, _ in COMPONENTS
             ]
         panels = [
             render_panel(
@@ -485,7 +500,7 @@ def main() -> int:
                 arguments.height,
                 arguments.trace_pixels,
             )
-            for (code, _), clip in zip(COMPONENTS, clips)
+            for (code, _, _), clip in zip(COMPONENTS, clips)
         ]
         arguments.output.parent.mkdir(parents=True, exist_ok=True)
         if suffix == ".svg":
@@ -513,7 +528,7 @@ def main() -> int:
             "clips_m_s="
             + ",".join(
                 f"{label.split()[0]}:{clip:.12g}"
-                for (_, label), clip in zip(COMPONENTS, clips)
+                for (_, label, _), clip in zip(COMPONENTS, clips)
             )
         )
         print(f"output={arguments.output}")

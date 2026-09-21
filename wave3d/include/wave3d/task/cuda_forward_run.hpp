@@ -9,10 +9,16 @@
 
 namespace wave3d::task {
 
+struct ComponentSegyPaths {
+    std::string vx;
+    std::string vy;
+    std::string vz;
+};
+
 struct CudaForwardRunReport {
     std::string configuration_path;
     std::string model_hdf5_path;
-    std::string output_segy_path;
+    ComponentSegyPaths output_segy_paths;
     std::string device_name;
     std::size_t physical_cell_count{0};
     std::size_t allocated_cell_count{0};

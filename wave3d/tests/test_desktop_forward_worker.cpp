@@ -80,7 +80,10 @@ public:
         report.receiver_count = 3;
         report.sample_count = total_;
         report.device_name = "fake-device";
-        report.output_segy_path = "output/record.sgy";
+        report.output_segy_paths = {
+            "output/record_vx.sgy",
+            "output/record_vy.sgy",
+            "output/record_vz.sgy"};
         return report;
     }
 

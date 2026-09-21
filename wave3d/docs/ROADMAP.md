@@ -658,6 +658,24 @@ frame sequence. Repeated real Overthrust benchmarks selected a configurable
 15-step default; the complete suite passed 35/35 and affected optional builds
 passed.
 
+## Increment 26 — Three-file SEG-Y component exchange
+
+**Goal:** Publish Vx, Vy, and Vz as independently readable SEG-Y files using a
+widely supported exchange subset.
+
+**Work:** Split the final trace adapter into three Revision 1 files, validate
+component codes and exact layout, publish the group without retaining partial
+members, update the desktop result schema, estimates, CLI reports, plotting
+and Overthrust verification tools, and remove the legacy single-file contract
+from current documentation.
+
+**Acceptance:** The byte-level I/O test proves headers and samples for every
+component; production and desktop CUDA tests create exactly three files;
+forced publication failure leaves no member or temporary file; optional build
+boundaries and the full regression suite pass as recorded in
+`INCREMENT_26_THREE_FILE_SEGY_PLAN.md` and `HANDOFF.md`.
+
+
 ## Deferred research phases
 
 After elastic forward qualification, separate future phases may implement

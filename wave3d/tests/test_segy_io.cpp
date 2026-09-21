@@ -100,96 +100,88 @@ void expect(bool condition, const std::string& message) {
     return value;
 }
 
-[[nodiscard]] std::vector<float> receiver_major_component_samples(
-    const wave3d::io::ThreeComponentTraces& values) {
-    std::vector<float> result;
-    result.reserve(values.receiver_count * 3 * values.sample_count);
-    const std::array<const std::vector<float>*, 3> components{{
-        &values.vx_m_s, &values.vy_m_s, &values.vz_m_s}};
-    for (std::size_t receiver = 0; receiver < values.receiver_count; ++receiver) {
-        for (const auto* component : components) {
-            const auto begin = component->begin() +
-                               static_cast<std::ptrdiff_t>(
-                                   receiver * values.sample_count);
-            result.insert(
-                result.end(),
-                begin,
-                begin + static_cast<std::ptrdiff_t>(values.sample_count));
-        }
-    }
-    return result;
-}
-
-void test_single_file_standard_headers_and_samples() {
+void test_three_component_files_have_standard_headers_and_samples() {
     const auto expected = traces();
     const auto prefix = temporary_prefix();
-    const auto path = prefix.string() + ".sgy";
-    wave3d::io::write_segy(path, expected);
-    wave3d::io::require_ieee_segy_layout(
-        path, expected.receiver_count * 3, expected.sample_count);
-
-    expect(std::filesystem::exists(path), "single SEG-Y output was not created");
-    for (const char* suffix : {"_vx.sgy", "_vy.sgy", "_vz.sgy"}) {
-        expect(
-            !std::filesystem::exists(prefix.string() + suffix),
-            "legacy per-component SEG-Y output was created");
-    }
-    expect(
-        !std::filesystem::exists(path + ".json"),
-        "legacy SEG-Y JSON sidecar was created");
-
-    const auto bytes = read_bytes(path);
+    struct Specification {
+        wave3d::io::SegyComponent component;
+        const char* key;
+        const char* filename;
+        std::int16_t trace_code;
+        const std::vector<float>* samples;
+    };
+    const std::array<Specification, 3> specifications{{
+        {wave3d::io::SegyComponent::Vx,
+         "VX",
+         "record_vx.sgy",
+         13,
+         &expected.vx_m_s},
+        {wave3d::io::SegyComponent::Vy,
+         "VY",
+         "record_vy.sgy",
+         14,
+         &expected.vy_m_s},
+        {wave3d::io::SegyComponent::Vz,
+         "VZ",
+         "record_vz.sgy",
+         12,
+         &expected.vz_m_s}}};
     const auto trace_bytes = std::size_t{240} + expected.sample_count * 4;
-    const auto trace_count = expected.receiver_count * 3;
-    expect(
-        bytes.size() == 3600 + trace_count * trace_bytes,
-        "single SEG-Y file size/header layout is incorrect");
 
-    const std::string textual_header(bytes.begin(), bytes.begin() + 3200);
-    expect(
-        textual_header.find("SEG-Y REVISION 1, BIG-ENDIAN") != std::string::npos &&
-            textual_header.find("TRACE ORDER: RECEIVER-MAJOR, THEN VX,VY,VZ") !=
-                std::string::npos &&
-            textual_header.find("VX = IN-LINE/EAST") != std::string::npos &&
-            textual_header.find("VY = CROSS-LINE/NORTH") != std::string::npos &&
-            textual_header.find("VZ = VERTICAL/DOWN") != std::string::npos &&
-            textual_header.find("NORMALIZATION NONE") != std::string::npos &&
-            textual_header.find("TIME AXIS IS (N+1)*DT") != std::string::npos &&
-            textual_header.find("C40 END TEXTUAL HEADER") != std::string::npos,
-        "SEG-Y textual header lost required semantics");
+    for (const auto& specification : specifications) {
+        const auto path = prefix.string() + "_" + specification.filename;
+        wave3d::io::write_component_segy(
+            path, expected, specification.component);
+        wave3d::io::require_ieee_component_segy_layout(
+            path,
+            expected.receiver_count,
+            expected.sample_count,
+            specification.component);
+        expect(
+            std::filesystem::file_size(path) ==
+                3600 + expected.receiver_count * trace_bytes,
+            "component SEG-Y file size/header layout is incorrect");
 
-    const std::size_t binary = 3200;
-    expect(get_i32(bytes, binary) == 1, "SEG-Y job identification is wrong");
-    expect(get_i32(bytes, binary + 4) == 1, "SEG-Y line number is wrong");
-    expect(get_i32(bytes, binary + 8) == 1, "SEG-Y reel number is wrong");
-    expect(
-        get_i16(bytes, binary + 12) == static_cast<std::int16_t>(trace_count),
-        "SEG-Y common-source ensemble trace count is wrong");
-    expect(
-        get_u16(bytes, binary + 16) == 500 &&
-            get_u16(bytes, binary + 18) == 500,
-        "SEG-Y binary sample intervals are wrong");
-    expect(
-        get_u16(bytes, binary + 20) == expected.sample_count &&
-            get_u16(bytes, binary + 22) == expected.sample_count,
-        "SEG-Y binary sample counts are wrong");
-    expect(get_u16(bytes, binary + 24) == 5, "SEG-Y format is not IEEE float32");
-    expect(get_i16(bytes, binary + 28) == 5, "SEG-Y sorting is not common-source");
-    expect(get_i16(bytes, binary + 54) == 1, "SEG-Y measurement system is not SI");
-    expect(get_u16(bytes, binary + 300) == 0x0100, "SEG-Y revision is not 1.0");
-    expect(get_i16(bytes, binary + 302) == 1, "SEG-Y traces are not fixed length");
-    expect(
-        get_i16(bytes, binary + 304) == 0,
-        "SEG-Y unexpectedly declares extended textual headers");
+        const auto bytes = read_bytes(path);
+        const std::string textual_header(bytes.begin(), bytes.begin() + 3200);
+        expect(
+            textual_header.find("SEG-Y REVISION 1, BIG-ENDIAN") !=
+                    std::string::npos &&
+                textual_header.find("ONE COMPONENT PER FILE; COMPONENT=" +
+                                     std::string(specification.key)) !=
+                    std::string::npos &&
+                textual_header.find("TRACE ORDER=RECEIVER") !=
+                    std::string::npos &&
+                textual_header.find("NORMALIZATION NONE") !=
+                    std::string::npos &&
+                textual_header.find("TIME AXIS IS (N+1)*DT") !=
+                    std::string::npos &&
+                textual_header.find("C40 END TEXTUAL HEADER") !=
+                    std::string::npos,
+            "component SEG-Y textual header lost required semantics");
 
-    const std::array<std::int16_t, 3> component_codes{{14, 13, 12}};
-    const std::array<const std::vector<float>*, 3> components{{
-        &expected.vx_m_s, &expected.vy_m_s, &expected.vz_m_s}};
-    for (std::size_t receiver = 0; receiver < expected.receiver_count; ++receiver) {
-        for (std::size_t component = 0; component < components.size(); ++component) {
-            const auto trace_index = receiver * components.size() + component;
-            const auto header = 3600 + trace_index * trace_bytes;
-            const auto sequence = static_cast<std::int32_t>(trace_index + 1);
+        const std::size_t binary = 3200;
+        expect(get_i32(bytes, binary) == 1, "SEG-Y job identification is wrong");
+        expect(
+            get_i16(bytes, binary + 12) ==
+                static_cast<std::int16_t>(expected.receiver_count),
+            "SEG-Y common-source ensemble trace count is wrong");
+        expect(
+            get_u16(bytes, binary + 16) == 500 &&
+                get_u16(bytes, binary + 20) == expected.sample_count &&
+                get_u16(bytes, binary + 24) == 5 &&
+                get_i16(bytes, binary + 28) == 5 &&
+                get_i16(bytes, binary + 54) == 1 &&
+                get_u16(bytes, binary + 300) == 0x0100 &&
+                get_i16(bytes, binary + 302) == 1 &&
+                get_i16(bytes, binary + 304) == 0,
+            "component SEG-Y binary header is inconsistent");
+
+        for (std::size_t receiver = 0;
+             receiver < expected.receiver_count;
+             ++receiver) {
+            const auto header = 3600 + receiver * trace_bytes;
+            const auto sequence = static_cast<std::int32_t>(receiver + 1);
             expect(
                 get_i32(bytes, header) == sequence &&
                     get_i32(bytes, header + 4) == sequence &&
@@ -200,69 +192,68 @@ void test_single_file_standard_headers_and_samples() {
                     get_i32(bytes, header + 24) == sequence,
                 "SEG-Y trace/field/ensemble sequence headers are wrong");
             expect(
-                get_i16(bytes, header + 28) == component_codes[component],
+                get_i16(bytes, header + 28) == specification.trace_code,
                 "SEG-Y trace component identification is wrong");
             expect(
                 get_i32(bytes, header + 40) ==
                         -static_cast<std::int32_t>(
-                            expected.receiver_coordinates_m[receiver].z_m * 1000.0) &&
+                            expected.receiver_coordinates_m[receiver].z_m *
+                            1000.0) &&
                     get_i32(bytes, header + 44) == 0 &&
-                    get_i32(bytes, header + 48) == 30750,
-                "SEG-Y elevation/source-depth fields are wrong");
-            expect(
-                get_i16(bytes, header + 68) == -1000 &&
+                    get_i32(bytes, header + 48) == 30750 &&
+                    get_i16(bytes, header + 68) == -1000 &&
                     get_i16(bytes, header + 70) == -1000,
-                "SEG-Y elevation/coordinate scalars are wrong");
+                "SEG-Y elevation/source coordinate metadata is wrong");
             expect(
                 get_i32(bytes, header + 72) == 10250 &&
                     get_i32(bytes, header + 76) == 20500 &&
                     get_i32(bytes, header + 80) ==
                         static_cast<std::int32_t>(
-                            expected.receiver_coordinates_m[receiver].x_m * 1000.0) &&
+                            expected.receiver_coordinates_m[receiver].x_m *
+                            1000.0) &&
                     get_i32(bytes, header + 84) ==
                         static_cast<std::int32_t>(
-                            expected.receiver_coordinates_m[receiver].y_m * 1000.0) &&
-                    get_i16(bytes, header + 88) == 1,
-                "SEG-Y source/receiver coordinate headers are wrong");
-            expect(
-                get_u16(bytes, header + 114) == expected.sample_count &&
+                            expected.receiver_coordinates_m[receiver].y_m *
+                            1000.0) &&
+                    get_i16(bytes, header + 88) == 1 &&
+                    get_u16(bytes, header + 114) == expected.sample_count &&
                     get_u16(bytes, header + 116) == 500,
-                "SEG-Y trace sampling headers are wrong");
-            for (std::size_t sample = 0; sample < expected.sample_count; ++sample) {
+                "SEG-Y source/receiver/sampling metadata is wrong");
+            for (std::size_t sample = 0;
+                 sample < expected.sample_count;
+                 ++sample) {
                 expect(
                     get_float32(bytes, header + 240 + sample * 4) ==
-                        (*components[component])[
+                        (*specification.samples)[
                             receiver * expected.sample_count + sample],
-                    "SEG-Y receiver-major component sample changed");
+                    "component SEG-Y sample changed");
             }
         }
+        expect(
+            wave3d::io::read_ieee_segy_samples(
+                path, expected.receiver_count, expected.sample_count) ==
+                *specification.samples,
+            "component SEG-Y sample readback changed");
+        std::filesystem::remove(path);
     }
 
-    const auto expected_values = receiver_major_component_samples(expected);
-    const auto actual_values = wave3d::io::read_ieee_segy_samples(
-        path, trace_count, expected.sample_count);
-    expect(actual_values == expected_values, "SEG-Y combined sample readback changed");
-
-    std::filesystem::resize_file(path, std::filesystem::file_size(path) - 1);
+    const auto truncated_path = prefix.string() + "_truncated.sgy";
+    wave3d::io::write_component_segy(
+        truncated_path, expected, wave3d::io::SegyComponent::Vx);
+    std::filesystem::resize_file(
+        truncated_path, std::filesystem::file_size(truncated_path) - 1);
     bool truncated_threw = false;
     try {
-        wave3d::io::require_ieee_segy_layout(
-            path, trace_count, expected.sample_count);
+        wave3d::io::require_ieee_component_segy_layout(
+            truncated_path,
+            expected.receiver_count,
+            expected.sample_count,
+            wave3d::io::SegyComponent::Vx);
     } catch (const std::invalid_argument&) {
         truncated_threw = true;
     }
-    expect(
-        truncated_threw,
-        "layout validation accepted truncated final SEG-Y sample data");
-    truncated_threw = false;
-    try {
-        static_cast<void>(wave3d::io::read_ieee_segy_samples(
-            path, trace_count, expected.sample_count));
-    } catch (const std::invalid_argument&) {
-        truncated_threw = true;
-    }
-    expect(truncated_threw, "truncated SEG-Y must fail explicitly");
-    std::filesystem::remove(path);
+    expect(truncated_threw, "truncated component SEG-Y must fail explicitly");
+    std::filesystem::remove(truncated_path);
 }
 
 void test_fractional_microsecond_interval_rejected() {
@@ -271,7 +262,8 @@ void test_fractional_microsecond_interval_rejected() {
     const auto path = temporary_prefix().string() + ".sgy";
     bool threw = false;
     try {
-        wave3d::io::write_segy(path, invalid);
+        wave3d::io::write_component_segy(
+            path, invalid, wave3d::io::SegyComponent::Vx);
     } catch (const std::invalid_argument&) {
         threw = true;
     }
@@ -292,12 +284,12 @@ void test_fractional_microsecond_interval_rejected() {
 } // namespace
 
 int main() {
-    test_single_file_standard_headers_and_samples();
+    test_three_component_files_have_standard_headers_and_samples();
     test_fractional_microsecond_interval_rejected();
     if (failures != 0) {
         std::cerr << failures << " SEG-Y I/O test(s) failed\n";
         return 1;
     }
-    std::cout << "Wave3D single-file SEG-Y I/O tests passed\n";
+    std::cout << "Wave3D three-file SEG-Y I/O tests passed\n";
     return 0;
 }

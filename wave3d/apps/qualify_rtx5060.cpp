@@ -278,8 +278,23 @@ int main(int argc, char** argv) {
 #endif
 #ifdef WAVE3D_QUALIFY_SEGY
             if (extension == ".sgy" || extension == ".segy") {
-                wave3d::io::write_segy(argv[2], host_traces);
-                trace_output_format = "segy-rev1";
+                const auto prefix =
+                    output_path.parent_path() / output_path.stem();
+                const std::array components{
+                    wave3d::io::SegyComponent::Vx,
+                    wave3d::io::SegyComponent::Vy,
+                    wave3d::io::SegyComponent::Vz};
+                const std::array suffixes{
+                    std::string("_vx.sgy"),
+                    std::string("_vy.sgy"),
+                    std::string("_vz.sgy")};
+                for (std::size_t index = 0; index < components.size(); ++index) {
+                    wave3d::io::write_component_segy(
+                        prefix.string() + suffixes[index],
+                        host_traces,
+                        components[index]);
+                }
+                trace_output_format = "segy-rev1-three-file";
             } else
 #endif
             {
@@ -288,7 +303,17 @@ int main(int argc, char** argv) {
             }
             const auto output_end = Clock::now();
             trace_output_write_ms = milliseconds(output_end - output_start);
-            trace_output_bytes = std::filesystem::file_size(argv[2]);
+            if (trace_output_format == "segy-rev1-three-file") {
+                const auto prefix =
+                    output_path.parent_path() / output_path.stem();
+                for (const char* suffix : {
+                         "_vx.sgy", "_vy.sgy", "_vz.sgy"}) {
+                    trace_output_bytes += std::filesystem::file_size(
+                        prefix.string() + suffix);
+                }
+            } else {
+                trace_output_bytes = std::filesystem::file_size(argv[2]);
+            }
         }
 #endif
 

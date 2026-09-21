@@ -15,7 +15,9 @@ int main(int argc, char** argv) {
         std::cout << std::fixed << std::setprecision(6)
                   << "configuration=" << report.configuration_path << '\n'
                   << "model_hdf5=" << report.model_hdf5_path << '\n'
-                  << "output_segy=" << report.output_segy_path << '\n'
+                  << "output_segy_vx=" << report.output_segy_paths.vx << '\n'
+                  << "output_segy_vy=" << report.output_segy_paths.vy << '\n'
+                  << "output_segy_vz=" << report.output_segy_paths.vz << '\n'
                   << "device_name=" << report.device_name << '\n'
                   << "physical_cells=" << report.physical_cell_count << '\n'
                   << "allocated_cells=" << report.allocated_cell_count << '\n'

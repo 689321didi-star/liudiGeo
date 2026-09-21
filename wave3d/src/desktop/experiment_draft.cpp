@@ -351,15 +351,16 @@ AcquisitionEstimate ExperimentDraftStore::acquisition_estimate(
     const auto trace_bytes = sample_bytes + 240;
     const auto all_trace_bytes = detail::checked_size_product(
         component_traces, trace_bytes, "SEG-Y trace bytes overflow size_t");
-    if (all_trace_bytes > std::numeric_limits<std::size_t>::max() - 3600) {
-        fail(QStringLiteral("SEG-Y file bytes overflow size_t"));
-    }
+    const auto file_headers = detail::checked_size_product(
+        std::size_t{3}, std::size_t{3600}, "SEG-Y headers overflow size_t");
+    const auto segy_bytes = detail::checked_size_add(
+        all_trace_bytes, file_headers, "SEG-Y files overflow size_t");
     return {
         receiver_count,
         sample_count,
         trace_values,
         raw_bytes,
-        all_trace_bytes + 3600};
+        segy_bytes};
 }
 
 ResolvedExperimentDraft ExperimentDraftStore::resolve(

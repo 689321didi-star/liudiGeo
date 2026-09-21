@@ -136,15 +136,26 @@ public:
         memory_plan.require_fit();
 
         require_output_directory(output_directory_);
-        output_path_ = output_directory_ / "record.sgy";
-        temporary_output_path_ = output_directory_ / "record.sgy.tmp";
-        if (std::filesystem::exists(output_path_)) {
-            throw std::runtime_error(
-                "refusing to overwrite completed SEG-Y output: " +
-                output_path_.string());
+        output_paths_ = {
+            output_directory_ / "record_vx.sgy",
+            output_directory_ / "record_vy.sgy",
+            output_directory_ / "record_vz.sgy"};
+        temporary_output_paths_ = {
+            output_directory_ / "record_vx.sgy.tmp",
+            output_directory_ / "record_vy.sgy.tmp",
+            output_directory_ / "record_vz.sgy.tmp"};
+        for (const auto& output_path : output_paths_) {
+            if (std::filesystem::exists(output_path)) {
+                throw std::runtime_error(
+                    "refusing to overwrite completed SEG-Y output: " +
+                    output_path.string());
+            }
         }
         std::error_code remove_error;
-        std::filesystem::remove(temporary_output_path_, remove_error);
+        for (const auto& temporary_path : temporary_output_paths_) {
+            std::filesystem::remove(temporary_path, remove_error);
+            remove_error.clear();
+        }
 
         const auto setup_start = Clock::now();
         const auto coefficients = prepare_elastic_coefficients(model);
@@ -181,7 +192,10 @@ public:
 
         report_.configuration_path = absolute_configuration_.string();
         report_.model_hdf5_path = model_path_.string();
-        report_.output_segy_path = output_path_.string();
+        report_.output_segy_paths = {
+            output_paths_[0].string(),
+            output_paths_[1].string(),
+            output_paths_[2].string()};
         report_.device_name = device.name;
         report_.physical_cell_count = model.grid.physical_cell_count();
         report_.allocated_cell_count = model.grid.allocated_cell_count();
@@ -196,7 +210,10 @@ public:
     ~Impl() {
         if (!published_) {
             std::error_code error;
-            std::filesystem::remove(temporary_output_path_, error);
+            for (const auto& temporary_path : temporary_output_paths_) {
+                std::filesystem::remove(temporary_path, error);
+                error.clear();
+            }
         }
     }
 
@@ -204,8 +221,8 @@ public:
     std::filesystem::path absolute_configuration_;
     std::filesystem::path model_path_;
     std::filesystem::path output_directory_;
-    std::filesystem::path output_path_;
-    std::filesystem::path temporary_output_path_;
+    std::array<std::filesystem::path, 3> output_paths_;
+    std::array<std::filesystem::path, 3> temporary_output_paths_;
     std::unique_ptr<cuda::CudaForwardSession> session_;
     std::unique_ptr<cuda::DeviceVisualizationVolume> visualization_volume_;
     CudaForwardRunReport report_{};
@@ -328,22 +345,40 @@ CudaForwardRunReport CudaForwardJob::finalize() {
         std::move(vy),
         std::move(vz)};
     const auto write_start = Clock::now();
+    std::size_t published_count = 0;
     try {
-        io::write_segy(impl_->temporary_output_path_.string(), host_traces);
-        const auto trace_count = detail::checked_size_product(
-            impl_->report_.receiver_count,
-            std::size_t{3},
-            "SEG-Y trace count overflow");
-        io::require_ieee_segy_layout(
-            impl_->temporary_output_path_.string(),
-            trace_count,
-            impl_->report_.sample_count);
-        std::filesystem::rename(
-            impl_->temporary_output_path_, impl_->output_path_);
+        const std::array components{
+            io::SegyComponent::Vx,
+            io::SegyComponent::Vy,
+            io::SegyComponent::Vz};
+        for (std::size_t index = 0; index < components.size(); ++index) {
+            io::write_component_segy(
+                impl_->temporary_output_paths_[index].string(),
+                host_traces,
+                components[index]);
+            io::require_ieee_component_segy_layout(
+                impl_->temporary_output_paths_[index].string(),
+                impl_->report_.receiver_count,
+                impl_->report_.sample_count,
+                components[index]);
+        }
+        for (std::size_t index = 0; index < components.size(); ++index) {
+            std::filesystem::rename(
+                impl_->temporary_output_paths_[index],
+                impl_->output_paths_[index]);
+            ++published_count;
+        }
         impl_->published_ = true;
     } catch (...) {
         std::error_code error;
-        std::filesystem::remove(impl_->temporary_output_path_, error);
+        for (const auto& path : impl_->temporary_output_paths_) {
+            std::filesystem::remove(path, error);
+            error.clear();
+        }
+        for (std::size_t index = 0; index < published_count; ++index) {
+            std::filesystem::remove(impl_->output_paths_[index], error);
+            error.clear();
+        }
         throw;
     }
     const auto write_end = Clock::now();

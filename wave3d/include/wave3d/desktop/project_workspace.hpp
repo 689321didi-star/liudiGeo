@@ -10,7 +10,7 @@ namespace wave3d::desktop {
 
 inline constexpr auto kDesktopProjectSchema = "wave3d.desktop.project.v1";
 inline constexpr auto kDesktopRunSchema = "wave3d.desktop.run.v1";
-inline constexpr auto kDesktopRunResultSchema = "wave3d.desktop.run_result.v1";
+inline constexpr auto kDesktopRunResultSchema = "wave3d.desktop.run_result.v2";
 inline constexpr auto kDesktopProjectFile = "project.wave3d.json";
 
 struct ProjectShot {
@@ -37,10 +37,15 @@ struct PreparedRun {
 
 enum class RunTerminalState { Completed, Cancelled, Failed };
 
-struct RunProduct {
+struct RunProductFile {
+    QString component;
     QString relative_path;
     QString sha256;
     qint64 byte_count{0};
+};
+
+struct RunProduct {
+    QVector<RunProductFile> files;
     quint64 receiver_count{0};
     quint64 sample_count{0};
     QString device_name;

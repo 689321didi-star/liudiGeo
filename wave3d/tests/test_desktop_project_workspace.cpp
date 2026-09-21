@@ -4,6 +4,7 @@
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTemporaryDir>
@@ -11,6 +12,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace {
 
@@ -140,37 +142,127 @@ void test_project_round_trip_and_run_contract() {
                 expected_digest,
         "run manifest identity or digest is incorrect");
 
-    const auto product_path =
-        QDir(run.directory).filePath(QStringLiteral("output/record.sgy"));
-    QFile product_file(product_path);
-    expect(product_file.open(QIODevice::WriteOnly), "cannot create result fixture");
-    const QByteArray product_bytes("segy-fixture");
-    expect(
-        product_file.write(product_bytes) == product_bytes.size(),
-        "cannot write result fixture");
-    product_file.close();
     wave3d::desktop::RunProduct product;
-    product.relative_path = QStringLiteral("output/record.sgy");
-    product.sha256 = QString::fromLatin1(
-        QCryptographicHash::hash(product_bytes, QCryptographicHash::Sha256).toHex());
-    product.byte_count = product_bytes.size();
+    for (const auto* component : {"vx", "vy", "vz"}) {
+        const auto relative_path = QStringLiteral("output/record_%1.sgy")
+                                       .arg(QString::fromUtf8(component));
+        const auto product_bytes =
+            QByteArray("segy-fixture-") + QByteArray(component);
+        QFile product_file(QDir(run.directory).filePath(relative_path));
+        expect(
+            product_file.open(QIODevice::WriteOnly),
+            "cannot create result fixture");
+        expect(
+            product_file.write(product_bytes) == product_bytes.size(),
+            "cannot write result fixture");
+        product_file.close();
+        product.files.push_back({
+            QString::fromUtf8(component),
+            relative_path,
+            QString::fromLatin1(
+                QCryptographicHash::hash(
+                    product_bytes, QCryptographicHash::Sha256)
+                    .toHex()),
+            product_bytes.size()});
+    }
     product.receiver_count = 12;
     product.sample_count = 40;
     product.device_name = QStringLiteral("fixture GPU");
     product.propagation_ms = 25.0;
+
+    auto incomplete_product = product;
+    incomplete_product.files.removeLast();
+    expect_rejected(
+        [&] {
+            static_cast<void>(
+                wave3d::desktop::ProjectWorkspace::publish_run_result(
+                    run,
+                    {wave3d::desktop::RunTerminalState::Completed,
+                     QString(),
+                     incomplete_product}));
+        },
+        "completed product accepted a missing component file");
+    auto duplicated_product = product;
+    duplicated_product.files[2].component = QStringLiteral("vx");
+    expect_rejected(
+        [&] {
+            static_cast<void>(
+                wave3d::desktop::ProjectWorkspace::publish_run_result(
+                    run,
+                    {wave3d::desktop::RunTerminalState::Completed,
+                     QString(),
+                     duplicated_product}));
+        },
+        "completed product accepted a duplicate component label");
+    auto mislabeled_product = product;
+    mislabeled_product.files[2].component = QStringLiteral("pressure");
+    expect_rejected(
+        [&] {
+            static_cast<void>(
+                wave3d::desktop::ProjectWorkspace::publish_run_result(
+                    run,
+                    {wave3d::desktop::RunTerminalState::Completed,
+                     QString(),
+                     mislabeled_product}));
+        },
+        "completed product accepted an unsupported component label");
+    auto swapped_product = product;
+    std::swap(
+        swapped_product.files[0].relative_path,
+        swapped_product.files[1].relative_path);
+    expect_rejected(
+        [&] {
+            static_cast<void>(
+                wave3d::desktop::ProjectWorkspace::publish_run_result(
+                    run,
+                    {wave3d::desktop::RunTerminalState::Completed,
+                     QString(),
+                     swapped_product}));
+        },
+        "completed product accepted mislabeled component paths");
+    const auto first_product_path =
+        QDir(run.directory).filePath(product.files.front().relative_path);
+    QFile changed_product(first_product_path);
+    expect(
+        changed_product.open(QIODevice::Append) &&
+            changed_product.write("changed") == 7,
+        "cannot mutate result fixture");
+    changed_product.close();
+    expect_rejected(
+        [&] {
+            static_cast<void>(
+                wave3d::desktop::ProjectWorkspace::publish_run_result(
+                    run,
+                    {wave3d::desktop::RunTerminalState::Completed,
+                     QString(),
+                     product}));
+        },
+        "completed product accepted a changed component file");
+    expect(
+        changed_product.open(QIODevice::WriteOnly | QIODevice::Truncate) &&
+            changed_product.write("segy-fixture-vx") == 15,
+        "cannot restore result fixture");
+    changed_product.close();
     const auto result_path = wave3d::desktop::ProjectWorkspace::publish_run_result(
         run,
         {wave3d::desktop::RunTerminalState::Completed, QString(), product});
     const auto result = read_object(result_path);
+    const auto result_product =
+        result.value(QStringLiteral("product")).toObject();
+    const auto result_files =
+        result_product.value(QStringLiteral("files")).toArray();
     expect(
         result.value(QStringLiteral("schema")).toString() ==
                 QString::fromUtf8(wave3d::desktop::kDesktopRunResultSchema) &&
             result.value(QStringLiteral("state")).toString() ==
                 QStringLiteral("completed") &&
-            result.value(QStringLiteral("product"))
+            result_product.value(QStringLiteral("kind")).toString() ==
+                QStringLiteral("segy_rev1_three_component_files") &&
+            result_files.size() == 3 &&
+            result_files.at(0)
                     .toObject()
                     .value(QStringLiteral("sha256"))
-                    .toString() == product.sha256,
+                    .toString() == product.files.front().sha256,
         "terminal run result did not preserve product identity");
     expect_rejected(
         [&] {

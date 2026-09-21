@@ -8,18 +8,27 @@
 
 namespace wave3d::io {
 
+enum class SegyComponent { Vx, Vy, Vz };
+
 void require_segy_rev1_sample_axis(
     std::size_t sample_count,
     double dt_s);
 
-void write_segy(
+void write_component_segy(
     const std::string& path,
-    const ThreeComponentTraces& traces);
+    const ThreeComponentTraces& traces,
+    SegyComponent component);
 
 void require_ieee_segy_layout(
     const std::string& path,
     std::size_t expected_trace_count,
     std::size_t expected_samples_per_trace);
+
+void require_ieee_component_segy_layout(
+    const std::string& path,
+    std::size_t expected_receiver_count,
+    std::size_t expected_samples_per_trace,
+    SegyComponent component);
 
 [[nodiscard]] std::vector<float> read_ieee_segy_samples(
     const std::string& path,

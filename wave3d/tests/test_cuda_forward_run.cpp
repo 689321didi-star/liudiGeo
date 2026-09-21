@@ -110,7 +110,7 @@ private:
     return static_cast<std::int16_t>(bits);
 }
 
-void test_hdf5_to_single_segy_pipeline() {
+void test_hdf5_to_three_segy_pipeline() {
     TemporaryDirectory temporary;
     const auto model_path = temporary.path() / "model.h5";
     const auto configuration_path = temporary.path() / "run.yaml";
@@ -176,11 +176,20 @@ void test_hdf5_to_single_segy_pipeline() {
         job.completed_steps() == job.total_steps(),
         "multi-batch production job did not reach exact completion");
     const auto report = job.finalize();
-    const auto expected_output = temporary.path() / "result" / "record.sgy";
+    const auto output_directory = temporary.path() / "result";
+    const std::array expected_outputs{
+        output_directory / "record_vx.sgy",
+        output_directory / "record_vy.sgy",
+        output_directory / "record_vz.sgy"};
     expect(
-        report.output_segy_path == expected_output.string() &&
-            std::filesystem::exists(expected_output),
-        "production pipeline did not create result/record.sgy");
+        report.output_segy_paths.vx == expected_outputs[0].string() &&
+            report.output_segy_paths.vy == expected_outputs[1].string() &&
+            report.output_segy_paths.vz == expected_outputs[2].string() &&
+            std::all_of(
+                expected_outputs.begin(),
+                expected_outputs.end(),
+                [](const auto& path) { return std::filesystem::exists(path); }),
+        "production pipeline did not create three component SEG-Y files");
     expect(
         report.physical_cell_count == 729 &&
             report.receiver_count == 3 && report.sample_count == 40,
@@ -191,36 +200,37 @@ void test_hdf5_to_single_segy_pipeline() {
 
     std::size_t output_entries = 0;
     for (const auto& entry :
-         std::filesystem::directory_iterator(expected_output.parent_path())) {
+         std::filesystem::directory_iterator(output_directory)) {
         static_cast<void>(entry);
         ++output_entries;
     }
-    expect(output_entries == 1, "production output directory has extra files");
+    expect(output_entries == 3, "production output directory has extra files");
     expect(
-        !std::filesystem::exists(
-            expected_output.parent_path() / "record_vx.sgy") &&
-            !std::filesystem::exists(
-                expected_output.parent_path() / "record.sgy.tmp") &&
-            !std::filesystem::exists(expected_output.string() + ".json"),
-        "production pipeline created legacy SEG-Y outputs");
+        !std::filesystem::exists(output_directory / "record.sgy") &&
+            !std::filesystem::exists(output_directory / "record_vx.sgy.tmp") &&
+            !std::filesystem::exists(output_directory / "record_vy.sgy.tmp") &&
+            !std::filesystem::exists(output_directory / "record_vz.sgy.tmp"),
+        "production pipeline retained a legacy or temporary SEG-Y output");
 
-    const auto samples = wave3d::io::read_ieee_segy_samples(
-        expected_output.string(), 9, 40);
-    expect(
-        std::any_of(samples.begin(), samples.end(), [](float value) {
-            return value != 0.0F;
-        }),
-        "production SEG-Y record contains no propagated signal");
-
-    const auto bytes = read_bytes(expected_output);
     const std::size_t trace_bytes = 240 + 40 * sizeof(float);
-    const std::array<std::int16_t, 3> expected_codes{{14, 13, 12}};
-    for (std::size_t trace = 0; trace < 9; ++trace) {
-        expect(
-            get_i16(bytes, 3600 + trace * trace_bytes + 28) ==
-                expected_codes[trace % 3],
-            "production SEG-Y component sequence is incorrect");
+    const std::array<std::int16_t, 3> expected_codes{{13, 14, 12}};
+    bool has_signal = false;
+    for (std::size_t component = 0; component < expected_outputs.size();
+         ++component) {
+        const auto samples = wave3d::io::read_ieee_segy_samples(
+            expected_outputs[component].string(), 3, 40);
+        has_signal = has_signal || std::any_of(
+                                      samples.begin(), samples.end(),
+                                      [](float value) { return value != 0.0F; });
+        const auto bytes = read_bytes(expected_outputs[component]);
+        for (std::size_t trace = 0; trace < 3; ++trace) {
+            expect(
+                get_i16(bytes, 3600 + trace * trace_bytes + 28) ==
+                    expected_codes[component],
+                "production SEG-Y component identification is incorrect");
+        }
     }
+    expect(has_signal, "production SEG-Y records contain no propagated signal");
 }
 
 void test_model_metadata_mismatches_fail_before_output() {
@@ -242,10 +252,11 @@ void test_model_metadata_mismatches_fail_before_output() {
         threw = true;
     }
     expect(threw, "HDF5/YAML extrema mismatch must fail explicitly");
-    expect(
-        !std::filesystem::exists(
-            temporary.path() / "bad_extrema" / "record.sgy"),
-        "extrema mismatch left a SEG-Y output");
+    for (const char* name : {"record_vx.sgy", "record_vy.sgy", "record_vz.sgy"}) {
+        expect(
+            !std::filesystem::exists(temporary.path() / "bad_extrema" / name),
+            "extrema mismatch left a SEG-Y output");
+    }
 
     auto grid_mismatch = configuration();
     grid_mismatch.simulation.grid.nx = 10;
@@ -266,17 +277,58 @@ void test_model_metadata_mismatches_fail_before_output() {
         threw = true;
     }
     expect(threw, "HDF5/YAML grid mismatch must fail explicitly");
+    for (const char* name : {"record_vx.sgy", "record_vy.sgy", "record_vz.sgy"}) {
+        expect(
+            !std::filesystem::exists(temporary.path() / "bad_grid" / name),
+            "grid mismatch left a SEG-Y output");
+    }
+}
+
+void test_three_file_publication_failure_cleans_group() {
+    TemporaryDirectory temporary;
+    wave3d::io::write_hdf5_model(
+        (temporary.path() / "model.h5").string(), model());
+    auto failed_publish = configuration();
+    failed_publish.output_directory = "failed_publish";
+    const auto configuration_path = temporary.path() / "failed_publish.yaml";
+    wave3d::io::write_resolved_yaml(
+        configuration_path.string(), failed_publish);
+
+    wave3d::task::CudaForwardJob job(configuration_path.string());
+    while (!job.finished()) {
+        job.advance(40);
+    }
+    const auto output_directory = temporary.path() / "failed_publish";
+    std::filesystem::create_directory(output_directory / "record_vy.sgy");
+    bool rejected = false;
+    try {
+        static_cast<void>(job.finalize());
+    } catch (const std::filesystem::filesystem_error&) {
+        rejected = true;
+    }
+    expect(rejected, "three-file publication failure was not reported");
+    for (const char* name : {
+             "record_vx.sgy",
+             "record_vz.sgy",
+             "record_vx.sgy.tmp",
+             "record_vy.sgy.tmp",
+             "record_vz.sgy.tmp"}) {
+        expect(
+            !std::filesystem::exists(output_directory / name),
+            "failed three-file publication retained a partial member");
+    }
     expect(
-        !std::filesystem::exists(
-            temporary.path() / "bad_grid" / "record.sgy"),
-        "grid mismatch left a SEG-Y output");
+        std::filesystem::is_directory(output_directory / "record_vy.sgy"),
+        "failed publication removed a path it did not create");
+    std::filesystem::remove(output_directory / "record_vy.sgy");
 }
 
 } // namespace
 
 int main() {
-    test_hdf5_to_single_segy_pipeline();
+    test_hdf5_to_three_segy_pipeline();
     test_model_metadata_mismatches_fail_before_output();
+    test_three_file_publication_failure_cleans_group();
     if (failures != 0) {
         std::cerr << failures << " CUDA forward-run test(s) failed\n";
         return 1;

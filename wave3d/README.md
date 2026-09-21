@@ -177,25 +177,27 @@ Relative `model_hdf5_path` and `output_directory` values are resolved from the
 YAML file's directory. The HDF5 input must use the Wave3D model schema with
 `/vp`, `/vs`, and `/rho` volumes, and its grid and calculated material extrema
 must exactly match the YAML declarations. The program validates numerical and
-GPU-memory limits before propagation and writes exactly:
+GPU-memory limits before propagation and writes exactly one file per component:
 
 ```text
-<output_directory>/record.sgy
+<output_directory>/record_vx.sgy
+<output_directory>/record_vy.sgy
+<output_directory>/record_vz.sgy
 ```
 
 For the fixed production Overthrust configuration, independently check the
-single-file contract, samples, acquisition headers, and conservative travel
+three-file contract, samples, acquisition headers, and conservative travel
 window with:
 
 ```text
 python3 tools/verify_overthrust_record.py path/to/overthrust_output
 ```
 
-Render any Wave3D three-component IEEE-float SEG-Y record as labeled SVG or
+Render any Wave3D three-component IEEE-float SEG-Y triplet as labeled SVG or
 plain PNG receiver gathers with the dependency-free plotting tool:
 
 ```text
-python3 tools/plot_segy.py path/to/record.sgy record_gathers.svg
+python3 tools/plot_segy.py path/to/output_directory record_gathers.svg
 ```
 
 The panels are ordered VX/east, VY/north, and VZ/down. Time increases from top
@@ -231,10 +233,10 @@ surface diagnostic maps:
 
 ```text
 python3 tools/plot_segy.py --receiver-row 50 --shared-scale \
-  data/overthrust/runs/forward_101x101/output/record.sgy \
+  data/overthrust/runs/forward_101x101/output \
   data/overthrust/runs/forward_101x101/figures/center_xline_gather.svg
 python3 tools/verify_and_plot_segy_grid.py \
-  data/overthrust/runs/forward_101x101/output/record.sgy \
+  data/overthrust/runs/forward_101x101/output \
   data/overthrust/runs/forward_101x101/figures/receiver_maps.svg \
   --report data/overthrust/runs/forward_101x101/reports/segy_verification.txt \
   --side 101 --spacing 40
@@ -247,14 +249,15 @@ This is the general HDF5-driven production command. The qualification command
 below remains useful only for its fixed, documented target case.
 
 With CUDA and SEG-Y enabled, the qualified target case can write its complete
-three-component record directly to one SEG-Y file:
+three-component record using a common filename prefix:
 
 ```text
 ./build-all/wave3d_qualify_rtx5060 4000 record.sgy
 ```
 
-The output is big-endian SEG-Y Revision 1 with IEEE `float32` samples.  Every
-receiver contributes VX/in-line, VY/cross-line, and VZ/vertical traces to that
-single file; no per-component files or JSON sidecars are created.  This
-qualification executable uses its fixed documented model and geometry; use
-`wave3d_run` above for general HDF5 models.
+This creates `record_vx.sgy`, `record_vy.sgy`, and `record_vz.sgy`. Each is a
+big-endian SEG-Y Revision 1 file with IEEE `float32` samples, one trace per
+receiver, fixed-length traces, and no extended textual headers. Trace
+identification codes are 13 (VX/in-line), 14 (VY/cross-line), and 12
+(VZ/vertical). This qualification executable uses its fixed documented model
+and geometry; use `wave3d_run` above for general HDF5 models.

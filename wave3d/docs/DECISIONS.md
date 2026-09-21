@@ -934,3 +934,22 @@ The compatibility baseline is pinned host staging followed by
 complete display path. The calculated 10%-overhead intervals were 9, 10, and
 13 steps. The UI rounds this to a conservative 15-step default while allowing
 users to select 1 through 100 steps.
+
+## D058 — Three-component records use three interoperable SEG-Y files
+
+**Status:** Accepted and verified, 2026-09-21
+
+Production output uses three SEG-Y Revision 1 files named `record_vx.sgy`,
+`record_vy.sgy`, and `record_vz.sgy`. Each file is a self-contained big-endian
+IEEE float32 common-source ensemble with one fixed-length trace per receiver,
+no extended textual headers, SI geometry, and trace identification code 13,
+14, or 12 respectively. This broadly supported Revision 1 subset is preferred
+over newer optional extensions because the exchange contract must open in
+mainstream seismic viewers and processing packages.
+
+The solver still samples all components together. Splitting happens only in
+the SEG-Y adapter after trace download, so numerical propagation and sample
+values are unchanged. Production writes and validates all temporary members
+before publication and removes the complete new set if any member fails. The
+desktop result schema is `wave3d.desktop.run_result.v2` and records a
+component-labelled path, byte count, and SHA-256 for every member.

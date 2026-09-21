@@ -102,24 +102,90 @@ void put_text_card(
     return output.str();
 }
 
+[[nodiscard]] const char* component_key(SegyComponent component) {
+    switch (component) {
+    case SegyComponent::Vx:
+        return "VX";
+    case SegyComponent::Vy:
+        return "VY";
+    case SegyComponent::Vz:
+        return "VZ";
+    }
+    throw std::invalid_argument("unknown SEG-Y component");
+}
+
+[[nodiscard]] const char* component_direction(SegyComponent component) {
+    switch (component) {
+    case SegyComponent::Vx:
+        return "IN-LINE/EAST";
+    case SegyComponent::Vy:
+        return "CROSS-LINE/NORTH";
+    case SegyComponent::Vz:
+        return "VERTICAL/DOWN";
+    }
+    throw std::invalid_argument("unknown SEG-Y component");
+}
+
+[[nodiscard]] std::int16_t component_trace_code(SegyComponent component) {
+    switch (component) {
+    case SegyComponent::Vx:
+        return 13;
+    case SegyComponent::Vy:
+        return 14;
+    case SegyComponent::Vz:
+        return 12;
+    }
+    throw std::invalid_argument("unknown SEG-Y component");
+}
+
+[[nodiscard]] const std::vector<float>& component_samples(
+    const ThreeComponentTraces& traces,
+    SegyComponent component) {
+    switch (component) {
+    case SegyComponent::Vx:
+        return traces.vx_m_s;
+    case SegyComponent::Vy:
+        return traces.vy_m_s;
+    case SegyComponent::Vz:
+        return traces.vz_m_s;
+    }
+    throw std::invalid_argument("unknown SEG-Y component");
+}
+
 void write_text_header(
     std::ofstream& output,
     const ThreeComponentTraces& traces,
+    SegyComponent component,
     std::uint16_t interval_us,
     std::size_t trace_count) {
     std::string header(3200, ' ');
     for (std::size_t card = 0; card < 40; ++card) {
         put_text_card(header, card, "");
     }
-    put_text_card(header, 0, "WAVE3D THREE-COMPONENT PARTICLE-VELOCITY RECEIVER RECORD");
+    put_text_card(
+        header,
+        0,
+        std::string("WAVE3D ") + component_key(component) +
+            " PARTICLE-VELOCITY RECEIVER RECORD");
     put_text_card(
         header,
         1,
         "SEG-Y REVISION 1, BIG-ENDIAN, IEEE FLOAT32 SAMPLE FORMAT CODE 5");
-    put_text_card(header, 2, "ONE FILE; TRACE ORDER: RECEIVER-MAJOR, THEN VX,VY,VZ");
-    put_text_card(header, 3, "VX = IN-LINE/EAST (TRACE IDENTIFICATION CODE 14)");
-    put_text_card(header, 4, "VY = CROSS-LINE/NORTH (TRACE IDENTIFICATION CODE 13)");
-    put_text_card(header, 5, "VZ = VERTICAL/DOWN (TRACE IDENTIFICATION CODE 12)");
+    put_text_card(
+        header,
+        2,
+        std::string("ONE COMPONENT PER FILE; COMPONENT=") +
+            component_key(component) + "; TRACE ORDER=RECEIVER");
+    put_text_card(
+        header,
+        3,
+        std::string(component_key(component)) + " = " +
+            component_direction(component) + " (TRACE IDENTIFICATION CODE " +
+            std::to_string(component_trace_code(component)) + ")");
+    put_text_card(
+        header,
+        4,
+        "COMPANION FILES: record_vx.sgy, record_vy.sgy, record_vz.sgy");
     put_text_card(
         header,
         6,
@@ -205,20 +271,13 @@ struct ScaledReceiverCoordinates {
     std::int32_t elevation_mm{0};
 };
 
-struct ComponentDescription {
-    std::int16_t trace_identification_code;
-    const std::vector<float>* samples;
-};
-
-void write_three_component_record(
+void write_component_record(
     const std::string& path,
-    const ThreeComponentTraces& traces) {
+    const ThreeComponentTraces& traces,
+    SegyComponent component) {
     require_segy_rev1_sample_axis(traces.sample_count, traces.dt_s);
     const auto interval_us = segy_interval_us(traces.dt_s);
-    const auto trace_count = detail::checked_size_product(
-        traces.receiver_count,
-        std::size_t{3},
-        "SEG-Y three-component trace count overflow");
+    const auto trace_count = traces.receiver_count;
     if (trace_count > static_cast<std::size_t>(
                           std::numeric_limits<std::int32_t>::max())) {
         throw std::invalid_argument("SEG-Y trace count exceeds int32 sequence range");
@@ -242,7 +301,7 @@ void write_three_component_record(
     if (!output) {
         throw std::runtime_error("cannot open SEG-Y output: " + path);
     }
-    write_text_header(output, traces, interval_us, trace_count);
+    write_text_header(output, traces, component, interval_us, trace_count);
     std::vector<unsigned char> binary_header(400);
     put_i32(binary_header, 0, 1);
     put_i32(binary_header, 4, 1);
@@ -268,64 +327,49 @@ void write_three_component_record(
         reinterpret_cast<const char*>(binary_header.data()),
         static_cast<std::streamsize>(binary_header.size()));
 
-    const std::array<ComponentDescription, 3> components{{
-        {14, &traces.vx_m_s},
-        {13, &traces.vy_m_s},
-        {12, &traces.vz_m_s}}};
+    const auto& samples = component_samples(traces, component);
+    const auto trace_identification_code = component_trace_code(component);
     for (std::size_t receiver = 0; receiver < traces.receiver_count; ++receiver) {
-        for (std::size_t component = 0; component < components.size(); ++component) {
-            const auto trace_index = receiver * components.size() + component;
-            const auto trace_number = static_cast<std::int32_t>(trace_index + 1);
-            std::vector<unsigned char> trace_header(240);
-            put_i32(trace_header, 0, trace_number);
-            put_i32(trace_header, 4, trace_number);
-            put_i32(trace_header, 8, 1);
-            put_i32(trace_header, 12, trace_number);
-            put_i32(trace_header, 16, 1);
-            put_i32(trace_header, 20, 1);
-            put_i32(trace_header, 24, trace_number);
-            put_i16(
-                trace_header,
-                28,
-                components[component].trace_identification_code);
-            put_i16(trace_header, 30, 1);
-            put_i16(trace_header, 32, 1);
-            put_i16(trace_header, 34, 1);
-            put_i32(
-                trace_header,
-                40,
-                receiver_coordinates[receiver].elevation_mm);
-            put_i32(trace_header, 44, 0);
-            put_i32(trace_header, 48, source_depth_mm);
-            put_i16(trace_header, 68, -1000);
-            put_i16(trace_header, 70, -1000);
-            put_i32(trace_header, 72, source_x_mm);
-            put_i32(trace_header, 76, source_y_mm);
-            put_i32(
-                trace_header,
-                80,
-                receiver_coordinates[receiver].x_mm);
-            put_i32(
-                trace_header,
-                84,
-                receiver_coordinates[receiver].y_mm);
-            put_i16(trace_header, 88, 1);
-            put_u16(
-                trace_header,
-                114,
-                static_cast<std::uint16_t>(traces.sample_count));
-            put_u16(trace_header, 116, interval_us);
-            put_i32(trace_header, 196, 1);
-            put_i16(trace_header, 200, 1);
-            output.write(
-                reinterpret_cast<const char*>(trace_header.data()),
-                static_cast<std::streamsize>(trace_header.size()));
-            for (std::size_t sample = 0; sample < traces.sample_count; ++sample) {
-                write_float_be(
-                    output,
-                    (*components[component].samples)[
-                        receiver * traces.sample_count + sample]);
-            }
+        const auto trace_number = static_cast<std::int32_t>(receiver + 1);
+        std::vector<unsigned char> trace_header(240);
+        put_i32(trace_header, 0, trace_number);
+        put_i32(trace_header, 4, trace_number);
+        put_i32(trace_header, 8, 1);
+        put_i32(trace_header, 12, trace_number);
+        put_i32(trace_header, 16, 1);
+        put_i32(trace_header, 20, 1);
+        put_i32(trace_header, 24, trace_number);
+        put_i16(trace_header, 28, trace_identification_code);
+        put_i16(trace_header, 30, 1);
+        put_i16(trace_header, 32, 1);
+        put_i16(trace_header, 34, 1);
+        put_i32(
+            trace_header,
+            40,
+            receiver_coordinates[receiver].elevation_mm);
+        put_i32(trace_header, 44, 0);
+        put_i32(trace_header, 48, source_depth_mm);
+        put_i16(trace_header, 68, -1000);
+        put_i16(trace_header, 70, -1000);
+        put_i32(trace_header, 72, source_x_mm);
+        put_i32(trace_header, 76, source_y_mm);
+        put_i32(trace_header, 80, receiver_coordinates[receiver].x_mm);
+        put_i32(trace_header, 84, receiver_coordinates[receiver].y_mm);
+        put_i16(trace_header, 88, 1);
+        put_u16(
+            trace_header,
+            114,
+            static_cast<std::uint16_t>(traces.sample_count));
+        put_u16(trace_header, 116, interval_us);
+        put_i32(trace_header, 196, 1);
+        put_i16(trace_header, 200, 1);
+        output.write(
+            reinterpret_cast<const char*>(trace_header.data()),
+            static_cast<std::streamsize>(trace_header.size()));
+        for (std::size_t sample = 0; sample < traces.sample_count; ++sample) {
+            write_float_be(
+                output,
+                samples[receiver * traces.sample_count + sample]);
         }
     }
     if (!output) {
@@ -345,11 +389,12 @@ void require_segy_rev1_sample_axis(
     static_cast<void>(segy_interval_us(dt_s));
 }
 
-void write_segy(
+void write_component_segy(
     const std::string& path,
-    const ThreeComponentTraces& traces) {
+    const ThreeComponentTraces& traces,
+    SegyComponent component) {
     require_valid_traces(traces);
-    write_three_component_record(path, traces);
+    write_component_record(path, traces, component);
 }
 
 void require_ieee_segy_layout(
@@ -409,6 +454,37 @@ void require_ieee_segy_layout(
     char extra = 0;
     if (input.get(extra)) {
         throw std::invalid_argument("SEG-Y file has unexpected extra traces/data");
+    }
+}
+
+void require_ieee_component_segy_layout(
+    const std::string& path,
+    std::size_t expected_receiver_count,
+    std::size_t expected_samples_per_trace,
+    SegyComponent component) {
+    require_ieee_segy_layout(
+        path, expected_receiver_count, expected_samples_per_trace);
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        throw std::runtime_error("cannot open SEG-Y input: " + path);
+    }
+    const auto sample_bytes = detail::checked_size_product(
+        expected_samples_per_trace,
+        sizeof(float),
+        "SEG-Y trace byte count overflow");
+    input.seekg(3600, std::ios::beg);
+    for (std::size_t trace = 0; trace < expected_receiver_count; ++trace) {
+        std::vector<unsigned char> trace_header(240);
+        input.read(
+            reinterpret_cast<char*>(trace_header.data()),
+            static_cast<std::streamsize>(trace_header.size()));
+        if (input.gcount() != static_cast<std::streamsize>(trace_header.size()) ||
+            static_cast<std::int16_t>(get_u16(trace_header, 28)) !=
+                component_trace_code(component)) {
+            throw std::invalid_argument(
+                "SEG-Y trace component identification is inconsistent");
+        }
+        input.seekg(static_cast<std::streamoff>(sample_bytes), std::ios::cur);
     }
 }
 

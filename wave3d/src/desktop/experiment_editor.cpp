@@ -529,7 +529,7 @@ void ExperimentEditor::show_validation(
         ->setText(
             QStringLiteral(
                 "%1 个接收器 × %2 采样 × 3 分量\n"
-                "float32 道数据 %3；SEG-Y Rev1 %4")
+                "float32 道数据 %3；3 个 SEG-Y Rev1 合计 %4")
                 .arg(resolved.acquisition.receiver_count)
                 .arg(resolved.acquisition.sample_count)
                 .arg(byte_text(resolved.acquisition.raw_trace_bytes))

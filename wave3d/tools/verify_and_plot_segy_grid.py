@@ -16,7 +16,7 @@ sys.dont_write_bytecode = True
 from plot_segy import png_bytes, percentile  # noqa: E402
 
 
-COMPONENT_CODES = (14, 13, 12)
+COMPONENT_CODES = (13, 14, 12)
 COMPONENT_NAMES = ("VX", "VY", "VZ")
 VIRIDIS = (
     (0.00, (68, 1, 84)),
@@ -43,6 +43,14 @@ def scaled(stored: int, scalar: int) -> float:
     if scalar == 0:
         raise ValueError("SEG-Y coordinate scalar is zero")
     return stored / abs(scalar) if scalar < 0 else stored * scalar
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        while chunk := source.read(8 * 1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def map_color(fraction: float) -> tuple[int, int, int]:
@@ -155,61 +163,80 @@ def maps_svg(
 
 
 def verify_and_collect(arguments: argparse.Namespace) -> tuple[dict[str, object], list[list[float]], list[float]]:
-    path = arguments.input
-    file_bytes = path.stat().st_size
-    with path.open("rb") as source:
-        file_header = source.read(3600)
-        if len(file_header) != 3600:
-            raise ValueError("file is shorter than the SEG-Y headers")
-        sample_count = u16(file_header, 3220)
-        dt_us = u16(file_header, 3216)
-        format_code = u16(file_header, 3224)
-        if format_code != 5 or sample_count == 0 or dt_us == 0:
-            raise ValueError("expected fixed big-endian IEEE float32 SEG-Y traces")
-        receiver_count = arguments.side * arguments.side
-        trace_count = receiver_count * 3
+    directory = arguments.input
+    if not directory.is_dir():
+        raise ValueError("input must be the directory containing record_vx/vy/vz.sgy")
+    paths = [directory / f"record_{name.lower()}.sgy" for name in COMPONENT_NAMES]
+    receiver_count = arguments.side * arguments.side
+    headers: list[bytes] = []
+    digests: list[str] = []
+    sample_axes: list[tuple[int, int]] = []
+    trace_bytes_by_file: list[int] = []
+    total_bytes = 0
+    for path, expected_code in zip(paths, COMPONENT_CODES):
+        file_bytes = path.stat().st_size
+        with path.open("rb") as source:
+            header = source.read(3600)
+        if len(header) != 3600:
+            raise ValueError(f"{path.name} is shorter than the SEG-Y headers")
+        sample_count = u16(header, 3220)
+        dt_us = u16(header, 3216)
+        if u16(header, 3224) != 5 or sample_count == 0 or dt_us == 0:
+            raise ValueError(f"{path.name} is not fixed big-endian IEEE float32")
         trace_bytes = 240 + 4 * sample_count
-        expected_bytes = 3600 + trace_count * trace_bytes
+        expected_bytes = 3600 + receiver_count * trace_bytes
         if file_bytes != expected_bytes:
-            raise ValueError(f"file has {file_bytes} bytes; expected {expected_bytes}")
-        if i16(file_header, 3212) != trace_count:
-            raise ValueError("binary-header trace count changed")
+            raise ValueError(f"{path.name} has {file_bytes} bytes; expected {expected_bytes}")
+        if i16(header, 3212) != receiver_count:
+            raise ValueError(f"{path.name} binary trace count changed")
+        headers.append(header)
+        sample_axes.append((sample_count, dt_us))
+        trace_bytes_by_file.append(trace_bytes)
+        total_bytes += file_bytes
+        digests.append(file_sha256(path))
+    if len(set(sample_axes)) != 1:
+        raise ValueError("component files have different sample axes")
 
-        digest = hashlib.sha256()
-        digest.update(file_header)
-        peaks = [[], [], []]
-        energy_parts = [[], [], []]
-        arrivals = []
-        finite_count = 0
-        nonzero_count = 0
-        maximum_absolute = 0.0
-        arrivals_in_bounds = 0
-        polarity_matches = 0
-        polarity_total = 0
-        dt_s = dt_us * 1.0e-6
-        unpack_format = f">{sample_count}f"
-
+    sample_count, dt_us = sample_axes[0]
+    peaks = [[], [], []]
+    energy_parts = [[], [], []]
+    arrivals = []
+    finite_count = 0
+    nonzero_count = 0
+    maximum_absolute = 0.0
+    arrivals_in_bounds = 0
+    polarity_matches = 0
+    polarity_total = 0
+    dt_s = dt_us * 1.0e-6
+    unpack_format = f">{sample_count}f"
+    sources = [path.open("rb") for path in paths]
+    try:
         for receiver in range(receiver_count):
             ix, iy = receiver % arguments.side, receiver // arguments.side
             expected_x = arguments.x0 + ix * arguments.spacing
             expected_y = arguments.y0 + iy * arguments.spacing
             components = []
             envelope = [0.0] * sample_count
-            for component, expected_code in enumerate(COMPONENT_CODES):
-                trace = receiver * 3 + component
+            reference_geometry: bytes | None = None
+            for component, (source, expected_code, trace_bytes) in enumerate(
+                zip(sources, COMPONENT_CODES, trace_bytes_by_file)
+            ):
+                source.seek(3600 + receiver * trace_bytes)
                 trace_header = source.read(240)
                 sample_bytes = source.read(4 * sample_count)
                 if len(trace_header) != 240 or len(sample_bytes) != 4 * sample_count:
-                    raise ValueError(f"trace {trace + 1} is truncated")
-                digest.update(trace_header)
-                digest.update(sample_bytes)
-                sequence = trace + 1
+                    raise ValueError(f"{paths[component].name} trace {receiver + 1} is truncated")
+                sequence = receiver + 1
                 if tuple(i32(trace_header, field) for field in (0, 4, 12, 24)) != (sequence,) * 4:
-                    raise ValueError(f"trace {trace + 1} sequence fields changed")
+                    raise ValueError(f"{paths[component].name} trace sequence changed")
                 if i16(trace_header, 28) != expected_code:
-                    raise ValueError(f"trace {trace + 1} component code changed")
+                    raise ValueError(f"{paths[component].name} component code changed")
                 if u16(trace_header, 114) != sample_count or u16(trace_header, 116) != dt_us:
-                    raise ValueError(f"trace {trace + 1} sample axis changed")
+                    raise ValueError(f"{paths[component].name} sample axis changed")
+                geometry = trace_header[40:90]
+                if reference_geometry is not None and geometry != reference_geometry:
+                    raise ValueError(f"receiver {receiver} geometry differs across files")
+                reference_geometry = geometry
                 scalel, scalco = i16(trace_header, 68), i16(trace_header, 70)
                 receiver_xyz = (
                     scaled(i32(trace_header, 80), scalco),
@@ -222,13 +249,13 @@ def verify_and_collect(arguments: argparse.Namespace) -> tuple[dict[str, object]
                     scaled(i32(trace_header, 48), scalel),
                 )
                 if receiver_xyz != (expected_x, expected_y, 0.0):
-                    raise ValueError(f"trace {trace + 1} receiver coordinate changed")
+                    raise ValueError(f"receiver {receiver} coordinate changed")
                 if source_xyz != (arguments.source_x, arguments.source_y, arguments.source_z):
-                    raise ValueError(f"trace {trace + 1} source coordinate changed")
+                    raise ValueError(f"receiver {receiver} source coordinate changed")
 
                 values = struct.unpack(unpack_format, sample_bytes)
                 if not all(math.isfinite(value) for value in values):
-                    raise ValueError(f"trace {trace + 1} contains a non-finite sample")
+                    raise ValueError(f"{paths[component].name} has a non-finite sample")
                 components.append(values)
                 trace_peak = max(abs(value) for value in values)
                 peaks[component].append(trace_peak)
@@ -243,8 +270,7 @@ def verify_and_collect(arguments: argparse.Namespace) -> tuple[dict[str, object]
             if receiver_peak <= 0.0:
                 raise ValueError(f"receiver {receiver} has zero three-component data")
             first = next(
-                sample
-                for sample, value in enumerate(envelope)
+                sample for sample, value in enumerate(envelope)
                 if value >= arguments.significance_fraction * receiver_peak
             )
             observed = (first + 1) * dt_s
@@ -272,17 +298,20 @@ def verify_and_collect(arguments: argparse.Namespace) -> tuple[dict[str, object]
                 signed_peak = max(radial, key=abs)
                 polarity_total += 1
                 polarity_matches += signed_peak * dx * dy > 0.0
+    finally:
+        for source in sources:
+            source.close()
 
     energies = [math.fsum(parts) for parts in energy_parts]
     if arrivals_in_bounds != receiver_count:
         raise ValueError(
-            f"only {arrivals_in_bounds}/{receiver_count} arrivals are inside "
-            "the conservative travel window"
+            f"only {arrivals_in_bounds}/{receiver_count} arrivals are inside the conservative travel window"
         )
     report: dict[str, object] = {
-        "bytes": file_bytes,
+        "bytes_total": total_bytes,
+        "files": 3,
         "receivers": receiver_count,
-        "traces": trace_count,
+        "traces_per_file": receiver_count,
         "samples_per_trace": sample_count,
         "dt_us": dt_us,
         "finite": finite_count,
@@ -294,10 +323,11 @@ def verify_and_collect(arguments: argparse.Namespace) -> tuple[dict[str, object]
         "arrivals_in_bounds": arrivals_in_bounds,
         "polarity_matches": polarity_matches,
         "polarity_total": polarity_total,
-        "sha256": digest.hexdigest(),
+        "sha256_vx": digests[0],
+        "sha256_vy": digests[1],
+        "sha256_vz": digests[2],
     }
     return report, peaks, arrivals
-
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)

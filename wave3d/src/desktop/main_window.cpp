@@ -1513,21 +1513,32 @@ void MainWindow::poll_forward_run() {
                 throw std::logic_error("completed worker has no production report");
             }
             const auto& report = *snapshot.report;
-            QFile product(QString::fromStdString(report.output_segy_path));
-            if (!product.open(QIODevice::ReadOnly)) {
-                throw std::runtime_error("cannot read completed SEG-Y product");
-            }
-            QCryptographicHash hash(QCryptographicHash::Sha256);
-            if (!hash.addData(&product)) {
-                throw std::runtime_error("cannot checksum completed SEG-Y product");
-            }
-            const QFileInfo information(product);
             RunProduct run_product;
-            run_product.relative_path = QDir(prepared_run_->directory)
-                                            .relativeFilePath(
-                                                information.absoluteFilePath());
-            run_product.sha256 = QString::fromLatin1(hash.result().toHex());
-            run_product.byte_count = information.size();
+            const std::array output_files{
+                std::pair{QStringLiteral("vx"), report.output_segy_paths.vx},
+                std::pair{QStringLiteral("vy"), report.output_segy_paths.vy},
+                std::pair{QStringLiteral("vz"), report.output_segy_paths.vz}};
+            qint64 total_bytes = 0;
+            for (const auto& [component, path] : output_files) {
+                QFile product(QString::fromStdString(path));
+                if (!product.open(QIODevice::ReadOnly)) {
+                    throw std::runtime_error(
+                        "cannot read completed SEG-Y component product");
+                }
+                QCryptographicHash hash(QCryptographicHash::Sha256);
+                if (!hash.addData(&product)) {
+                    throw std::runtime_error(
+                        "cannot checksum completed SEG-Y component product");
+                }
+                const QFileInfo information(product);
+                run_product.files.push_back({
+                    component,
+                    QDir(prepared_run_->directory)
+                        .relativeFilePath(information.absoluteFilePath()),
+                    QString::fromLatin1(hash.result().toHex()),
+                    information.size()});
+                total_bytes += information.size();
+            }
             run_product.receiver_count = report.receiver_count;
             run_product.sample_count = report.sample_count;
             run_product.device_name = QString::fromStdString(report.device_name);
@@ -1538,10 +1549,11 @@ void MainWindow::poll_forward_run() {
             run_product.segy_write_ms = report.segy_write_ms;
             result = {RunTerminalState::Completed, QString(), run_product};
             terminal_message = QStringLiteral(
-                                   "正演完成：%1 个接收器 × %2 个采样；SEG-Y %3")
+                                   "正演完成：%1 个接收器 × %2 个采样；"
+                                   "Vx/Vy/Vz 三个 SEG-Y，共 %3 字节")
                                    .arg(report.receiver_count)
                                    .arg(report.sample_count)
-                                   .arg(information.absoluteFilePath());
+                                   .arg(total_bytes);
             progress->setValue(100);
         } else if (snapshot.state == ForwardRunState::Cancelled) {
             result = {

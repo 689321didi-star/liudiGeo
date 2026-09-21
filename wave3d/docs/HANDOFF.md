@@ -1698,3 +1698,79 @@ frame per step, so the UI rounds above the worst observed 13-step
 current CPU normalization pass, followed by OpenGL upload. CUDA/OpenGL interoperation is
 still deferred until that CPU cost is removed or a later measurement shows
 transfer/upload dominates. No screenshot or wavefield volume was retained.
+
+## Increment 26 three-file SEG-Y component exchange
+
+Production forward runs now publish three self-contained SEG-Y Revision 1
+files: `output/record_vx.sgy`, `output/record_vy.sgy`, and
+`output/record_vz.sgy`. Each uses a 3200-byte ASCII textual header, 400-byte
+binary header, 240-byte trace headers, big-endian IEEE float32 format code 5,
+fixed-length receiver-ordered traces, SI coordinates, and no extended textual
+headers. Component trace identification codes are 13, 14, and 12. Samples stay
+in particle velocity m/s without normalization, and the solver/download path
+is unchanged.
+
+`CudaForwardJob` writes and validates all three temporary files before it
+starts renaming them. A rename failure removes every temporary member and only
+the final members created by that attempt; it does not remove a foreign path
+that caused the failure. The command-line report exposes three paths. Desktop
+completion uses `wave3d.desktop.run_result.v2`, whose product contains exactly
+three component-labelled paths, sizes, and SHA-256 values. Workspace validation
+rejects missing, duplicate, unsupported, or modified members. Acquisition
+estimates now include three 3600-byte file headers.
+
+The dependency-free gather plotter and dense-grid verifier accept the output
+directory and combine `record_vx.sgy`, `record_vy.sgy`, and `record_vz.sgy` by
+receiver. The fixed Overthrust verifier enforces the same three-file contract.
+For an actual tool-path check, the accepted 101×101 single-file artifact was
+stream-split into a temporary triplet without changing samples. The new
+plotter rendered its centre receiver row, and the dense verifier passed all
+10,201 receiver travel windows across 91,809,000 finite samples. The temporary
+triplet and figures were removed afterward; canonical project data was not
+changed.
+
+Final verification on 2026-09-21:
+
+```text
+cmake --build build/desktop24 -j2
+ctest --test-dir build/desktop24 --output-on-failure --parallel 2
+# combined Qt/CUDA/HDF5/YAML/SEG-Y: 35/35 passed
+
+ctest --test-dir build/desktop24 \
+  -R 'wave3d_(cuda_forward_run|desktop_(project|shell|forward_worker)|segy_io)_tests' \
+  --output-on-failure
+# final three-file publication and desktop gates: 5/5 passed
+
+cmake --build build/desktop20 -j2
+ctest --test-dir build/desktop20 \
+  -R 'wave3d_(segy_io|desktop_(project|shell))_tests' --output-on-failure
+# CUDA-off HDF5/YAML/SEG-Y: 3/3 passed
+
+cmake --build build/desktop23-no-segy -j2
+ctest --test-dir build/desktop23-no-segy \
+  -R 'wave3d_desktop_(project|shell)_tests' --output-on-failure
+# SEG-Y-off: 2/2 passed
+
+cmake --build build/desktop19 -j2
+ctest --test-dir build/desktop19 \
+  -R 'wave3d_desktop_(project|shell)_tests' --output-on-failure
+# YAML-off: 2/2 passed
+
+cmake --build build/desktop18 -j2
+ctest --test-dir build/desktop18 \
+  -R 'wave3d_desktop_(project|shell)_tests' --output-on-failure
+# HDF5-off: 2/2 passed
+
+cmake --build build/desktop17-default -j2
+# desktop-off default boundary compiled; no work required
+
+python3 -m py_compile tools/plot_segy.py \
+  tools/verify_overthrust_record.py tools/verify_and_plot_segy_grid.py
+# passed
+```
+
+No full Overthrust propagation was repeated because this increment changes
+only post-download serialization. Byte-level tests verify exact component
+sample preservation, while the existing accepted dense record supplied the
+real-data plotting and physical-arrival tool check. No screenshots or new run
+data were retained.

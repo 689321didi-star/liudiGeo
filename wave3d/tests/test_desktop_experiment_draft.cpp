@@ -110,8 +110,8 @@ void test_defaults_and_resolution() {
         resolved.acquisition.raw_trace_bytes ==
                 std::size_t{10201} * 3000 * 3 * sizeof(float) &&
             resolved.acquisition.segy_bytes ==
-                3600 + std::size_t{10201} * 3 *
-                           (240 + 3000 * sizeof(float)),
+                3 * 3600 + std::size_t{10201} * 3 *
+                               (240 + 3000 * sizeof(float)),
         "three-component trace or SEG-Y byte estimate is incorrect");
 
     auto manual = draft;
