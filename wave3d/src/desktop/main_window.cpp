@@ -1,6 +1,7 @@
 #include "wave3d/desktop/main_window.hpp"
 #include "wave3d/desktop/experiment_editor.hpp"
 #include "wave3d/desktop/model_derivation.hpp"
+#include "wave3d/desktop/result_workspace.hpp"
 #include "wave3d/desktop/static_model_scene.hpp"
 #include "wave3d/desktop/volume_viewport.hpp"
 
@@ -193,6 +194,15 @@ ExperimentEditor* experiment_editor(QMainWindow* window) {
         throw std::logic_error("experiment editor is missing");
     }
     return editor;
+}
+
+ResultWorkspace* result_workspace(QMainWindow* window) {
+    auto* workspace = dynamic_cast<ResultWorkspace*>(
+        window->findChild<QWidget*>(QStringLiteral("resultWorkspace")));
+    if (workspace == nullptr) {
+        throw std::logic_error("result workspace is missing");
+    }
+    return workspace;
 }
 
 #ifdef WAVE3D_DESKTOP_HAS_HDF5
@@ -574,6 +584,14 @@ QDockWidget* make_experiment_editor_dock(QMainWindow* window) {
     return dock;
 }
 
+QDockWidget* make_results_dock(QMainWindow* window) {
+    auto* dock = new QDockWidget(QStringLiteral("结果工作区"), window);
+    dock->setObjectName(QStringLiteral("resultsDock"));
+    dock->setMinimumWidth(620);
+    dock->setWidget(new ResultWorkspace(dock));
+    return dock;
+}
+
 } // namespace
 
 MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
@@ -634,14 +652,21 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
     auto* log_dock = make_log_dock(this);
     auto* model_information_dock = make_model_information_dock(this);
     auto* experiment_editor_dock = make_experiment_editor_dock(this);
+    auto* results_dock = make_results_dock(this);
     addDockWidget(Qt::LeftDockWidgetArea, experiment_dock);
     addDockWidget(Qt::BottomDockWidgetArea, log_dock);
     addDockWidget(Qt::RightDockWidgetArea, model_information_dock);
     addDockWidget(Qt::RightDockWidgetArea, experiment_editor_dock);
+    addDockWidget(Qt::BottomDockWidgetArea, results_dock);
     tabifyDockWidget(model_information_dock, experiment_editor_dock);
     model_information_dock->raise();
+    tabifyDockWidget(log_dock, results_dock);
+    log_dock->raise();
     resizeDocks({log_dock}, {145}, Qt::Vertical);
     resizeDocks({model_information_dock}, {270}, Qt::Horizontal);
+#ifndef WAVE3D_DESKTOP_HAS_SEGY
+    result_workspace(this)->set_segy_available(false);
+#endif
 
     auto* file_menu = menuBar()->addMenu(QStringLiteral("文件"));
     auto* new_project = file_menu->addAction(QStringLiteral("新建项目"));
@@ -964,7 +989,7 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
         findChild<QListWidget*>(QStringLiteral("moduleNavigation")),
         &QListWidget::currentRowChanged,
         this,
-        [this, model_information_dock, experiment_editor_dock](int row) {
+        [this, model_information_dock, experiment_editor_dock, results_dock](int row) {
             if (row == 1) {
                 model_information_dock->show();
                 model_information_dock->raise();
@@ -984,6 +1009,11 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
                     scroll->ensureWidgetVisible(findChild<QGroupBox*>(
                         QStringLiteral("acquisitionEditorGroup")));
                 }
+                return;
+            }
+            if (row == 6) {
+                results_dock->show();
+                results_dock->raise();
             }
         });
 
@@ -1573,6 +1603,7 @@ void MainWindow::poll_forward_run() {
             ProjectWorkspace::publish_run_result(*prepared_run_, result);
         terminal_message += QStringLiteral("；结果记录 %1").arg(result_path);
         if (snapshot.state == ForwardRunState::Completed) {
+            result_workspace(this)->set_project_root(project_root_);
             state_label->setText(QStringLiteral("正演完成"));
         } else if (snapshot.state == ForwardRunState::Cancelled) {
             state_label->setText(QStringLiteral("已停止"));
@@ -1770,6 +1801,7 @@ void MainWindow::activate_project(
             .arg(project_->shots.size()));
     findChild<QTextEdit*>(QStringLiteral("runLog"))
         ->append(QStringLiteral("已打开项目：%1").arg(project_root_));
+    result_workspace(this)->set_project_root(project_root_);
 
 #ifdef WAVE3D_DESKTOP_HAS_HDF5
     if (!project_->model_reference.isEmpty()) {

@@ -676,6 +676,20 @@ boundaries and the full regression suite pass as recorded in
 `INCREMENT_26_THREE_FILE_SEGY_PLAN.md` and `HANDOFF.md`.
 
 
+## Increment 27 — Desktop SEG-Y results workspace
+
+**Goal:** Inspect completed three-component forward products from the active
+project without changing scientific data.
+
+**Work:** Discover completed run records, compare run metadata, validate and
+stream bounded Vx/Vy/Vz receiver ranges, display colour gathers and SEG-Y
+headers, integrate results navigation and automatic completion refresh, and
+export the current gather as PNG.
+
+**Acceptance:** The valid/malformed product, component/window selection,
+header, immutable export, navigation, real desktop completion, optional build,
+and regression gates in `INCREMENT_27_RESULTS_WORKSPACE_PLAN.md` pass.
+
 ## Deferred research phases
 
 After elastic forward qualification, separate future phases may implement

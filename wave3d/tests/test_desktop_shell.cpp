@@ -15,6 +15,7 @@
 #include <QComboBox>
 #include <QDir>
 #include <QDoubleSpinBox>
+#include <QDockWidget>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
@@ -585,9 +586,22 @@ void test_hdf5_model_import() {
                 QStringLiteral("正演完成") &&
             require_child<QProgressBar>(window, "runProgress")->value() == 100 &&
             require_child<QWidget>(window, "experimentEditor")->isEnabled() &&
+            require_child<QWidget>(window, "resultWorkspace")
+                    ->property("completedResultRunCount")
+                    .toInt() == 1 &&
+            require_child<QWidget>(window, "resultWorkspace")
+                    ->property("selectedResultRun")
+                    .toString() == QStringLiteral("run-001") &&
             observed_sequence > 0 && observed_synchronized_sections &&
             !volume->property("liveWavefieldReady").toBool(),
         "background desktop run did not publish and restore the UI");
+    require_child<QListWidget>(window, "moduleNavigation")->setCurrentRow(6);
+    QCoreApplication::processEvents();
+    expect(
+        !require_child<QDockWidget>(window, "resultsDock")->isHidden() &&
+            require_child<QListWidget>(window, "moduleNavigation")
+                    ->currentRow() == 6,
+        "results navigation did not expose the results workspace");
 #else
     expect(
         !require_child<QAction>(window, "startRunAction")->isEnabled() &&

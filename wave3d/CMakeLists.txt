@@ -448,6 +448,7 @@ if(WAVE3D_BUILD_DESKTOP)
         wave3d_desktop_shell STATIC
         src/desktop/experiment_editor.cpp
         src/desktop/main_window.cpp
+        src/desktop/result_workspace.cpp
         src/desktop/theme.cpp
         src/desktop/volume_viewport.cpp)
     target_link_libraries(
@@ -542,6 +543,23 @@ if(WAVE3D_BUILD_DESKTOP)
             set_tests_properties(
                 wave3d_desktop_model_derivation_tests
                 PROPERTIES LABELS "desktop;io;model;provenance")
+        endif()
+
+        if(WAVE3D_ENABLE_SEGY)
+            add_executable(
+                wave3d_desktop_result_workspace_tests
+                tests/test_desktop_result_workspace.cpp)
+            target_link_libraries(
+                wave3d_desktop_result_workspace_tests
+                PRIVATE wave3d_desktop_shell wave3d_io_segy)
+            add_test(
+                NAME wave3d_desktop_result_workspace_tests
+                COMMAND wave3d_desktop_result_workspace_tests)
+            set_tests_properties(
+                wave3d_desktop_result_workspace_tests
+                PROPERTIES
+                    LABELS "desktop;io;visualization"
+                    ENVIRONMENT "QT_QPA_PLATFORM=minimal")
         endif()
 
         add_executable(

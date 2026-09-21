@@ -72,8 +72,9 @@ individual modules.
    signed/unsigned colour maps, clipping, opacity, camera control, slice
    indices, linked crosshairs, source/receiver overlays, and displayed-value
    inspection. Display settings never modify scientific data.
-10. **Results and SEG-Y viewer** — opens the produced receiver-major VX/VY/VZ
-    SEG-Y, displays gathers and headers, selects receiver/component ranges,
+10. **Results and SEG-Y viewer** — opens the produced receiver-ordered
+    `record_vx/vy/vz.sgy` triplet, displays gathers and headers, selects
+    receiver/component ranges,
     and exports figures separately from the original record.
 11. **Diagnostics** — records configuration, solver/device information,
     timings, warnings, failures, cancellation state, and output checksums in
@@ -126,10 +127,10 @@ current batch. Any setup, CUDA, I/O, or rendering transport error enters
 `Failed` with a retained diagnostic log. Configuration becomes read-only once
 a run starts; editing creates a new experiment or run revision.
 
-Successful completion downloads traces, writes SEG-Y to a temporary file,
-validates its expected size and essential headers, then atomically publishes
-the final filename and checksum. Interrupted runs do not present a partial
-file as a completed SEG-Y product.
+Successful completion downloads traces, writes three SEG-Y temporary files,
+validates their expected sizes, component codes, and essential headers, then
+publishes the complete set and checksums. Interrupted runs do not present a
+partial set as a completed SEG-Y product.
 
 ## Multi-shot and model provenance contract
 

@@ -37,15 +37,17 @@ desktop preparation increments is implemented and verified:
 - transparent CPU and CUDA stress/velocity propagation;
 - replaceable sponge, six-side CPML, and the production traction-free top plus
   five-side CPML boundary;
-- typed optional YAML, CSV, HDF5, and single-file three-component SEG-Y
+- typed optional YAML, CSV, HDF5, and three-file component SEG-Y
   production I/O;
-- a general YAML/HDF5-to-CUDA-to-single-SEG-Y production command;
+- a general YAML/HDF5-to-CUDA-to-three-SEG-Y production command;
 - a reproducible reduced SEG/EAGE 3-D Overthrust Vp-to-Vp/Vs/rho converter;
 - a qualified `200^3`, 4000-step RTX 5060 envelope;
 - const wavefield views, observer/factory/receiver interfaces, and a removable
   default-off checkpoint interface for a possible future RTM phase.
 - a batched CUDA forward-session interface and six physical-volume display
   quantities for a future live renderer;
+- a read-only desktop results workspace for completed Vx/Vy/Vz SEG-Y gathers,
+  headers, bounded receiver ranges, run metadata, and PNG export;
 - an optional Qt 6.8/OpenGL modern four-view desktop shell.
 - a versioned desktop project store with standardized scientific directories
   and non-overwriting run manifests.
@@ -152,7 +154,7 @@ at exact common `(n+1)dt` times with:
 python3 tools/verify_overthrust_refinement.py COARSE.sgy FINE.sgy
 ```
 
-## HDF5 model to one SEG-Y record
+## HDF5 model to three SEG-Y component records
 
 Build the general GPU runner with all four required adapters:
 

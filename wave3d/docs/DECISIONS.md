@@ -953,3 +953,21 @@ values are unchanged. Production writes and validates all temporary members
 before publication and removes the complete new set if any member fails. The
 desktop result schema is `wave3d.desktop.run_result.v2` and records a
 component-labelled path, byte count, and SHA-256 for every member.
+
+## D059 — Results inspection is read-only and range-bounded
+
+**Status:** Accepted and verified, 2026-09-21
+
+The first desktop results workspace reads only completed
+`wave3d.desktop.run_result.v2` products inside the active project. It validates
+the declared three-file Revision 1 layout and shared sample axis at open, then
+validates component identity and cross-file receiver geometry for every trace
+in the selected range before presentation. At most 512 contiguous
+receiver traces from one selected component are loaded for a view, preventing
+a dense acquisition from becoming an unbounded GUI allocation.
+
+Gather colours use a display-only 99.5th-percentile symmetric clip and retain
+particle velocity units and the applied clip in the figure. The only export is
+PNG. SEG-Y files, checksums, manifests, and terminal result records remain
+immutable. Processing, picks, resampling, and run-to-run amplitude arithmetic
+require separate scientific contracts.

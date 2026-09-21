@@ -278,9 +278,10 @@ Implemented roles:
 - CSV: receiver geometry during early development.
 - HDF5: canonical internal 3D model, trace, snapshot, and future checkpoint
   format.
-- SEG-Y: external three-component seismic trace exchange. Write one file that
-  contains all VX, VY, and VZ traces and carries its required interpretation in
-  standard textual, binary, and trace headers.
+- SEG-Y: external three-component seismic trace exchange. Write one
+  independently readable receiver-ordered file for each of VX, VY, and VZ;
+  each carries its interpretation in standard textual, binary, and trace
+  headers.
 - MATLAB v5 Overthrust: a default-off, benchmark-specific input adapter that
   validates `d`, `n`, and `data` and reads only the accepted crop.
 
@@ -562,6 +563,14 @@ the same physical orientation as the static scene. CUDA/OpenGL registration is
 not part of this baseline; measured pinned staging remains the compatibility
 path until a later profiling result justifies the additional synchronization
 contract.
+
+Increment 27 adds a read-only result consumer. It discovers only immutable
+`wave3d.desktop.run_result.v2` completed records, resolves their three declared
+members within the run directory, and validates Revision 1 layout, component
+codes, sample axes, and common source/receiver geometry before display. It
+loads only the selected contiguous receiver range, applies a display-only
+P99.5 colour clip, and exposes textual and binary metadata. PNG export writes
+the rendered gather and never rewrites SEG-Y or `result.json`.
 
 Increment 11 verifies that behavior by configuring and building with the whole
 `optional/rtm` tree temporarily absent. RTM-off exposes only the forward views,

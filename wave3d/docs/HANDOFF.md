@@ -1774,3 +1774,74 @@ only post-download serialization. Byte-level tests verify exact component
 sample preservation, while the existing accepted dense record supplied the
 real-data plotting and physical-arrival tool check. No screenshots or new run
 data were retained.
+
+## Increment 27 desktop SEG-Y results workspace
+
+The desktop now has a docked results workspace opened by the existing
+`结果` navigation entry. It discovers completed
+`wave3d.desktop.run_result.v2` records below the active project's `runs/`
+directory and compares run ID, completion time, receiver/sample dimensions,
+device, propagation time, and total product bytes. Invalid or non-completed
+result records are not exposed as readable products. A successfully completed
+background run refreshes the table immediately without reopening the project.
+
+Opening a run validates safe in-run paths, exact recorded sizes, Revision 1
+fixed IEEE float32 binary fields, shared sample axes, and each member's first
+and last component headers. For the displayed range it then checks every
+selected receiver's 13/14/12 component codes and source/receiver geometry
+equality across Vx/Vy/Vz while loading only the chosen samples. The view loads
+one component and at most 512 contiguous receivers, so work and memory stay
+bounded for dense acquisitions. It renders a signed blue/white/red gather with
+an explicit display-only P99.5 clip, particle velocity units, first-sample and
+end times, and receiver indices. A header pane reports the sample axis, source,
+selected receiver endpoints, component code, and all 40 textual-header cards.
+
+The only export is the currently rendered PNG. Tests hash SEG-Y and
+`result.json` before and after inspection/export, reject a same-size file with
+a deliberately wrong component code, reject malformed completed records, and
+verify Vx/Vy selection plus receiver 2–4 metadata. No SEG-Y sample, manifest,
+checksum, or result record is rewritten. The SEG-Y-off desktop retains the
+results module visibly disabled with a build-capability explanation.
+
+Final verification on 2026-09-21:
+
+```text
+cmake --build build/desktop24 -j2
+ctest --test-dir build/desktop24 --output-on-failure --parallel 2
+# combined Qt/CUDA/HDF5/YAML/SEG-Y: 36/36 passed
+
+ctest --test-dir build/desktop24 \
+  -R 'wave3d_(segy_io|cuda_forward_run|desktop_(result_workspace|project|shell|forward_worker))_tests' \
+  --output-on-failure
+# result, publication, and desktop integration gates: 6/6 passed
+
+cmake --build build/desktop20 -j2
+ctest --test-dir build/desktop20 \
+  -R 'wave3d_(segy_io|desktop_(result_workspace|project|shell))_tests' \
+  --output-on-failure
+# CUDA-off HDF5/YAML/SEG-Y: 4/4 passed
+
+cmake --build build/desktop23-no-segy -j2
+ctest --test-dir build/desktop23-no-segy \
+  -R 'wave3d_desktop_(project|shell)_tests' --output-on-failure
+# SEG-Y-off: 2/2 passed
+
+cmake --build build/desktop19 -j2
+ctest --test-dir build/desktop19 \
+  -R 'wave3d_desktop_(project|shell)_tests' --output-on-failure
+# YAML-off: 2/2 passed
+
+cmake --build build/desktop18 -j2
+ctest --test-dir build/desktop18 \
+  -R 'wave3d_desktop_(project|shell)_tests' --output-on-failure
+# HDF5-off: 2/2 passed
+
+cmake --build build/desktop17-default -j2
+# desktop-off default boundary compiled; no work required
+```
+
+The desktop shell test includes an actual small CUDA run and now requires its
+three SEG-Y members to appear in the results workspace with a rendered gather.
+No full Overthrust propagation or screenshot was added because this increment
+changes result inspection rather than solver physics or the accepted live
+four-view renderer.
