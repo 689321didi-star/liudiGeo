@@ -118,7 +118,24 @@ void test_hdf5_to_single_segy_pipeline() {
     wave3d::io::write_resolved_yaml(
         configuration_path.string(), configuration());
 
-    wave3d::task::CudaForwardJob job(configuration_path.string());
+    {
+        wave3d::task::CudaForwardJob unplanned(configuration_path.string());
+        unplanned.advance(1);
+        std::vector<float> unused(unplanned.grid().physical_cell_count());
+        bool rejected_unplanned_visualization = false;
+        try {
+            static_cast<void>(unplanned.download_visualization(
+                wave3d::cuda::VisualizationField::Speed,
+                unused.data(),
+                unused.size()));
+        } catch (const std::logic_error&) {
+            rejected_unplanned_visualization = true;
+        }
+        expect(
+            rejected_unplanned_visualization,
+            "production job exposed an unplanned visualization allocation");
+    }
+    wave3d::task::CudaForwardJob job(configuration_path.string(), true);
     expect(
         job.total_steps() == 40 && job.completed_steps() == 0 && !job.finished(),
         "incremental production job has incorrect initial progress");
@@ -131,6 +148,27 @@ void test_hdf5_to_single_segy_pipeline() {
     expect(
         rejected_early_finalize,
         "incremental production job allowed early SEG-Y publication");
+    job.advance(3);
+    expect(
+        same_grid_geometry(job.grid(), grid()) && job.dt_s() == 0.0005,
+        "incremental production job lost visualization grid/time metadata");
+    std::vector<float> speed(job.grid().physical_cell_count());
+    std::vector<float> vz(speed.size());
+    const auto speed_timing = job.download_visualization(
+        wave3d::cuda::VisualizationField::Speed,
+        speed.data(),
+        speed.size());
+    const auto vz_timing = job.download_visualization(
+        wave3d::cuda::VisualizationField::Vz,
+        vz.data(),
+        vz.size());
+    expect(
+        std::any_of(speed.begin(), speed.end(), [](float value) {
+            return value != 0.0F;
+        }) && speed != vz && speed_timing.extraction_ms >= 0.0 &&
+            speed_timing.transfer_ms >= 0.0 &&
+            vz_timing.extraction_ms >= 0.0 && vz_timing.transfer_ms >= 0.0,
+        "production job did not expose distinct completed-step visualization fields");
     while (!job.finished()) {
         job.advance(3);
     }

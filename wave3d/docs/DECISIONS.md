@@ -908,3 +908,29 @@ may claim an output, and that claim includes the run-relative path, byte count,
 SHA-256, receiver/sample counts, device, and timing fields. Cancelled or failed
 runs retain a diagnostic and cannot expose a partial file as a completed
 product.
+
+## D057 — Live views use immutable double-buffered pinned frames
+
+**Status:** Accepted and verified, 2026-09-21
+
+Live wavefield display uses one reusable device scalar volume and two
+page-locked host scalar volumes. CUDA extraction and transfer run on the
+forward worker after a completed solver step. The worker normalizes into the
+same host buffer, publishes it through immutable shared ownership, and never
+waits for the GUI to release an older frame. When both buffers are occupied,
+the display frame is dropped while propagation and receiver sampling continue.
+
+One sequence identifies the 3-D volume and all three orthogonal sections.
+Vx/Vy/Vz and divergence use a symmetric zero-centred scale; speed and curl
+magnitude use a nonnegative scale. The frame retains the physical range and SI
+unit so presentation normalization is reversible. The static material texture
+and live wavefield texture remain separate, and terminal run states remove the
+live layer before restoring the static scene.
+
+The compatibility baseline is pinned host staging followed by
+`glTexSubImage3D`, not CUDA/OpenGL resource registration. Three five-step real
+`200 x 200 x 187` Overthrust runs on the RTX 5060 Laptop GPU measured
+`67.146–67.886 ms` mean propagation per step and `60.032–82.135 ms` for the
+complete display path. The calculated 10%-overhead intervals were 9, 10, and
+13 steps. The UI rounds this to a conservative 15-step default while allowing
+users to select 1 through 100 steps.

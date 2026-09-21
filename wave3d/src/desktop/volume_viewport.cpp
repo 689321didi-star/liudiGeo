@@ -1,6 +1,9 @@
 #include "wave3d/desktop/volume_viewport.hpp"
 
+#include "wave3d/core/checked_size.hpp"
+
 #include <QMouseEvent>
+#include <QElapsedTimer>
 #include <QOpenGLContext>
 #include <QOpenGLShader>
 #include <QOpenGLShaderProgram>
@@ -33,6 +36,9 @@ constexpr auto fragment_shader = R"glsl(
 in vec2 screen_position;
 out vec4 fragment_colour;
 uniform sampler3D volume_texture;
+uniform sampler3D live_texture;
+uniform bool has_live_wavefield;
+uniform bool signed_live_wavefield;
 uniform vec3 camera_position;
 uniform vec3 camera_forward;
 uniform vec3 camera_right;
@@ -43,11 +49,28 @@ uniform vec3 crop_maximum;
 uniform float viewport_aspect;
 uniform float opacity;
 uniform float lower_threshold;
+uniform float live_opacity;
+uniform float live_threshold;
 
 vec3 colour_map(float value) {
     vec3 low = vec3(8.0, 29.0, 55.0) / 255.0;
     vec3 middle = vec3(23.0, 132.0, 160.0) / 255.0;
     vec3 high = vec3(250.0, 221.0, 90.0) / 255.0;
+    return value <= 0.5 ? mix(low, middle, value * 2.0)
+                        : mix(middle, high, (value - 0.5) * 2.0);
+}
+
+vec3 live_colour_map(float value) {
+    if (signed_live_wavefield) {
+        vec3 negative = vec3(43.0, 108.0, 255.0) / 255.0;
+        vec3 zero = vec3(235.0, 244.0, 248.0) / 255.0;
+        vec3 positive = vec3(255.0, 72.0, 88.0) / 255.0;
+        return value <= 0.5 ? mix(negative, zero, value * 2.0)
+                            : mix(zero, positive, (value - 0.5) * 2.0);
+    }
+    vec3 low = vec3(25.0, 185.0, 220.0) / 255.0;
+    vec3 middle = vec3(255.0, 221.0, 72.0) / 255.0;
+    vec3 high = vec3(255.0, 77.0, 66.0) / 255.0;
     return value <= 0.5 ? mix(low, middle, value * 2.0)
                         : mix(middle, high, (value - 0.5) * 2.0);
 }
@@ -91,6 +114,19 @@ void main() {
             vec3 colour = colour_map(value);
             accumulated.rgb += (1.0 - accumulated.a) * alpha * colour;
             accumulated.a += (1.0 - accumulated.a) * alpha;
+            if (has_live_wavefield) {
+                float live_value = texture(live_texture, texture_coordinate).r;
+                float amplitude = signed_live_wavefield
+                                      ? abs(live_value * 2.0 - 1.0)
+                                      : live_value;
+                float live_density = smoothstep(live_threshold, 1.0, amplitude);
+                float live_alpha =
+                    1.0 - exp(-live_density * live_opacity * 0.16);
+                vec3 live_colour = live_colour_map(live_value);
+                accumulated.rgb +=
+                    (1.0 - accumulated.a) * live_alpha * live_colour;
+                accumulated.a += (1.0 - accumulated.a) * live_alpha;
+            }
             if (accumulated.a > 0.985) {
                 break;
             }
@@ -114,6 +150,10 @@ VolumeViewport::VolumeViewport(QWidget* parent) : QOpenGLWidget(parent) {
     setProperty("volumeFrameReady", false);
     setProperty("volumeOpacity", opacity_);
     setProperty("volumeLowerThreshold", lower_threshold_);
+    setProperty("liveWavefieldReady", false);
+    setProperty("liveWavefieldOpacity", live_opacity_);
+    setProperty("liveWavefieldThreshold", live_threshold_);
+    setProperty("liveWavefieldUploadMs", 0.0);
     update_camera_diagnostics();
 }
 
@@ -144,6 +184,45 @@ void VolumeViewport::set_volume(
             .arg(pending_volume_->ny)
             .arg(pending_volume_->nz));
     setProperty("uploadedModelProperty", property_name_);
+    update();
+}
+
+void VolumeViewport::set_live_volume(
+    SharedVolumeTextureData data,
+    QString field_name) {
+    const auto expected = detail::checked_size_product(
+        detail::checked_size_product(
+            data.nx, data.ny, "live volume dimensions overflow"),
+        data.nz,
+        "live volume dimensions overflow");
+    if (data.nx == 0 || data.ny == 0 || data.nz == 0 ||
+        data.value_count != expected || !data.normalized_values) {
+        throw std::invalid_argument("live volume texture data is invalid");
+    }
+    pending_live_volume_ = std::move(data);
+    setProperty("liveWavefieldReady", false);
+    setProperty("liveWavefieldField", std::move(field_name));
+    setProperty(
+        "liveWavefieldFrameSequence",
+        QVariant::fromValue<qulonglong>(pending_live_volume_->frame_sequence));
+    update();
+}
+
+void VolumeViewport::clear_live_volume() {
+    pending_live_volume_.reset();
+    if (property("openGlReady").toBool() && context() != nullptr &&
+        context()->isValid()) {
+        makeCurrent();
+        if (QOpenGLContext::currentContext() == context() && live_texture_ != 0) {
+            glDeleteTextures(1, &live_texture_);
+            live_texture_ = 0;
+        }
+        doneCurrent();
+    }
+    live_texture_dimensions_ = {0, 0, 0};
+    setProperty("liveWavefieldReady", false);
+    setProperty("liveWavefieldField", QString());
+    setProperty("liveWavefieldFrameSequence", QVariant::fromValue<qulonglong>(0));
     update();
 }
 
@@ -181,6 +260,7 @@ void VolumeViewport::set_receiver_positions(
 }
 
 void VolumeViewport::clear_volume() {
+    clear_live_volume();
     pending_volume_.reset();
     property_name_.clear();
     failure_message_.clear();
@@ -211,6 +291,18 @@ void VolumeViewport::set_opacity(float opacity) {
 void VolumeViewport::set_lower_threshold(float threshold) {
     lower_threshold_ = std::clamp(threshold, 0.0F, 0.95F);
     setProperty("volumeLowerThreshold", lower_threshold_);
+    update();
+}
+
+void VolumeViewport::set_live_opacity(float opacity) {
+    live_opacity_ = std::clamp(opacity, 0.0F, 1.0F);
+    setProperty("liveWavefieldOpacity", live_opacity_);
+    update();
+}
+
+void VolumeViewport::set_live_threshold(float threshold) {
+    live_threshold_ = std::clamp(threshold, 0.0F, 0.95F);
+    setProperty("liveWavefieldThreshold", live_threshold_);
     update();
 }
 
@@ -297,6 +389,75 @@ void VolumeViewport::upload_pending_volume() {
     setProperty("volumeTextureReady", true);
 }
 
+void VolumeViewport::upload_pending_live_volume() {
+    if (!pending_live_volume_) {
+        return;
+    }
+    const auto& data = *pending_live_volume_;
+    QElapsedTimer upload_timer;
+    upload_timer.start();
+    GLint maximum_size = 0;
+    glGetIntegerv(GL_MAX_3D_TEXTURE_SIZE, &maximum_size);
+    if (data.nx > static_cast<std::size_t>(maximum_size) ||
+        data.ny > static_cast<std::size_t>(maximum_size) ||
+        data.nz > static_cast<std::size_t>(maximum_size)) {
+        throw std::runtime_error("live wavefield exceeds OpenGL 3-D texture limits");
+    }
+    if (live_texture_ == 0) {
+        glGenTextures(1, &live_texture_);
+    }
+    glBindTexture(GL_TEXTURE_3D, live_texture_);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    const std::array<std::size_t, 3> dimensions{data.nx, data.ny, data.nz};
+    if (dimensions == live_texture_dimensions_) {
+        glTexSubImage3D(
+            GL_TEXTURE_3D,
+            0,
+            0,
+            0,
+            0,
+            static_cast<GLsizei>(data.nx),
+            static_cast<GLsizei>(data.ny),
+            static_cast<GLsizei>(data.nz),
+            GL_RED,
+            GL_FLOAT,
+            data.normalized_values.get());
+    } else {
+        glTexImage3D(
+            GL_TEXTURE_3D,
+            0,
+            GL_R32F,
+            static_cast<GLsizei>(data.nx),
+            static_cast<GLsizei>(data.ny),
+            static_cast<GLsizei>(data.nz),
+            0,
+            GL_RED,
+            GL_FLOAT,
+            data.normalized_values.get());
+        live_texture_dimensions_ = dimensions;
+    }
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glBindTexture(GL_TEXTURE_3D, 0);
+    const bool signed_scale = data.signed_scale;
+    pending_live_volume_.reset();
+    const auto upload_error = glGetError();
+    if (upload_error != GL_NO_ERROR) {
+        throw std::runtime_error(
+            "OpenGL live 3-D texture upload failed with error " +
+            std::to_string(upload_error));
+    }
+    setProperty("liveWavefieldSignedScale", signed_scale);
+    setProperty(
+        "liveWavefieldUploadMs",
+        static_cast<double>(upload_timer.nsecsElapsed()) / 1.0e6);
+    setProperty("liveWavefieldReady", true);
+}
+
 void VolumeViewport::paintGL() {
     setProperty("volumeFrameReady", false);
     glClearColor(0.035F, 0.055F, 0.075F, 1.0F);
@@ -304,6 +465,7 @@ void VolumeViewport::paintGL() {
     if (program_ && property("volumeShaderReady").toBool()) {
         try {
             upload_pending_volume();
+            upload_pending_live_volume();
         } catch (const std::exception& error) {
             failure_message_ = QString::fromUtf8(error.what());
             setProperty("volumeTextureReady", false);
@@ -339,12 +501,31 @@ void VolumeViewport::paintGL() {
             height() == 0 ? 1.0F : static_cast<float>(width()) / height());
         program_->setUniformValue("opacity", opacity_);
         program_->setUniformValue("lower_threshold", lower_threshold_);
+        const bool has_live = live_texture_ != 0 &&
+                              property("liveWavefieldReady").toBool();
+        program_->setUniformValue("has_live_wavefield", has_live);
+        program_->setUniformValue(
+            "signed_live_wavefield",
+            property("liveWavefieldSignedScale").toBool());
+        program_->setUniformValue("live_opacity", live_opacity_);
+        program_->setUniformValue("live_threshold", live_threshold_);
         program_->setUniformValue("volume_texture", 0);
+        program_->setUniformValue("live_texture", 1);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_3D, texture_);
+        if (has_live) {
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_3D, live_texture_);
+            glActiveTexture(GL_TEXTURE0);
+        }
         glBindVertexArray(vertex_array_);
         glDrawArrays(GL_TRIANGLES, 0, 3);
         glBindVertexArray(0);
+        if (has_live) {
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_3D, 0);
+            glActiveTexture(GL_TEXTURE0);
+        }
         glBindTexture(GL_TEXTURE_3D, 0);
         program_->release();
         const auto frame_error = glGetError();
@@ -509,6 +690,11 @@ void VolumeViewport::release_gl_resources() {
         glDeleteTextures(1, &texture_);
         texture_ = 0;
     }
+    if (live_texture_ != 0) {
+        glDeleteTextures(1, &live_texture_);
+        live_texture_ = 0;
+    }
+    live_texture_dimensions_ = {0, 0, 0};
     if (vertex_array_ != 0) {
         glDeleteVertexArrays(1, &vertex_array_);
         vertex_array_ = 0;

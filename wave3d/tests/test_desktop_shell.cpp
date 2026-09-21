@@ -125,6 +125,9 @@ void test_shell_contract() {
     expect(
         field->currentData().toString() == QStringLiteral("speed"),
         "velocity magnitude must be the initial display field");
+    expect(
+        require_child<QSpinBox>(window, "displayIntervalSpin")->value() == 15,
+        "measured Overthrust display interval recommendation changed");
 
     const auto* navigation =
         require_child<QListWidget>(window, "moduleNavigation");
@@ -544,8 +547,29 @@ void test_hdf5_model_import() {
         QDir(project_root).filePath(QStringLiteral("runs/run-001/result.json"));
     QElapsedTimer run_timer;
     run_timer.start();
+    qulonglong observed_sequence = 0;
+    bool observed_synchronized_sections = false;
     while (!QFileInfo::exists(result_path) && run_timer.elapsed() < 15000) {
         QCoreApplication::processEvents();
+        observed_sequence = std::max(
+            observed_sequence,
+            window.property("lastPresentedLiveFrameSequence").toULongLong());
+        const auto xy_sequence =
+            require_child<QOpenGLWidget>(window, "xyViewport")
+                ->property("lastPresentedLiveFrameSequence")
+                .toULongLong();
+        const auto xz_sequence =
+            require_child<QOpenGLWidget>(window, "xzViewport")
+                ->property("lastPresentedLiveFrameSequence")
+                .toULongLong();
+        const auto yz_sequence =
+            require_child<QOpenGLWidget>(window, "yzViewport")
+                ->property("lastPresentedLiveFrameSequence")
+                .toULongLong();
+        observed_synchronized_sections =
+            observed_synchronized_sections ||
+            (xy_sequence > 0 && xy_sequence == xz_sequence &&
+             xy_sequence == yz_sequence);
         QThread::msleep(5);
     }
     QCoreApplication::processEvents();
@@ -556,7 +580,9 @@ void test_hdf5_model_import() {
             require_child<QLabel>(window, "runStateLabel")->text() ==
                 QStringLiteral("正演完成") &&
             require_child<QProgressBar>(window, "runProgress")->value() == 100 &&
-            require_child<QWidget>(window, "experimentEditor")->isEnabled(),
+            require_child<QWidget>(window, "experimentEditor")->isEnabled() &&
+            observed_sequence > 0 && observed_synchronized_sections &&
+            !volume->property("liveWavefieldReady").toBool(),
         "background desktop run did not publish and restore the UI");
 #else
     expect(

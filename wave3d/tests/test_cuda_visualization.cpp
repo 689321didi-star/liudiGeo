@@ -1,6 +1,7 @@
 #include "wave3d/core/grid.hpp"
 #include "wave3d/cuda/cuda_error.hpp"
 #include "wave3d/cuda/elastic_propagator.hpp"
+#include "wave3d/cuda/pinned_host_buffer.hpp"
 #include "wave3d/cuda/visualization.hpp"
 #include "wave3d/wave/elastic_wavefield.hpp"
 
@@ -244,6 +245,42 @@ void test_invalid_extraction_inputs() {
         "visualization download accepted an incorrect host size");
 }
 
+void test_pinned_download_ownership() {
+    const auto geometry = grid();
+    const auto source = affine_wavefield(geometry);
+    wave3d::cuda::DeviceElasticWavefield device_wavefield(geometry);
+    device_wavefield.upload(source);
+    wave3d::cuda::DeviceVisualizationVolume output(geometry);
+    wave3d::cuda::extract_physical_visualization_volume(
+        device_wavefield.const_view(),
+        wave3d::cuda::VisualizationField::Speed,
+        output);
+    wave3d::cuda::PinnedHostBuffer<float> pinned(output.value_count());
+    output.download(pinned.data(), pinned.size());
+    expect(
+        pinned.size() == output.value_count() &&
+            pinned.bytes() == output.bytes() && pinned.data() != nullptr,
+        "pinned visualization buffer has incorrect ownership metadata");
+    expect(
+        approximately_equal(
+            pinned.data()[geometry.physical_linear_index(2, 3, 1)],
+            expected_value(
+                wave3d::cuda::VisualizationField::Speed,
+                2.0 * geometry.dx_m,
+                3.0 * geometry.dy_m,
+                geometry.dz_m)),
+        "direct pinned visualization download changed a value");
+    auto* allocation = pinned.data();
+    wave3d::cuda::PinnedHostBuffer<float> moved(std::move(pinned));
+    expect(
+        moved.data() == allocation && pinned.data() == nullptr &&
+            pinned.size() == 0,
+        "pinned visualization buffer move duplicated ownership");
+    expect_throws<std::invalid_argument>(
+        [&] { output.download(moved.data(), moved.size() - 1); },
+        "direct visualization download accepted an incorrect size");
+}
+
 } // namespace
 
 int main() {
@@ -255,10 +292,15 @@ int main() {
         std::is_move_constructible<
             wave3d::cuda::DeviceVisualizationVolume>::value,
         "visualization volumes must support buffered ownership transfer");
+    static_assert(
+        !std::is_copy_constructible<
+            wave3d::cuda::PinnedHostBuffer<float>>::value,
+        "pinned host buffers must not copy CUDA ownership");
 
     try {
         test_affine_staggered_extraction();
         test_invalid_extraction_inputs();
+        test_pinned_download_ownership();
     } catch (const std::exception& error) {
         std::cerr << "CUDA visualization test failure: " << error.what()
                   << '\n';

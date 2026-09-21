@@ -8,6 +8,7 @@
 #include "wave3d/core/checked_size.hpp"
 #include "wave3d/core/forward_memory_plan.hpp"
 #include "wave3d/cuda/device_info.hpp"
+#include "wave3d/cuda/cuda_error.hpp"
 #include "wave3d/cuda/forward_session.hpp"
 #include "wave3d/io/hdf5.hpp"
 #include "wave3d/io/segy.hpp"
@@ -80,7 +81,10 @@ void require_output_directory(const std::filesystem::path& path) {
 
 class CudaForwardJob::Impl final {
 public:
-    explicit Impl(const std::string& configuration_path) {
+    Impl(
+        const std::string& configuration_path,
+        bool enable_visualization)
+        : visualization_enabled_(enable_visualization) {
         const auto input_start = Clock::now();
         absolute_configuration_ =
             std::filesystem::absolute(configuration_path).lexically_normal();
@@ -119,6 +123,12 @@ public:
         memory_request.receiver_count =
             configuration_.receiver_coordinates_m.size();
         memory_request.time_step_count = steps;
+        if (visualization_enabled_) {
+            memory_request.workspace_bytes = detail::checked_size_product(
+                model.grid.physical_cell_count(),
+                sizeof(float),
+                "visualization workspace size overflow");
+        }
         memory_request.available_device_bytes = device.free_memory_bytes;
         memory_request.boundary_kind =
             ForwardMemoryPlanRequest::BoundaryKind::Cpml;
@@ -197,14 +207,19 @@ public:
     std::filesystem::path output_path_;
     std::filesystem::path temporary_output_path_;
     std::unique_ptr<cuda::CudaForwardSession> session_;
+    std::unique_ptr<cuda::DeviceVisualizationVolume> visualization_volume_;
     CudaForwardRunReport report_{};
     Clock::duration propagation_duration_{};
+    bool visualization_enabled_{false};
     bool finalized_{false};
     bool published_{false};
 };
 
-CudaForwardJob::CudaForwardJob(const std::string& configuration_path)
-    : impl_(std::make_unique<Impl>(configuration_path)) {}
+CudaForwardJob::CudaForwardJob(
+    const std::string& configuration_path,
+    bool enable_visualization)
+    : impl_(std::make_unique<Impl>(
+          configuration_path, enable_visualization)) {}
 
 CudaForwardJob::~CudaForwardJob() = default;
 CudaForwardJob::CudaForwardJob(CudaForwardJob&&) noexcept = default;
@@ -222,6 +237,17 @@ bool CudaForwardJob::finished() const noexcept {
     return impl_ && impl_->session_->finished();
 }
 
+const Grid3D& CudaForwardJob::grid() const {
+    if (!impl_) {
+        throw std::logic_error("CUDA forward job has been moved from");
+    }
+    return impl_->session_->grid();
+}
+
+double CudaForwardJob::dt_s() const noexcept {
+    return impl_ ? impl_->session_->dt_s() : 0.0;
+}
+
 void CudaForwardJob::advance(std::size_t maximum_steps) {
     if (!impl_ || impl_->finalized_) {
         throw std::logic_error("CUDA forward job is no longer advanceable");
@@ -229,6 +255,48 @@ void CudaForwardJob::advance(std::size_t maximum_steps) {
     const auto start = Clock::now();
     static_cast<void>(impl_->session_->advance(maximum_steps));
     impl_->propagation_duration_ += Clock::now() - start;
+}
+
+VisualizationDownloadTiming CudaForwardJob::download_visualization(
+    cuda::VisualizationField field,
+    float* destination,
+    std::size_t value_count) {
+    if (!impl_ || impl_->finalized_) {
+        throw std::logic_error("CUDA forward job cannot provide visualization");
+    }
+    if (!impl_->visualization_enabled_) {
+        throw std::logic_error(
+            "CUDA forward visualization was not enabled during memory planning");
+    }
+    if (impl_->session_->completed_steps() == 0) {
+        throw std::logic_error(
+            "CUDA forward visualization requires a completed time step");
+    }
+    if (value_count != impl_->session_->grid().physical_cell_count()) {
+        throw std::invalid_argument(
+            "CUDA forward visualization destination has an incorrect size");
+    }
+    if (destination == nullptr) {
+        throw std::invalid_argument(
+            "CUDA forward visualization destination must not be null");
+    }
+    if (!impl_->visualization_volume_) {
+        impl_->visualization_volume_ =
+            std::make_unique<cuda::DeviceVisualizationVolume>(
+                impl_->session_->grid());
+    }
+    const auto extraction_start = Clock::now();
+    cuda::extract_physical_visualization_volume(
+        impl_->session_->device_wavefield_view(),
+        field,
+        *impl_->visualization_volume_);
+    cuda::synchronize();
+    const auto extraction_end = Clock::now();
+    impl_->visualization_volume_->download(destination, value_count);
+    const auto transfer_end = Clock::now();
+    return {
+        milliseconds(extraction_end - extraction_start),
+        milliseconds(transfer_end - extraction_end)};
 }
 
 CudaForwardRunReport CudaForwardJob::finalize() {

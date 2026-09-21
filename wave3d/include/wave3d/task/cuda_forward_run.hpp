@@ -1,5 +1,8 @@
 #pragma once
 
+#include "wave3d/core/grid.hpp"
+#include "wave3d/cuda/visualization.hpp"
+
 #include <cstddef>
 #include <memory>
 #include <string>
@@ -24,9 +27,16 @@ struct CudaForwardRunReport {
     double segy_write_ms{0.0};
 };
 
+struct VisualizationDownloadTiming {
+    double extraction_ms{0.0};
+    double transfer_ms{0.0};
+};
+
 class CudaForwardJob final {
 public:
-    explicit CudaForwardJob(const std::string& configuration_path);
+    explicit CudaForwardJob(
+        const std::string& configuration_path,
+        bool enable_visualization = false);
     ~CudaForwardJob();
 
     CudaForwardJob(const CudaForwardJob&) = delete;
@@ -37,7 +47,13 @@ public:
     [[nodiscard]] std::size_t total_steps() const noexcept;
     [[nodiscard]] std::size_t completed_steps() const noexcept;
     [[nodiscard]] bool finished() const noexcept;
+    [[nodiscard]] const Grid3D& grid() const;
+    [[nodiscard]] double dt_s() const noexcept;
     void advance(std::size_t maximum_steps);
+    [[nodiscard]] VisualizationDownloadTiming download_visualization(
+        cuda::VisualizationField field,
+        float* destination,
+        std::size_t value_count);
     [[nodiscard]] CudaForwardRunReport finalize();
 
 private:

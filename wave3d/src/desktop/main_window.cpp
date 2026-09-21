@@ -6,6 +6,7 @@
 
 #ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
 #include "wave3d/desktop/forward_run_worker.hpp"
+#include "wave3d/desktop/live_wavefield_view.hpp"
 #endif
 
 #ifdef WAVE3D_DESKTOP_HAS_YAML
@@ -98,6 +99,8 @@ public:
         setProperty("scientificImageCacheKey", QVariant::fromValue<qulonglong>(0));
         update();
     }
+
+    [[nodiscard]] QImage scientific_image() const { return image_; }
 
 protected:
     void initializeGL() override {
@@ -346,6 +349,32 @@ QWidget* make_run_controls(QWidget* parent) {
     progress->setRange(0, 100);
     progress->setValue(0);
     layout->addWidget(progress);
+
+    auto* frame = new QLabel(QStringLiteral("波场帧：等待运行"), group);
+    frame->setObjectName(QStringLiteral("liveFrameLabel"));
+    frame->setWordWrap(true);
+    layout->addWidget(frame);
+
+    auto* display_form = new QFormLayout;
+    auto* interval = new QSpinBox(group);
+    interval->setObjectName(QStringLiteral("displayIntervalSpin"));
+    interval->setRange(1, 100);
+    interval->setValue(15);
+    interval->setSuffix(QStringLiteral(" 步"));
+    interval->setToolTip(QStringLiteral(
+        "每隔多少个完整时间步更新一次四视图；当前 Overthrust 基准建议 15 步"));
+    display_form->addRow(QStringLiteral("显示间隔："), interval);
+    auto* live_opacity = new QSlider(Qt::Horizontal, group);
+    live_opacity->setObjectName(QStringLiteral("liveOpacitySlider"));
+    live_opacity->setRange(1, 100);
+    live_opacity->setValue(88);
+    display_form->addRow(QStringLiteral("波场不透明度："), live_opacity);
+    auto* live_threshold = new QSlider(Qt::Horizontal, group);
+    live_threshold->setObjectName(QStringLiteral("liveThresholdSlider"));
+    live_threshold->setRange(0, 95);
+    live_threshold->setValue(4);
+    display_form->addRow(QStringLiteral("波场阈值："), live_threshold);
+    layout->addLayout(display_form);
 
     auto* start = new QPushButton(QStringLiteral("开始"), group);
     start->setObjectName(QStringLiteral("startRunButton"));
@@ -793,18 +822,38 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
                     ->append(QStringLiteral("保存显示设置失败：%1")
                                  .arg(QString::fromUtf8(error.what())));
             }
+#ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
+            if (forward_worker_ && forward_worker_->isRunning()) {
+                forward_worker_->request_visualization_field(
+                    visualization_field_from_key(project_->display_field));
+            }
+#endif
         });
     connect(
         findChild<QComboBox*>(QStringLiteral("modelPropertySelector")),
         &QComboBox::currentIndexChanged,
         this,
-        [this](int) { update_model_view(); });
+        [this](int) {
+            update_model_view();
+#ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
+            if (presented_frame_) {
+                present_live_frame(presented_frame_);
+            }
+#endif
+        });
     for (const char* name : {"sliceXSpin", "sliceYSpin", "sliceZSpin"}) {
         connect(
             findChild<QSpinBox*>(QString::fromUtf8(name)),
             &QSpinBox::valueChanged,
             this,
-            [this](int) { update_model_view(); });
+            [this](int) {
+                update_model_view();
+#ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
+                if (presented_frame_) {
+                    present_live_frame(presented_frame_);
+                }
+#endif
+            });
     }
     for (const char* name : {
              "cropXBeginSpin", "cropXEndSpin", "cropYBeginSpin",
@@ -854,6 +903,46 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
             volume_viewport(this)->set_lower_threshold(
                 static_cast<float>(value) / 100.0F);
         });
+    connect(
+        findChild<QSlider*>(QStringLiteral("liveOpacitySlider")),
+        &QSlider::valueChanged,
+        this,
+        [this](int value) {
+            volume_viewport(this)->set_live_opacity(
+                static_cast<float>(value) / 100.0F);
+#ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
+            if (presented_frame_) {
+                update_model_view();
+                present_live_frame(presented_frame_);
+            }
+#endif
+        });
+    connect(
+        findChild<QSlider*>(QStringLiteral("liveThresholdSlider")),
+        &QSlider::valueChanged,
+        this,
+        [this](int value) {
+            volume_viewport(this)->set_live_threshold(
+                static_cast<float>(value) / 100.0F);
+#ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
+            if (presented_frame_) {
+                update_model_view();
+                present_live_frame(presented_frame_);
+            }
+#endif
+        });
+#ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
+    connect(
+        findChild<QSpinBox*>(QStringLiteral("displayIntervalSpin")),
+        &QSpinBox::valueChanged,
+        this,
+        [this](int value) {
+            if (forward_worker_ && forward_worker_->isRunning()) {
+                forward_worker_->request_display_interval(
+                    static_cast<std::size_t>(value));
+            }
+        });
+#endif
     connect(
         findChild<QPushButton*>(QStringLiteral("resetVolumeCameraButton")),
         &QPushButton::clicked,
@@ -1240,7 +1329,30 @@ bool MainWindow::start_prepared_run(QString* error_message) {
     try {
         forward_worker_ = std::make_unique<ForwardRunWorker>(
             prepared_run_->configuration_path, 1);
+        const auto field_key =
+            findChild<QComboBox*>(QStringLiteral("displayFieldSelector"))
+                ->currentData()
+                .toString();
+        forward_worker_->request_visualization_field(
+            visualization_field_from_key(field_key));
+        forward_worker_->request_display_interval(
+            static_cast<std::size_t>(
+                findChild<QSpinBox*>(QStringLiteral("displayIntervalSpin"))
+                    ->value()));
+        presented_frame_.reset();
+        volume_viewport(this)->clear_live_volume();
+        setProperty(
+            "lastPresentedLiveFrameSequence",
+            QVariant::fromValue<qulonglong>(0));
+        for (const char* name : {"xyViewport", "xzViewport", "yzViewport"}) {
+            findChild<QOpenGLWidget*>(QString::fromUtf8(name))
+                ->setProperty(
+                    "lastPresentedLiveFrameSequence",
+                    QVariant::fromValue<qulonglong>(0));
+        }
         findChild<QProgressBar*>(QStringLiteral("runProgress"))->setValue(0);
+        findChild<QLabel*>(QStringLiteral("liveFrameLabel"))
+            ->setText(QStringLiteral("波场帧：等待第一个同步步"));
         findChild<QLabel*>(QStringLiteral("runStateLabel"))
             ->setText(QStringLiteral("正在准备 CUDA 正演"));
         findChild<QAction*>(QStringLiteral("startRunAction"))->setEnabled(false);
@@ -1309,6 +1421,22 @@ void MainWindow::poll_forward_run() {
         return;
     }
     const auto snapshot = forward_worker_->snapshot();
+    if (snapshot.latest_frame &&
+        (!presented_frame_ ||
+         snapshot.latest_frame->sequence != presented_frame_->sequence)) {
+        try {
+            update_model_view();
+            present_live_frame(snapshot.latest_frame);
+        } catch (const std::exception& error) {
+            presented_frame_ = snapshot.latest_frame;
+            findChild<QLabel*>(QStringLiteral("liveFrameLabel"))
+                ->setText(QStringLiteral("实时波场显示失败：%1")
+                              .arg(QString::fromUtf8(error.what())));
+            findChild<QTextEdit*>(QStringLiteral("runLog"))
+                ->append(QStringLiteral("实时波场显示失败：%1")
+                             .arg(QString::fromUtf8(error.what())));
+        }
+    }
     auto* progress = findChild<QProgressBar*>(QStringLiteral("runProgress"));
     if (snapshot.total_steps > 0) {
         const auto percent = static_cast<int>(
@@ -1447,14 +1575,135 @@ void MainWindow::poll_forward_run() {
 
     findChild<QTextEdit*>(QStringLiteral("runLog"))->append(terminal_message);
     statusBar()->showMessage(terminal_message);
+    volume_viewport(this)->clear_live_volume();
+    for (const char* name : {"xyViewport", "xzViewport", "yzViewport"}) {
+        findChild<QOpenGLWidget*>(QString::fromUtf8(name))
+            ->setProperty(
+                "liveWavefieldFrameSequence",
+                QVariant::fromValue<qulonglong>(0));
+    }
+    presented_frame_.reset();
     forward_worker_.reset();
     prepared_run_.reset();
     pause->setEnabled(false);
     resume->setEnabled(false);
     stop->setEnabled(false);
+    findChild<QLabel*>(QStringLiteral("liveFrameLabel"))
+        ->setText(QStringLiteral("波场帧：运行已结束"));
     set_run_editing_locked(false);
+    update_model_view();
 #endif
 }
+
+#ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
+void MainWindow::present_live_frame(
+    std::shared_ptr<const LiveWavefieldFrame> frame) {
+    if (!frame || !model_scene_ ||
+        !same_grid_geometry(frame->grid, model_scene_->summary().grid)) {
+        throw std::invalid_argument("live frame does not match the active model");
+    }
+    const auto& grid = frame->grid;
+    const std::array<float, 3> extents{
+        (grid.nx > 1 ? static_cast<float>(grid.nx - 1) : 1.0F) * grid.dx_m,
+        (grid.ny > 1 ? static_cast<float>(grid.ny - 1) : 1.0F) * grid.dy_m,
+        (grid.nz > 1 ? static_cast<float>(grid.nz - 1) : 1.0F) * grid.dz_m};
+    const auto maximum_extent = *std::max_element(extents.begin(), extents.end());
+    volume_viewport(this)->set_live_volume(
+        {grid.nx,
+         grid.ny,
+         grid.nz,
+         frame->value_count,
+         frame->normalized_values,
+         {extents[0] / maximum_extent,
+          extents[1] / maximum_extent,
+          extents[2] / maximum_extent},
+         frame->signed_scale,
+         frame->sequence},
+        visualization_field_key(frame->field));
+
+    const auto opacity = static_cast<float>(
+                             findChild<QSlider*>(
+                                 QStringLiteral("liveOpacitySlider"))
+                                 ->value()) /
+                         100.0F;
+    const auto threshold = static_cast<float>(
+                               findChild<QSlider*>(
+                                   QStringLiteral("liveThresholdSlider"))
+                                   ->value()) /
+                           100.0F;
+    const auto x = static_cast<std::size_t>(
+        findChild<QSpinBox*>(QStringLiteral("sliceXSpin"))->value());
+    const auto y = static_cast<std::size_t>(
+        findChild<QSpinBox*>(QStringLiteral("sliceYSpin"))->value());
+    const auto z = static_cast<std::size_t>(
+        findChild<QSpinBox*>(QStringLiteral("sliceZSpin"))->value());
+    const auto time_text = QStringLiteral("t=%1 ms · 帧 %2")
+                               .arg(frame->velocity_time_s * 1000.0, 0, 'f', 3)
+                               .arg(frame->sequence);
+    const std::array<std::tuple<QString, int, std::size_t, QString>, 3> slices{{
+        {QStringLiteral("xyViewport"),
+         0,
+         z,
+         QStringLiteral("z=%1 · %2 m · %3")
+             .arg(z)
+             .arg(z * grid.dz_m)
+             .arg(time_text)},
+        {QStringLiteral("xzViewport"),
+         1,
+         y,
+         QStringLiteral("y=%1 · %2 m · %3")
+             .arg(y)
+             .arg(y * grid.dy_m)
+             .arg(time_text)},
+        {QStringLiteral("yzViewport"),
+         2,
+         x,
+         QStringLiteral("x=%1 · %2 m · %3")
+             .arg(x)
+             .arg(x * grid.dx_m)
+             .arg(time_text)}}};
+    for (const auto& [name, orientation, fixed_index, message] : slices) {
+        auto* viewport = scientific_viewport(this, name);
+        viewport->set_scientific_image(
+            composite_live_wavefield_slice(
+                viewport->scientific_image(),
+                *frame,
+                orientation,
+                fixed_index,
+                opacity,
+                threshold),
+            message);
+        viewport->setProperty(
+            "liveWavefieldFrameSequence",
+            QVariant::fromValue<qulonglong>(frame->sequence));
+        viewport->setProperty(
+            "liveWavefieldCompletedSteps",
+            QVariant::fromValue<qulonglong>(frame->completed_steps));
+        viewport->setProperty(
+            "lastPresentedLiveFrameSequence",
+            QVariant::fromValue<qulonglong>(frame->sequence));
+    }
+    setProperty(
+        "lastPresentedLiveFrameSequence",
+        QVariant::fromValue<qulonglong>(frame->sequence));
+    findChild<QLabel*>(QStringLiteral("liveFrameLabel"))
+        ->setText(
+            QStringLiteral(
+                "%1 · 帧 %2 · 第 %3 步 · %4 ms · [%5, %6] %7 · "
+                "提取/传输/归一化 %8/%9/%10 ms")
+                .arg(visualization_field_name(frame->field))
+                .arg(frame->sequence)
+                .arg(frame->completed_steps)
+                .arg(frame->velocity_time_s * 1000.0, 0, 'f', 3)
+                .arg(frame->physical_minimum, 0, 'e', 3)
+                .arg(frame->physical_maximum, 0, 'e', 3)
+                .arg(visualization_field_unit(frame->field))
+                .arg(frame->extraction_ms, 0, 'f', 3)
+                .arg(frame->transfer_ms, 0, 'f', 3)
+                .arg(frame->normalization_ms, 0, 'f', 3));
+    presented_frame_ = std::move(frame);
+}
+#endif
 
 const ProjectDocument* MainWindow::current_project() const noexcept {
     return project_ ? &*project_ : nullptr;

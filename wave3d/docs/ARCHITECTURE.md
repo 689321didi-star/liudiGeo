@@ -537,6 +537,30 @@ failure. A completed record additionally binds the SEG-Y path, size, SHA-256,
 trace shape, device, and timings. Live wavefield transport remains a separate
 consumer of this lifecycle.
 
+Increment 25 makes that consumer explicit. A visualization-enabled
+`CudaForwardJob` reserves its scalar device workspace during memory planning
+and exposes the validated physical grid, time step, and one timed download. The
+existing CUDA extraction kernel writes one reusable physical `[z][y][x]`
+scalar volume; a move-only CUDA-layer owner allocates page-locked host memory.
+The desktop worker retains two such host buffers and publishes only immutable
+shared frames. If both buffers still have readers, it drops that display
+opportunity while continuing every propagation step and receiver sample.
+
+Each frame records one sequence, completed step, physical time, field, physical
+range, and separate extraction, device-to-host, and CPU normalization timings.
+Signed Vx/Vy/Vz/divergence fields map symmetrically around zero; speed and curl
+magnitude map from zero to their current maximum. This normalization changes
+only the presentation buffer and is reversible from the stored range.
+
+The GUI applies one frame identity to the OpenGL volume and XY/XZ/YZ sections.
+The volume keeps static model and live wavefield in separate `GL_R32F`
+textures, updates equal-sized live frames with `glTexSubImage3D`, and exposes
+live opacity and amplitude threshold independently. Section compositing uses
+the same physical orientation as the static scene. CUDA/OpenGL registration is
+not part of this baseline; measured pinned staging remains the compatibility
+path until a later profiling result justifies the additional synchronization
+contract.
+
 Increment 11 verifies that behavior by configuring and building with the whole
 `optional/rtm` tree temporarily absent. RTM-off exposes only the forward views,
 observer, factory, and receiver reader; RTM-on adds the header-only checkpoint

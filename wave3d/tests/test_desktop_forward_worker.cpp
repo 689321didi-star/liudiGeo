@@ -45,12 +45,32 @@ public:
     [[nodiscard]] bool finished() const noexcept override {
         return completed_ == total_;
     }
+    [[nodiscard]] const wave3d::Grid3D& grid() const override {
+        return grid_;
+    }
+    [[nodiscard]] double dt_s() const noexcept override { return 0.002; }
     void advance(std::size_t maximum_steps) override {
         if (maximum_steps == 0 || finished()) {
             throw std::logic_error("invalid fake advance");
         }
         std::this_thread::sleep_for(delay_);
         completed_ += std::min(maximum_steps, total_ - completed_);
+    }
+    [[nodiscard]] wave3d::task::VisualizationDownloadTiming
+    download_visualization(
+        wave3d::cuda::VisualizationField field,
+        float* destination,
+        std::size_t value_count) override {
+        if (destination == nullptr || value_count != grid_.physical_cell_count()) {
+            throw std::invalid_argument("invalid fake visualization destination");
+        }
+        for (std::size_t index = 0; index < value_count; ++index) {
+            destination[index] =
+                field == wave3d::cuda::VisualizationField::Vx
+                    ? static_cast<float>(index) - 4.0F
+                    : static_cast<float>(index);
+        }
+        return {0.1, 0.2};
     }
     [[nodiscard]] wave3d::task::CudaForwardRunReport finalize() override {
         if (!finished()) {
@@ -65,6 +85,9 @@ public:
     }
 
 private:
+    wave3d::Grid3D grid_{
+        2, 2, 2, 10.0F, 10.0F, 10.0F, 6,
+        {6, 6}, {6, 6}, {0, 6}};
     std::size_t total_{0};
     std::size_t completed_{0};
     std::chrono::milliseconds delay_{0};
@@ -75,6 +98,7 @@ void test_pause_resume_and_complete() {
         [] {
             return std::make_unique<FakeJob>(80, std::chrono::milliseconds(2));
         });
+    worker.request_display_interval(4);
     worker.start();
     expect(
         wait_until(
@@ -92,17 +116,40 @@ void test_pause_resume_and_complete() {
             std::chrono::seconds(2)),
         "worker did not pause at a batch boundary");
     const auto paused_steps = worker.snapshot().completed_steps;
+    const auto paused_frame = worker.snapshot().latest_frame;
+    expect(
+        paused_frame && paused_frame->sequence > 0 &&
+            paused_frame->completed_steps <= paused_steps &&
+            paused_frame->velocity_time_s ==
+                paused_frame->completed_steps * 0.002 &&
+            paused_frame->value_count == 8 &&
+            paused_frame->physical_minimum == 0.0F &&
+            paused_frame->physical_maximum == 7.0F &&
+            paused_frame->extraction_ms == 0.1 &&
+            paused_frame->transfer_ms == 0.2 &&
+            paused_frame->normalization_ms >= 0.0 &&
+            paused_frame->staging_ms >= 0.3 &&
+            paused_frame->normalized_values.get()[7] == 1.0F,
+        "worker magnitude frame metadata or normalization is incorrect");
     std::this_thread::sleep_for(std::chrono::milliseconds(15));
     expect(
         worker.snapshot().completed_steps == paused_steps,
         "paused worker continued advancing");
     worker.request_resume();
+    worker.request_visualization_field(
+        wave3d::cuda::VisualizationField::Vx);
     expect(worker.wait(3000), "resumed worker did not finish");
     const auto result = worker.snapshot();
     expect(
         result.state == ForwardRunState::Completed &&
             result.completed_steps == result.total_steps && result.report &&
-            result.report->sample_count == 80,
+            result.report->sample_count == 80 && result.latest_frame &&
+            result.latest_frame->field ==
+                wave3d::cuda::VisualizationField::Vx &&
+            result.latest_frame->physical_minimum == -4.0F &&
+            result.latest_frame->physical_maximum == 4.0F &&
+            result.latest_frame->normalized_values.get()[4] == 0.5F &&
+            result.dropped_display_frames > 0,
         "worker did not publish a completed report");
 }
 

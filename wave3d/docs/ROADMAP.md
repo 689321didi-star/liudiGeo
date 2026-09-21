@@ -636,6 +636,28 @@ without claiming an output. The combined Qt/CUDA/HDF5/YAML/SEG-Y suite passed
 34/34, including an actual desktop-driven CUDA run, and all affected optional
 build boundaries passed.
 
+## Increment 25 — Synchronized live wavefield display
+
+**Goal:** Present completed forward wavefields in the 3-D volume and linked
+XY/XZ/YZ sections without compromising solver progress or SEG-Y publication.
+
+**Work:** Add timed CUDA visualization downloads, two persistent pinned host
+buffers, immutable frame identity, signed/magnitude normalization, separate
+live texture and section overlays, field/opacity/threshold/interval controls,
+and a real-target display benchmark.
+
+**Acceptance:** The ownership, extraction, worker buffering, orientation,
+four-view synchronization, real CUDA desktop run, Overthrust timing, optional
+builds, and regression gates in
+`INCREMENT_25_LIVE_WAVEFIELD_DISPLAY_PLAN.md` pass.
+
+**Status:** Verified on 2026-09-21. The worker publishes synchronized immutable
+frames and drops only superseded display opportunities. The volume uses a
+separate live `GL_R32F` texture while all three sections composite the same
+frame sequence. Repeated real Overthrust benchmarks selected a configurable
+15-step default; the complete suite passed 35/35 and affected optional builds
+passed.
+
 ## Deferred research phases
 
 After elastic forward qualification, separate future phases may implement

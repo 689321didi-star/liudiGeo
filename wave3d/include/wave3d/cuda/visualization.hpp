@@ -47,6 +47,14 @@ public:
         values_.copy_to_host(destination.data(), destination.size());
     }
 
+    void download(float* destination, std::size_t value_count) const {
+        if (value_count != values_.size()) {
+            throw std::invalid_argument(
+                "visualization host volume has an incorrect size");
+        }
+        values_.copy_to_host(destination, value_count);
+    }
+
 private:
     friend void extract_physical_visualization_volume(
         const DeviceElasticWavefieldConstView&,

@@ -482,11 +482,20 @@ if(WAVE3D_BUILD_DESKTOP)
     if(WAVE3D_ENABLE_CUDA AND WAVE3D_ENABLE_YAML AND WAVE3D_ENABLE_HDF5 AND
        WAVE3D_ENABLE_SEGY)
         target_sources(
-            wave3d_desktop_shell PRIVATE src/desktop/forward_run_worker.cpp)
+            wave3d_desktop_shell
+            PRIVATE
+                src/desktop/forward_run_worker.cpp
+                src/desktop/live_wavefield_view.cpp)
         target_link_libraries(
             wave3d_desktop_shell PUBLIC wave3d_forward_run)
         target_compile_definitions(
             wave3d_desktop_shell PUBLIC WAVE3D_DESKTOP_HAS_CUDA_FORWARD=1)
+
+        add_executable(
+            wave3d_live_display_benchmark
+            apps/benchmark_live_display.cpp)
+        target_link_libraries(
+            wave3d_live_display_benchmark PRIVATE wave3d_desktop_shell)
     endif()
 
     add_executable(wave3d_studio apps/studio/main.cpp)
@@ -574,6 +583,18 @@ if(WAVE3D_BUILD_DESKTOP)
             set_tests_properties(
                 wave3d_desktop_forward_worker_tests
                 PROPERTIES LABELS "desktop;cuda;interfaces")
+
+            add_executable(
+                wave3d_desktop_live_wavefield_tests
+                tests/test_desktop_live_wavefield.cpp)
+            target_link_libraries(
+                wave3d_desktop_live_wavefield_tests PRIVATE wave3d_desktop_shell)
+            add_test(
+                NAME wave3d_desktop_live_wavefield_tests
+                COMMAND wave3d_desktop_live_wavefield_tests)
+            set_tests_properties(
+                wave3d_desktop_live_wavefield_tests
+                PROPERTIES LABELS "desktop;cuda;visualization")
         endif()
     endif()
 endif()

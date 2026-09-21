@@ -17,6 +17,7 @@ namespace wave3d::desktop {
 class StaticModelScene;
 #ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
 class ForwardRunWorker;
+struct LiveWavefieldFrame;
 #endif
 
 class MainWindow final : public QMainWindow {
@@ -65,6 +66,9 @@ private:
     void populate_model_information();
     void invalidate_prepared_run();
     void poll_forward_run();
+#ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
+    void present_live_frame(std::shared_ptr<const LiveWavefieldFrame> frame);
+#endif
     void set_run_editing_locked(bool locked);
     void save_window_settings();
 
@@ -75,6 +79,7 @@ private:
     std::optional<PreparedRun> prepared_run_;
 #ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
     std::unique_ptr<ForwardRunWorker> forward_worker_;
+    std::shared_ptr<const LiveWavefieldFrame> presented_frame_;
 #endif
     QTimer* run_poll_timer_{nullptr};
     bool experiment_model_reference_changed_{false};

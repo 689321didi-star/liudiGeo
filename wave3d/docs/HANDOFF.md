@@ -1627,3 +1627,74 @@ and product publication rather than the accepted visual layout. Increment 25
 should add pinned-host live wavefield staging to the same one-step worker
 boundary, synchronize the volume and three sections by frame identity, and
 measure whether CUDA/OpenGL interoperation is justified afterward.
+
+## Increment 25 synchronized live wavefield display
+
+The incremental production job now has an explicit visualization-enabled mode
+that exposes validated grid/time metadata and a timed physical-volume download.
+That mode reserves one device `float32` visualization volume in memory
+preflight; the command-line-only path retains its prior memory plan. A
+move-only CUDA-layer pinned-buffer owner keeps raw host allocation out of the
+desktop, while the forward worker
+retains two buffers and publishes immutable shared frames. A busy pair causes
+only a display-frame drop; solver steps and receiver traces are never skipped.
+
+The shared field selector controls velocity magnitude, Vx, Vy, Vz,
+divergence, or curl magnitude across the complete four-view presentation.
+Signed quantities use a symmetric blue/white/red map and magnitude quantities
+use a zero-based sequential map. Every frame retains its physical range, SI
+unit, completed step, time, sequence, and extraction/transfer/normalization
+timings. The original solver state and SEG-Y values remain physical `float32`.
+
+`VolumeViewport` keeps static material and live wavefield in separate
+`GL_R32F` textures. Repeated equal-sized live frames use `glTexSubImage3D`;
+XY/XZ/YZ composite the same immutable buffer using the established y-up and
+z-down orientation. The UI exposes live opacity, threshold, and a 1–100-step
+display interval. Completion, cancellation, and failure clear the live layer
+and restore the static model.
+
+Final verification on 2026-09-21:
+
+```text
+cmake --build build/desktop24 -j2
+ctest --test-dir build/desktop24 --output-on-failure --parallel 2
+# combined Qt/CUDA/HDF5/YAML/SEG-Y: 35/35 passed
+
+build/desktop24/wave3d_live_display_benchmark \
+  data/overthrust/runs/forward_11x11/config.yaml 5
+# 200 x 200 x 187, 7,480,000 cells
+# three runs: propagation/step 67.146-67.886 ms
+# complete display path 60.032-82.135 ms
+# 10%-overhead interval calculations: 9, 10, and 13 steps
+
+cmake --build build/desktop20 -j2
+ctest --test-dir build/desktop20 \
+  -R 'wave3d_(segy_io|desktop_(project|shell))_tests' --output-on-failure
+# CUDA-off HDF5/YAML/SEG-Y: 3/3 passed
+
+cmake --build build/desktop23-no-segy -j2
+ctest --test-dir build/desktop23-no-segy \
+  -R 'wave3d_desktop_(project|shell)_tests' --output-on-failure
+# SEG-Y-off: 2/2 passed
+
+cmake --build build/desktop19 -j2
+ctest --test-dir build/desktop19 \
+  -R 'wave3d_desktop_(project|shell)_tests' --output-on-failure
+# YAML-off: 2/2 passed
+
+cmake --build build/desktop18 -j2
+ctest --test-dir build/desktop18 \
+  -R 'wave3d_desktop_(project|shell)_tests' --output-on-failure
+# HDF5-off: 2/2 passed
+
+cmake --build build/desktop17-default -j2
+# desktop-off default boundary compiled; no work required
+```
+
+The repeated Overthrust benchmark used the RTX 5060 Laptop GPU and an actual
+OpenGL 3.3 context. Its display pipeline would nearly double runtime at one
+frame per step, so the UI rounds above the worst observed 13-step
+10%-overhead result to a 15-step default. The main optimization target is the
+current CPU normalization pass, followed by OpenGL upload. CUDA/OpenGL interoperation is
+still deferred until that CPU cost is removed or a later measurement shows
+transfer/upload dominates. No screenshot or wavefield volume was retained.
