@@ -739,6 +739,13 @@ Audit the reserved snapshot and RTM seams, then qualify the complete native
 Linux single-shot workflow. This milestone runs the complete affected build
 matrix and required end-to-end evidence.
 
+**Status:** Release candidate verified on WSL2 on 2026-09-21; native Linux gate
+open. All four Release build boundaries, the dense 101 by 101 Overthrust run,
+independent three-component SEG-Y verification, and WSLg OpenGL/screenshot
+checks pass. D048 forbids treating WSLg as final native Linux graphics
+qualification, so this increment remains incomplete until the same commit
+passes the native desktop smoke, result opening, and screenshot check.
+
 ### Deferred backlog
 
 - Multi-shot add/copy/delete and shot CSV import.

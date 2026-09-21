@@ -549,7 +549,7 @@ class GatherCanvas final : public QWidget {
 public:
     explicit GatherCanvas(QWidget* parent = nullptr) : QWidget(parent) {
         setObjectName(QStringLiteral("resultGatherCanvas"));
-        setMinimumSize(560, 360);
+        setMinimumSize(420, 60);
     }
 
     void set_image(QImage image) {

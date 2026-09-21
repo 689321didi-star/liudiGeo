@@ -152,9 +152,10 @@ trace headers continue to preserve shot identifiers and source coordinates.
 
 Source models are immutable. Crop, Vp-to-Vs/density derivation, smoothing,
 resampling, and later region editing create a derived model with an ordered
-operation history and new checksum. The first release implements read-only
-inspection, crop, and reproducible property derivation; direct voxel painting
-is deferred. No operation overwrites the imported HDF5 or SEG-Y source.
+operation history and new checksum. Read-only inspection and crop are in the
+single-shot release; the D060 amendment defers the general property-derivation
+editor. Direct voxel painting is also deferred. No operation overwrites the
+imported HDF5 or SEG-Y source.
 
 ## Development increments
 
@@ -216,3 +217,8 @@ decision and an updated acceptance plan before implementation.
 The 2026-09-21 execution amendment postpones the multi-shot table and optional
 queue defaults above. They remain backlog requirements and are not Increment
 31 single-shot release gates.
+
+The same amendment limits the active model workflow to immutable HDF5 import,
+crop, the established Overthrust conversion path, and three-property SEG-Y
+conversion. A general desktop Vp-to-Vs/density derivation editor remains in the
+derived-model backlog and is not an Increment 31 release gate.

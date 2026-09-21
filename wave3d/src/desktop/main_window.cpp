@@ -185,7 +185,7 @@ public:
     ScientificViewport(QString title, QString object_name, QWidget* parent)
         : QOpenGLWidget(parent), title_(std::move(title)) {
         setObjectName(std::move(object_name));
-        setMinimumSize(220, 160);
+        setMinimumSize(180, 110);
         setProperty("openGlReady", false);
         setProperty("hasScientificImage", false);
     }
@@ -566,7 +566,13 @@ QDockWidget* make_experiment_dock(QMainWindow* window) {
     layout->addWidget(display_group);
     layout->addWidget(make_run_controls(contents));
 
-    dock->setWidget(contents);
+    auto* scroll = new QScrollArea(dock);
+    scroll->setObjectName(QStringLiteral("experimentWorkspaceScroll"));
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setWidget(contents);
+    dock->setWidget(scroll);
     return dock;
 }
 
@@ -675,7 +681,13 @@ QDockWidget* make_model_information_dock(QMainWindow* window) {
     rendering_form->addRow(reset_camera);
     layout->addWidget(rendering);
     layout->addStretch();
-    dock->setWidget(contents);
+    auto* scroll = new QScrollArea(dock);
+    scroll->setObjectName(QStringLiteral("modelInformationScroll"));
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setWidget(contents);
+    dock->setWidget(scroll);
     return dock;
 }
 
@@ -771,6 +783,7 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
     model_information_dock->raise();
     tabifyDockWidget(log_dock, results_dock);
     log_dock->raise();
+    results_dock->hide();
     resizeDocks({log_dock}, {145}, Qt::Vertical);
     resizeDocks({model_information_dock}, {270}, Qt::Horizontal);
 #ifndef WAVE3D_DESKTOP_HAS_SEGY
@@ -803,7 +816,8 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
     auto* snapshot = run_menu->addAction(QStringLiteral("保存波场快照（预留）"));
     snapshot->setObjectName(QStringLiteral("snapshotAction"));
     snapshot->setEnabled(false);
-    snapshot->setToolTip(QStringLiteral("波场快照写入将在后续增量实现"));
+    snapshot->setToolTip(
+        QStringLiteral("预留接口：当前版本不写入波场快照"));
 
     auto* toolbar = addToolBar(QStringLiteral("主工具栏"));
     toolbar->setObjectName(QStringLiteral("mainToolbar"));
@@ -1115,7 +1129,13 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
         findChild<QListWidget*>(QStringLiteral("moduleNavigation")),
         &QListWidget::currentRowChanged,
         this,
-        [this, model_information_dock, experiment_editor_dock, results_dock](int row) {
+        [this, log_dock, model_information_dock, experiment_editor_dock,
+         results_dock](int row) {
+            if (row != 6) {
+                results_dock->hide();
+                log_dock->show();
+                log_dock->raise();
+            }
             if (row == 1) {
                 model_information_dock->show();
                 model_information_dock->raise();
@@ -1149,6 +1169,8 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
             settings.value(QStringLiteral("desktop/geometry")).toByteArray());
         restoreState(
             settings.value(QStringLiteral("desktop/window_state")).toByteArray());
+    } else {
+        resize(1440, 900);
     }
 
     statusBar()->showMessage(QStringLiteral("空闲 · 速度模 · 未加载模型"));

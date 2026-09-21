@@ -1966,3 +1966,43 @@ ctest --test-dir build/desktop19 \
 The two desktop configurations were run serially because their Qt test settings
 share a host location. No solver, CUDA, rendering, screenshot, Overthrust run,
 or complete suite was required for this adapter and desktop workflow change.
+
+## Increment 31 single-shot release qualification candidate
+
+**Status:** Candidate verified on WSL2 on 2026-09-21; native Linux gate open.
+
+The disabled snapshot action now states that the current version writes no
+snapshots. Default-off RTM adds only checkpoint and immutable task/result/image
+view contracts plus mock tests. Forward targets contain no RTM execution. The
+desktop side panels scroll within the accepted viewport, the results dock is
+hidden until selected, and both the normal workspace and results workspace fit
+the release review layout without dropping controls.
+
+Validation:
+
+```text
+ctest --test-dir build/desktop24 --output-on-failure
+# Release CUDA/YAML/HDF5/SEG-Y/desktop, RTM off: 37/37 passed
+
+ctest --test-dir build/release31-rtm --output-on-failure
+# Release CUDA/YAML/HDF5/SEG-Y/RTM, desktop off: 30/30 passed
+
+ctest --test-dir build/desktop17-default --output-on-failure
+# dependency-free core: 17/17 passed
+
+ctest --test-dir build/desktop19 --output-on-failure
+# HDF5-only desktop: 23/23 passed
+```
+
+The dense 101 by 101 Overthrust CLI run completed 3,000 steps in 200,296.174
+ms propagation time. Independent verification passed three SEG-Y files with
+10,201 traces each, 3,000 samples per trace, finite/nonzero data, bounded
+arrivals, and expected Mxy polarity. The temporary 374,591,520-byte triplet was
+deleted after hashes were recorded in
+`SINGLE_SHOT_RELEASE_QUALIFICATION.md`; the canonical model was unchanged.
+
+WSLg/XCB created four OpenGL contexts and produced a reviewed 1440 by 900
+Overthrust candidate screenshot. This cannot satisfy D048's native Linux gate.
+Do not mark Increment 31 or the single-shot release complete until the same
+commit passes the native desktop smoke, result opening, screenshot, font/input,
+and frame-pacing checks listed in the qualification document.

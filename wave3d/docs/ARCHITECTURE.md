@@ -350,6 +350,9 @@ IForwardPropagator
 make_forward_propagator
 IReceiverData
 ICheckpointStore
+rtm::ITask
+rtm::IResult
+rtm::ImageVolumeConstView
 ```
 
 The current factory wraps only the transparent CPU interior reference; it does
@@ -358,6 +361,12 @@ imaging condition may consume read-only source and receiver views and
 accumulate an image. P/S decomposition and illumination compensation remain
 future optional strategies. The forward propagator contains no `if (rtm)`
 behavior.
+
+`ITask` exposes identity, a copied lifecycle snapshot, cooperative-stop
+request, and an immutable shared result. `IResult` exposes only named,
+unit-bearing physical-grid image const views. These header-only contracts are
+compiled only with `WAVE3D_ENABLE_RTM=ON`; no reverse propagator, imaging
+condition, image storage, or RTM executable exists in the release.
 
 ## Memory architecture
 
@@ -602,9 +611,9 @@ the rendered gather and never rewrites SEG-Y or `result.json`.
 
 Increment 11 verifies that behavior by configuring and building with the whole
 `optional/rtm` tree temporarily absent. RTM-off exposes only the forward views,
-observer, factory, and receiver reader; RTM-on adds the header-only checkpoint
-interface target and its mock test. There is no RTM executable or imaging
-target.
+observer, factory, and receiver reader. Increment 31 adds header-only
+checkpoint and task/result contracts plus mock tests to RTM-on. There is no
+RTM executable or imaging target.
 
 ## Numerical verification architecture
 

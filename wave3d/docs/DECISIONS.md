@@ -1042,3 +1042,23 @@ round trip, refuses overwrite, and publishes a v1 JSON manifest with source
 paths, byte counts, source/output SHA-256 values, geometry, units, axis order,
 and coordinate convention. Failure removes partial project artifacts; success
 activates the HDF5 model through the existing loading boundary.
+
+## D064 — RTM release seam is an optional immutable task/result contract
+
+**Status:** Accepted and verified, 2026-09-21
+
+The first single-shot release contains no RTM execution. When
+`WAVE3D_ENABLE_RTM=ON`, the optional tree exposes a task lifecycle interface,
+cooperative stop request, immutable result ownership, and named unit-bearing
+physical-grid image const views. It also retains the checkpoint store seam.
+The interfaces do not select a reverse propagator, imaging condition,
+checkpoint policy, P/S decomposition, image persistence, or desktop workflow.
+
+With `WAVE3D_ENABLE_RTM=OFF`, neither header is reachable through a build
+target and forward targets remain unchanged. The disabled desktop snapshot
+action explicitly states that the current version writes no snapshots.
+
+The D060 single-shot schedule also defers the generic desktop Vp-to-Vs/density
+derivation editor. The established Overthrust conversion and immutable crop
+workflow remain available; broader derived-model operations retain the D049
+provenance requirement and require a later increment.

@@ -233,6 +233,8 @@ int main(int argc, char** argv) {
                                          ? 3
                                          : module == QStringLiteral("acquisition")
                                                ? 4
+                                               : module == QStringLiteral("results")
+                                                     ? 6
                                                : -1;
         auto* navigation = window.findChild<QListWidget*>(
             QStringLiteral("moduleNavigation"));

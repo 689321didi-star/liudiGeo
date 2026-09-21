@@ -62,7 +62,8 @@ Widget* require_child(QWidget& parent, const char* object_name) {
 }
 
 void test_shell_contract() {
-    wave3d::desktop::MainWindow window;
+    wave3d::desktop::MainWindow window(nullptr, false);
+    window.ensurePolished();
     expect(
         !qApp->styleSheet().isEmpty(),
         "desktop application must use the centralized scientific theme");
@@ -107,12 +108,32 @@ void test_shell_contract() {
 
     const auto* four_view = require_child<QSplitter>(window, "fourViewSplitter");
     const auto* slices = require_child<QSplitter>(window, "sliceViewSplitter");
+    auto* navigation =
+        require_child<QListWidget>(window, "moduleNavigation");
     expect(
         four_view->orientation() == Qt::Horizontal && four_view->count() == 2,
         "desktop shell must place volume and slices horizontally");
     expect(
         slices->orientation() == Qt::Vertical && slices->count() == 3,
         "desktop shell must stack three orthogonal slices");
+    expect(
+        window.minimumSizeHint().height() <= 900,
+        "desktop shell must fit the accepted 1440 by 900 review viewport");
+    expect(
+        require_child<QDockWidget>(window, "resultsDock")->isHidden(),
+        "results workspace must stay hidden until selected");
+    navigation->setCurrentRow(6);
+    QCoreApplication::processEvents();
+    expect(
+        !require_child<QDockWidget>(window, "resultsDock")->isHidden() &&
+            window.minimumSizeHint().height() <= 900,
+        "selected results workspace must fit the accepted review viewport");
+    navigation->setCurrentRow(2);
+    QCoreApplication::processEvents();
+    expect(
+        require_child<QDockWidget>(window, "resultsDock")->isHidden() &&
+            !require_child<QDockWidget>(window, "logDock")->isHidden(),
+        "leaving results must restore the normal workspace dock");
 
     const auto* field =
         require_child<QComboBox>(window, "displayFieldSelector");
@@ -134,8 +155,6 @@ void test_shell_contract() {
         require_child<QSpinBox>(window, "displayIntervalSpin")->value() == 15,
         "measured Overthrust display interval recommendation changed");
 
-    const auto* navigation =
-        require_child<QListWidget>(window, "moduleNavigation");
     expect(navigation->count() == 8, "required desktop modules are missing");
     expect(
         navigation->item(3)->text() == QStringLiteral("震源与炮集"),
@@ -145,7 +164,10 @@ void test_shell_contract() {
         "optional run queue navigation entry is missing");
 
     const auto* snapshot = require_child<QAction>(window, "snapshotAction");
-    expect(!snapshot->isEnabled(), "wavefield snapshot must remain disabled");
+    expect(
+        !snapshot->isEnabled() &&
+            snapshot->toolTip().contains(QStringLiteral("当前版本不写入")),
+        "wavefield snapshot must remain explicitly reserved and disabled");
     expect(
         !require_child<QAction>(window, "importHdf5ModelAction")->isEnabled(),
         "model import must remain gated without an open project");

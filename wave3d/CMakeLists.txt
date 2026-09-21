@@ -244,6 +244,18 @@ if(WAVE3D_ENABLE_RTM)
         set_tests_properties(
             wave3d_checkpoint_interface_tests
             PROPERTIES LABELS "interfaces;rtm")
+
+        add_executable(
+            wave3d_rtm_task_interface_tests
+            optional/rtm/tests/test_rtm_task_interfaces.cpp)
+        target_link_libraries(
+            wave3d_rtm_task_interface_tests PRIVATE wave3d_rtm_interfaces)
+        add_test(
+            NAME wave3d_rtm_task_interface_tests
+            COMMAND wave3d_rtm_task_interface_tests)
+        set_tests_properties(
+            wave3d_rtm_task_interface_tests
+            PROPERTIES LABELS "interfaces;rtm")
     endif()
 endif()
 
