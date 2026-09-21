@@ -35,7 +35,15 @@ void require_ieee_component_segy_layout(
     std::size_t expected_trace_count,
     std::size_t expected_samples_per_trace);
 
+// Reads trace-major values: trace=(y*nx+x), then z sample.
 [[nodiscard]] std::vector<float> read_ieee_segy_volume(
+    const std::string& path,
+    std::size_t nx,
+    std::size_t ny,
+    std::size_t nz);
+
+// Reads the same subset and returns canonical Wave3D [z][y][x] storage.
+[[nodiscard]] std::vector<float> read_ieee_segy_volume_zyx(
     const std::string& path,
     std::size_t nx,
     std::size_t ny,

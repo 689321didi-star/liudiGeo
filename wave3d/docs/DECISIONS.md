@@ -1024,3 +1024,21 @@ readable. Standalone acquisition-template v1 files store geometry and
 translation without shot, source, model, or run identity. Templates are
 atomically written and may be reused across projects; applying one still
 requires validation against the active model before save or preflight.
+
+## D063 — SEG-Y property volumes require declared geometry and provenance
+
+**Status:** Accepted and verified, 2026-09-21
+
+Desktop model conversion accepts three independent fixed-length SEG-Y files for
+Vp, Vs, and density. The supported subset is big-endian IEEE float format code
+5 with exactly `nx*ny` traces and `nz` samples per trace. Trace order is x fast
+then y; samples increase with z. Values are already SI (`m/s`, `m/s`, and
+`kg/m3`); the converter performs no unit conversion or resampling.
+
+The user declares dimensions, metre spacing, halo, and all six absorbing
+widths. Wave3D does not infer a regular 3-D grid from optional trace headers.
+Conversion validates the physical model, verifies a temporary canonical HDF5
+round trip, refuses overwrite, and publishes a v1 JSON manifest with source
+paths, byte counts, source/output SHA-256 values, geometry, units, axis order,
+and coordinate convention. Failure removes partial project artifacts; success
+activates the HDF5 model through the existing loading boundary.

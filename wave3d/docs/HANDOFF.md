@@ -1933,3 +1933,36 @@ ctest --test-dir build/desktop19 \
 
 No solver, CUDA, rendering, or SEG-Y layout code changed, so no full
 Overthrust run, screenshot, CUDA regression, or complete suite was repeated.
+
+## Increment 30 SEG-Y model conversion
+
+**Status:** Verified on 2026-09-21.
+
+The model menu now converts three regular format-5 IEEE-float SEG-Y property
+volumes into one canonical HDF5 model. Users explicitly provide dimensions,
+spacing, halo, and six absorbing widths. The supported input ordering is
+`x`-fast/`y`-slow traces with samples increasing in `z`; Vp, Vs, and density
+must already use SI units. A successful conversion verifies the HDF5 round
+trip, writes `wave3d.desktop.segy_model_conversion.v1` provenance with all
+source/output SHA-256 values, and activates the model. Collisions and invalid
+layouts publish no partial artifact.
+
+Validation:
+
+```text
+cmake --build build/desktop24 -j2 --target \
+  wave3d_desktop_segy_model_conversion_tests wave3d_desktop_shell_tests
+ctest --test-dir build/desktop24 \
+  -R 'wave3d_(desktop_segy_model_conversion|desktop_shell|segy_io|hdf5_io)_tests' \
+  --output-on-failure
+# complete I/O desktop: 4/4 passed
+
+cmake --build build/desktop19 -j2 --target wave3d_desktop_shell_tests
+ctest --test-dir build/desktop19 \
+  -R 'wave3d_desktop_shell_tests' --output-on-failure
+# HDF5-on, SEG-Y-off boundary: 1/1 passed
+```
+
+The two desktop configurations were run serially because their Qt test settings
+share a host location. No solver, CUDA, rendering, screenshot, Overthrust run,
+or complete suite was required for this adapter and desktop workflow change.

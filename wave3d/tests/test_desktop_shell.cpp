@@ -10,6 +10,9 @@
 #ifdef WAVE3D_DESKTOP_HAS_YAML
 #include "wave3d/io/yaml_config.hpp"
 #endif
+#ifdef WAVE3D_DESKTOP_HAS_SEGY
+#include "wave3d/io/segy.hpp"
+#endif
 
 #include <QAction>
 #include <QApplication>
@@ -147,6 +150,9 @@ void test_shell_contract() {
         !require_child<QAction>(window, "importHdf5ModelAction")->isEnabled(),
         "model import must remain gated without an open project");
     expect(
+        !require_child<QAction>(window, "convertSegyModelAction")->isEnabled(),
+        "SEG-Y model conversion must remain gated without an open project");
+    expect(
         require_child<QLabel>(window, "runStateLabel")->text() ==
             QStringLiteral("空闲"),
         "desktop shell must start idle");
@@ -211,6 +217,19 @@ void test_project_window_state() {
         !window.import_hdf5_model(QStringLiteral("unused.h5"), &error) &&
             !error.isEmpty(),
         "HDF5-off model import must fail explicitly");
+#endif
+#if defined(WAVE3D_DESKTOP_HAS_HDF5) && defined(WAVE3D_DESKTOP_HAS_SEGY)
+    expect(
+        require_child<QAction>(window, "convertSegyModelAction")->isEnabled(),
+        "complete I/O build did not enable SEG-Y model conversion");
+#else
+    expect(
+        !require_child<QAction>(window, "convertSegyModelAction")->isEnabled(),
+        "incomplete I/O build exposed SEG-Y model conversion");
+    error.clear();
+    expect(
+        !window.convert_segy_model({}, &error) && !error.isEmpty(),
+        "incomplete I/O build did not reject SEG-Y model conversion");
 #endif
 
     auto* selector =
@@ -318,6 +337,29 @@ void test_hdf5_model_import() {
     expect(
         QFileInfo::exists(source) && QFileInfo::exists(copied),
         "model import must retain the source and create the project copy");
+#ifdef WAVE3D_DESKTOP_HAS_SEGY
+    wave3d::MomentTensorSource segy_source{};
+    segy_source.physical_location = {0.0, 0.0, 0.0};
+    segy_source.storage_location = {0.0, 0.0, 0.0};
+    segy_source.moment = {1.0, 1.0, 1.0, 0.0, 0.0, 0.0};
+    segy_source.wavelet = {10.0, 0.1, 1.0};
+    wave3d::io::ThreeComponentTraces property_volumes{
+        4, 2, 0.001,
+        {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {1, 1, 0}},
+        segy_source,
+        {3000, 3001, 3010, 3011, 3020, 3021, 3030, 3031},
+        {1500, 1501, 1510, 1511, 1520, 1521, 1530, 1531},
+        {2200, 2201, 2210, 2211, 2220, 2221, 2230, 2231}};
+    const auto vp_segy = QDir(temporary.path()).filePath(QStringLiteral("vp.sgy"));
+    const auto vs_segy = QDir(temporary.path()).filePath(QStringLiteral("vs.sgy"));
+    const auto rho_segy = QDir(temporary.path()).filePath(QStringLiteral("rho.sgy"));
+    wave3d::io::write_component_segy(
+        vp_segy.toStdString(), property_volumes, wave3d::io::SegyComponent::Vx);
+    wave3d::io::write_component_segy(
+        vs_segy.toStdString(), property_volumes, wave3d::io::SegyComponent::Vy);
+    wave3d::io::write_component_segy(
+        rho_segy.toStdString(), property_volumes, wave3d::io::SegyComponent::Vz);
+#endif
     expect(
         file_bytes(source) == original_bytes &&
             file_bytes(copied) == original_bytes,
@@ -833,6 +875,26 @@ void test_hdf5_model_import() {
         !window.create_cropped_model(QStringLiteral("invalid_crop"), &error) &&
             !error.isEmpty(),
         "invalid UI crop bounds must fail explicitly");
+
+#ifdef WAVE3D_DESKTOP_HAS_SEGY
+    error.clear();
+    expect(
+        window.convert_segy_model(
+            {vp_segy, vs_segy, rho_segy, QStringLiteral("converted_ui"),
+             {2, 2, 2, 10.0F, 20.0F, 30.0F, 6,
+              {4, 4}, {5, 5}, {0, 6}}},
+            &error),
+        "desktop SEG-Y model conversion failed");
+    expect(
+        window.current_project()->model_reference ==
+                QStringLiteral("models/converted_ui.h5") &&
+            QFileInfo::exists(QDir(project_root).filePath(
+                QStringLiteral("manifests/models/converted_ui.json"))) &&
+            wave3d::io::read_hdf5_model(
+                QDir(project_root).filePath(QStringLiteral("models/converted_ui.h5"))
+                    .toStdString()).grid.x_boundary.lower_absorbing == 4,
+        "desktop did not activate the converted SEG-Y model and provenance");
+#endif
 
     expect(
         window.create_project(

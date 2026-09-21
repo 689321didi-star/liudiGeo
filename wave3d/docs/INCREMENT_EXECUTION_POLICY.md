@@ -21,9 +21,9 @@ The remaining active increments are:
 2. **Increment 29 — acquisition geometry (complete):** receiver lines,
    explicit CSV coordinates, reusable templates, translation, and duplicate
    validation for the active shot.
-3. **Increment 30 — SEG-Y model conversion:** convert the supported regular
-   IEEE-float property-volume subset into canonical Wave3D HDF5 with explicit
-   dimensions, spacing, units, and provenance.
+3. **Increment 30 — SEG-Y model conversion (complete):** convert the supported
+   regular IEEE-float property-volume subset into canonical Wave3D HDF5 with
+   explicit dimensions, spacing, units, and provenance.
 4. **Increment 31 — single-shot release qualification:** audit the disabled
    snapshot command and RTM task/result seams, then qualify the complete native
    Linux single-shot workflow and documentation.

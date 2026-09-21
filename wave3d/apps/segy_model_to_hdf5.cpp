@@ -9,7 +9,6 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
-#include <vector>
 
 namespace {
 
@@ -35,21 +34,6 @@ namespace {
     return static_cast<float>(value);
 }
 
-[[nodiscard]] std::vector<float> trace_major_to_zyx(
-    const std::vector<float>& trace_major,
-    std::size_t nx,
-    std::size_t ny,
-    std::size_t nz) {
-    std::vector<float> zyx(trace_major.size());
-    const auto trace_count = nx * ny;
-    for (std::size_t trace = 0; trace < trace_count; ++trace) {
-        for (std::size_t z = 0; z < nz; ++z) {
-            zyx[z * trace_count + trace] = trace_major[trace * nz + z];
-        }
-    }
-    return zyx;
-}
-
 } // namespace
 
 int main(int argc, char** argv) {
@@ -71,15 +55,9 @@ int main(int argc, char** argv) {
             {}, {}, {}};
         wave3d::PhysicalModel model{
             grid,
-            trace_major_to_zyx(
-                wave3d::io::read_ieee_segy_volume(argv[1], nx, ny, nz),
-                nx, ny, nz),
-            trace_major_to_zyx(
-                wave3d::io::read_ieee_segy_volume(argv[2], nx, ny, nz),
-                nx, ny, nz),
-            trace_major_to_zyx(
-                wave3d::io::read_ieee_segy_volume(argv[3], nx, ny, nz),
-                nx, ny, nz)};
+            wave3d::io::read_ieee_segy_volume_zyx(argv[1], nx, ny, nz),
+            wave3d::io::read_ieee_segy_volume_zyx(argv[2], nx, ny, nz),
+            wave3d::io::read_ieee_segy_volume_zyx(argv[3], nx, ny, nz)};
         wave3d::require_valid_physical_model(model);
         wave3d::io::write_hdf5_model(argv[4], model);
         std::cout << "converted SEG-Y model to " << argv[4]

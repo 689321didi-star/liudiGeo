@@ -556,4 +556,21 @@ std::vector<float> read_ieee_segy_volume(
     return read_ieee_segy_samples(path, traces, nz);
 }
 
+std::vector<float> read_ieee_segy_volume_zyx(
+    const std::string& path,
+    std::size_t nx,
+    std::size_t ny,
+    std::size_t nz) {
+    const auto trace_major = read_ieee_segy_volume(path, nx, ny, nz);
+    std::vector<float> zyx(trace_major.size());
+    const auto trace_count = detail::checked_size_product(
+        nx, ny, "SEG-Y model trace count overflow");
+    for (std::size_t trace = 0; trace < trace_count; ++trace) {
+        for (std::size_t z = 0; z < nz; ++z) {
+            zyx[z * trace_count + trace] = trace_major[trace * nz + z];
+        }
+    }
+    return zyx;
+}
+
 } // namespace wave3d::io

@@ -442,6 +442,13 @@ if(WAVE3D_BUILD_DESKTOP)
         target_link_libraries(
             wave3d_desktop_static_model
             PUBLIC wave3d_core wave3d_io_hdf5 Qt6::Core Qt6::Gui)
+        if(WAVE3D_ENABLE_SEGY)
+            target_sources(
+                wave3d_desktop_static_model
+                PRIVATE src/desktop/segy_model_conversion.cpp)
+            target_link_libraries(
+                wave3d_desktop_static_model PUBLIC wave3d_io_segy)
+        endif()
     endif()
 
     add_library(
@@ -543,6 +550,23 @@ if(WAVE3D_BUILD_DESKTOP)
             set_tests_properties(
                 wave3d_desktop_model_derivation_tests
                 PROPERTIES LABELS "desktop;io;model;provenance")
+
+            if(WAVE3D_ENABLE_SEGY)
+                add_executable(
+                    wave3d_desktop_segy_model_conversion_tests
+                    tests/test_desktop_segy_model_conversion.cpp)
+                target_link_libraries(
+                    wave3d_desktop_segy_model_conversion_tests
+                    PRIVATE
+                        wave3d_desktop_project
+                        wave3d_desktop_static_model)
+                add_test(
+                    NAME wave3d_desktop_segy_model_conversion_tests
+                    COMMAND wave3d_desktop_segy_model_conversion_tests)
+                set_tests_properties(
+                    wave3d_desktop_segy_model_conversion_tests
+                    PROPERTIES LABELS "desktop;io;model;provenance")
+            endif()
         endif()
 
         if(WAVE3D_ENABLE_SEGY)

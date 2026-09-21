@@ -296,8 +296,13 @@ identification code 13 for VX/in-line, 14 for VY/cross-line, or 12 for
 VZ/vertical. Standard headers declare SI units, axes, ordering,
 coordinates, source metadata, and the first-sample convention. Sampling must
 be exactly representable in Revision 1's integer-microsecond field. The
-separate model converter accepts only fixed-length IEEE-float volumes and
-reorders trace-major input into canonical `[z][y][x]` HDF5.
+separate model converter accepts only three fixed-length IEEE-float property
+volumes. Each contains `nx*ny` traces in x-fast/y-slow order and `nz` samples
+increasing downward. The desktop requires declared grid dimensions, metre
+spacing, halo, and six absorbing widths instead of guessing 3-D geometry from
+SEG-Y headers. It validates Vp, Vs, and density in SI units, reorders the input
+into canonical `[z][y][x]` HDF5, verifies the round trip, and records
+input/output SHA-256 values and conventions in `manifests/models/`.
 
 The optional production task is built only when CUDA, YAML, HDF5, and SEG-Y
 are all enabled. `wave3d_run CONFIG.yaml` resolves relative paths against the

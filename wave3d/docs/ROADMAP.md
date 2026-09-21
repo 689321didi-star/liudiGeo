@@ -726,6 +726,13 @@ CUDA/YAML/SEG-Y-off boundary tests passed.
 Convert the supported regular IEEE-float property-volume subset into canonical
 Wave3D HDF5 with explicit geometry, units, validation, and provenance.
 
+**Status:** Verified on 2026-09-21. The desktop now accepts separate Vp, Vs, and
+density format-5 volumes, explicit dimensions/spacing/halo/absorbing widths,
+and the documented x-fast/y-slow/z-sample ordering. Conversion validates and
+round-trips a canonical HDF5 artifact, records source/output SHA-256 provenance,
+refuses collisions, and activates the result. Focused complete-I/O and
+HDF5-only desktop boundary tests passed.
+
 ### Increment 31 — Single-shot release qualification
 
 Audit the reserved snapshot and RTM seams, then qualify the complete native

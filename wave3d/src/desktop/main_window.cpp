@@ -23,6 +23,9 @@
 #include <QCryptographicHash>
 #include <QDir>
 #include <QDateTime>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QDoubleSpinBox>
 #include <QDockWidget>
 #include <QFormLayout>
 #include <QFrame>
@@ -64,11 +67,117 @@
 #include <cmath>
 #include <exception>
 #include <stdexcept>
+#include <string>
 #include <tuple>
 #include <utility>
 
 namespace wave3d::desktop {
 namespace {
+
+#if defined(WAVE3D_DESKTOP_HAS_HDF5) && defined(WAVE3D_DESKTOP_HAS_SEGY)
+std::optional<SegyModelConversionRequest> prompt_segy_model_conversion(
+    QWidget* parent,
+    const QString& project_root) {
+    const auto select = [&](const QString& title) {
+        return QFileDialog::getOpenFileName(
+            parent, title, project_root,
+            QStringLiteral("SEG-Y (*.sgy *.segy);;所有文件 (*)"));
+    };
+    const auto vp = select(QStringLiteral("选择 Vp SEG-Y 体（m/s）"));
+    if (vp.isEmpty()) {
+        return std::nullopt;
+    }
+    const auto vs = select(QStringLiteral("选择 Vs SEG-Y 体（m/s）"));
+    if (vs.isEmpty()) {
+        return std::nullopt;
+    }
+    const auto density = select(QStringLiteral("选择密度 SEG-Y 体（kg/m³）"));
+    if (density.isEmpty()) {
+        return std::nullopt;
+    }
+
+    QDialog dialog(parent);
+    dialog.setWindowTitle(QStringLiteral("SEG-Y 规则属性体转换"));
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* note = new QLabel(
+        QStringLiteral("每个文件须含 NX×NY 道，每道 NZ 个 IEEE float 样点；"
+                       "道序为 X 快、Y 慢，样点沿 Z 向下。"),
+        &dialog);
+    note->setWordWrap(true);
+    layout->addWidget(note);
+    auto* form = new QFormLayout;
+    auto* stem = new QLineEdit(QStringLiteral("segy_model_001"), &dialog);
+    stem->setObjectName(QStringLiteral("segyModelOutputStemEdit"));
+    form->addRow(QStringLiteral("输出名称"), stem);
+    const auto add_size = [&](const QString& label, int value, int minimum,
+                              int maximum, const char* name) {
+        auto* spin = new QSpinBox(&dialog);
+        spin->setObjectName(QString::fromUtf8(name));
+        spin->setRange(minimum, maximum);
+        spin->setValue(value);
+        form->addRow(label, spin);
+        return spin;
+    };
+    const auto add_spacing = [&](const QString& label, const char* name) {
+        auto* spin = new QDoubleSpinBox(&dialog);
+        spin->setObjectName(QString::fromUtf8(name));
+        spin->setRange(0.001, 1000000.0);
+        spin->setDecimals(3);
+        spin->setValue(10.0);
+        spin->setSuffix(QStringLiteral(" m"));
+        form->addRow(label, spin);
+        return spin;
+    };
+    auto* nx = add_size(
+        QStringLiteral("NX"), 100, 1, 65535, "segyModelNxSpin");
+    auto* ny = add_size(
+        QStringLiteral("NY"), 100, 1, 65535, "segyModelNySpin");
+    auto* nz = add_size(
+        QStringLiteral("NZ / 每道样点"),
+        100, 1, 65535, "segyModelNzSpin");
+    auto* dx = add_spacing(QStringLiteral("DX"), "segyModelDxSpin");
+    auto* dy = add_spacing(QStringLiteral("DY"), "segyModelDySpin");
+    auto* dz = add_spacing(QStringLiteral("DZ"), "segyModelDzSpin");
+    auto* halo = add_size(
+        QStringLiteral("交错网格 halo"),
+        6, 1, 64, "segyModelHaloSpin");
+    std::array<QSpinBox*, 6> boundary{};
+    const std::array<QString, 6> labels{
+        QStringLiteral("X− 吸收层"), QStringLiteral("X+ 吸收层"),
+        QStringLiteral("Y− 吸收层"), QStringLiteral("Y+ 吸收层"),
+        QStringLiteral("Z− 吸收层"), QStringLiteral("Z+ 吸收层")};
+    for (std::size_t index = 0; index < boundary.size(); ++index) {
+        const auto name =
+            "segyModelBoundary" + std::to_string(index) + "Spin";
+        boundary[index] = add_size(
+            labels[index], index == 4 ? 0 : 20, 0, 10000, name.c_str());
+    }
+    layout->addLayout(form);
+    auto* buttons = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    QObject::connect(
+        buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(
+        buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+    if (dialog.exec() != QDialog::Accepted) {
+        return std::nullopt;
+    }
+    return SegyModelConversionRequest{
+        vp, vs, density, stem->text(),
+        {static_cast<std::size_t>(nx->value()),
+         static_cast<std::size_t>(ny->value()),
+         static_cast<std::size_t>(nz->value()),
+         static_cast<float>(dx->value()), static_cast<float>(dy->value()),
+         static_cast<float>(dz->value()), static_cast<std::size_t>(halo->value()),
+         {static_cast<std::size_t>(boundary[0]->value()),
+          static_cast<std::size_t>(boundary[1]->value())},
+         {static_cast<std::size_t>(boundary[2]->value()),
+          static_cast<std::size_t>(boundary[3]->value())},
+         {static_cast<std::size_t>(boundary[4]->value()),
+          static_cast<std::size_t>(boundary[5]->value())}}};
+}
+#endif
 
 class ScientificViewport final : public QOpenGLWidget,
                                  protected QOpenGLFunctions {
@@ -682,6 +791,13 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
 #ifndef WAVE3D_DESKTOP_HAS_HDF5
     import_model->setToolTip(QStringLiteral("当前构建未启用 HDF5"));
 #endif
+    auto* convert_segy =
+        model_menu->addAction(QStringLiteral("转换 SEG-Y 属性模型…"));
+    convert_segy->setObjectName(QStringLiteral("convertSegyModelAction"));
+    convert_segy->setEnabled(false);
+#if !defined(WAVE3D_DESKTOP_HAS_HDF5) || !defined(WAVE3D_DESKTOP_HAS_SEGY)
+    convert_segy->setToolTip(QStringLiteral("当前构建需要同时启用 HDF5 与 SEG-Y"));
+#endif
 
     auto* run_menu = menuBar()->addMenu(QStringLiteral("运行"));
     auto* snapshot = run_menu->addAction(QStringLiteral("保存波场快照（预留）"));
@@ -761,6 +877,16 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
         if (!import_hdf5_model(path, &error)) {
             QMessageBox::critical(this, QStringLiteral("无法导入模型"), error);
         }
+    });
+    connect(convert_segy, &QAction::triggered, this, [this] {
+#if defined(WAVE3D_DESKTOP_HAS_HDF5) && defined(WAVE3D_DESKTOP_HAS_SEGY)
+        const auto request = prompt_segy_model_conversion(this, project_root_);
+        if (!request) return;
+        QString error;
+        if (!convert_segy_model(*request, &error)) {
+            QMessageBox::critical(this, QStringLiteral("无法转换 SEG-Y 模型"), error);
+        }
+#endif
     });
     connect(validate, &QAction::triggered, this, [this] {
         QString error;
@@ -1161,6 +1287,45 @@ bool MainWindow::import_hdf5_model(
 #endif
 }
 
+bool MainWindow::convert_segy_model(
+    const SegyModelConversionRequest& request,
+    QString* error_message) {
+#if !defined(WAVE3D_DESKTOP_HAS_HDF5) || !defined(WAVE3D_DESKTOP_HAS_SEGY)
+    static_cast<void>(request);
+    if (error_message != nullptr) {
+        *error_message = QStringLiteral("当前桌面构建需要同时启用 HDF5 与 SEG-Y");
+    }
+    return false;
+#else
+    if (!project_) {
+        if (error_message != nullptr) {
+            *error_message = QStringLiteral("请先创建或打开项目");
+        }
+        return false;
+    }
+    try {
+        const auto artifact = convert_segy_model_artifact(project_root_, request);
+        const auto model_path = QDir(project_root_).filePath(artifact.model_reference);
+        QString import_error;
+        if (!import_hdf5_model(model_path, &import_error)) {
+            QFile::remove(model_path);
+            QFile::remove(QDir(project_root_).filePath(artifact.manifest_reference));
+            throw std::runtime_error(import_error.toStdString());
+        }
+        findChild<QTextEdit*>(QStringLiteral("runLog"))
+            ->append(QStringLiteral("SEG-Y 模型转换清单：%1")
+                         .arg(artifact.manifest_reference));
+        statusBar()->showMessage(QStringLiteral("SEG-Y 属性模型已转换并加载"));
+        return true;
+    } catch (const std::exception& error) {
+        if (error_message != nullptr) {
+            *error_message = QString::fromUtf8(error.what());
+        }
+        return false;
+    }
+#endif
+}
+
 bool MainWindow::create_cropped_model(
     const QString& output_stem,
     QString* error_message) {
@@ -1430,6 +1595,10 @@ void MainWindow::set_run_editing_locked(bool locked) {
     findChild<QAction*>(QStringLiteral("openProjectAction"))->setEnabled(!locked);
     findChild<QAction*>(QStringLiteral("importHdf5ModelAction"))
         ->setEnabled(!locked && project_.has_value());
+#if defined(WAVE3D_DESKTOP_HAS_HDF5) && defined(WAVE3D_DESKTOP_HAS_SEGY)
+    findChild<QAction*>(QStringLiteral("convertSegyModelAction"))
+        ->setEnabled(!locked && project_.has_value());
+#endif
     experiment_editor(this)->setEnabled(!locked && model_scene_ != nullptr);
     if (locked) {
         findChild<QAction*>(QStringLiteral("validateExperimentAction"))
@@ -1786,6 +1955,9 @@ void MainWindow::activate_project(
                                                  : QStringLiteral("模型已引用"));
 #ifdef WAVE3D_DESKTOP_HAS_HDF5
     findChild<QAction*>(QStringLiteral("importHdf5ModelAction"))->setEnabled(true);
+#if defined(WAVE3D_DESKTOP_HAS_HDF5) && defined(WAVE3D_DESKTOP_HAS_SEGY)
+    findChild<QAction*>(QStringLiteral("convertSegyModelAction"))->setEnabled(true);
+#endif
 #endif
 
     auto* selector = findChild<QComboBox*>(QStringLiteral("displayFieldSelector"));

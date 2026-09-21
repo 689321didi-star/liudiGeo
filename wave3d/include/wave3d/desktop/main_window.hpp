@@ -2,6 +2,7 @@
 
 #include "wave3d/desktop/experiment_draft.hpp"
 #include "wave3d/desktop/project_workspace.hpp"
+#include "wave3d/desktop/segy_model_conversion.hpp"
 
 #include <QMainWindow>
 #include <QString>
@@ -38,6 +39,9 @@ public:
 
     [[nodiscard]] bool import_hdf5_model(
         const QString& source_path,
+        QString* error_message = nullptr);
+    [[nodiscard]] bool convert_segy_model(
+        const SegyModelConversionRequest& request,
         QString* error_message = nullptr);
     [[nodiscard]] bool create_cropped_model(
         const QString& output_stem,
