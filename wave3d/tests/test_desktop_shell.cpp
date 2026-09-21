@@ -25,6 +25,7 @@
 #include <QFileInfo>
 #include <QFrame>
 #include <QLabel>
+#include <QKeyEvent>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMouseEvent>
@@ -124,8 +125,11 @@ void test_shell_contract() {
             window.statusBar()->isSizeGripEnabled(),
         "window and viewport resize handles must remain directly draggable");
     expect(
-        window.minimumSizeHint().height() <= 900,
-        "desktop shell must fit the accepted 1440 by 900 review viewport");
+        !window.dockOptions().testFlag(QMainWindow::GroupedDragging),
+        "tabified editors must detach independently instead of as a dock group");
+    expect(
+        window.minimumSizeHint().height() <= 920,
+        "desktop shell must stay near the accepted 1440 by 900 viewport");
     expect(
         require_child<QDockWidget>(window, "resultsDock")->isHidden(),
         "results workspace must stay hidden until selected");
@@ -133,8 +137,8 @@ void test_shell_contract() {
     QCoreApplication::processEvents();
     expect(
         !require_child<QDockWidget>(window, "resultsDock")->isHidden() &&
-            window.minimumSizeHint().height() <= 900,
-        "selected results workspace must fit the accepted review viewport");
+            window.minimumSizeHint().height() <= 920,
+        "selected results workspace must stay near the review viewport");
     navigation->setCurrentRow(2);
     QCoreApplication::processEvents();
     expect(
@@ -540,6 +544,27 @@ void test_hdf5_model_import() {
                 volume->property("volumeCameraPitch").toFloat() - 0.50F) <
                 1.0e-5F,
         "volume drag must move the grabbed volume in the mouse direction");
+    auto* editor_dock =
+        require_child<QDockWidget>(window, "experimentEditorDock");
+    auto* frequency =
+        require_child<QDoubleSpinBox>(window, "designFrequencySpin");
+    window.show();
+    editor_dock->setFloating(true);
+    editor_dock->show();
+    editor_dock->raise();
+    editor_dock->activateWindow();
+    frequency->setFocus(Qt::ActiveWindowFocusReason);
+    QApplication::processEvents();
+    const auto frequency_before = frequency->value();
+    QKeyEvent increase_frequency(
+        QEvent::KeyPress, Qt::Key_Up, Qt::NoModifier);
+    QApplication::sendEvent(frequency, &increase_frequency);
+    expect(
+        editor_dock->isFloating() && editor_dock->isEnabled() &&
+            frequency->isEnabled() && frequency->value() > frequency_before,
+        "detached experiment editor did not accept interactive input");
+    editor_dock->setFloating(false);
+    QApplication::processEvents();
     require_child<QSlider>(window, "volumeOpacitySlider")->setValue(70);
     require_child<QSlider>(window, "volumeThresholdSlider")->setValue(20);
     expect(

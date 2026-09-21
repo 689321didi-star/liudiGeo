@@ -2037,3 +2037,10 @@ The shell test sends a real Qt press/move event and checks the inverted yaw and
 pitch values. It also protects splitter handle width and the native window size
 grip contract. The real Overthrust project also passed the WSLg/XCB OpenGL
 smoke after rebuilding the application.
+
+The experiment editor and model-information dock remain tabified while docked,
+but `GroupedDragging` is disabled. Detaching the experiment editor therefore
+creates one independent floating editor instead of moving the complete tab
+group. The shell test floats the real model-backed editor, focuses its design-
+frequency control, sends a Qt key event, verifies the value changes, and docks
+the editor again.

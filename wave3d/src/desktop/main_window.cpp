@@ -721,8 +721,7 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
     setWindowTitle(QStringLiteral("Wave3D 科研实验工作台"));
     resize(1440, 900);
     setDockOptions(
-        QMainWindow::AnimatedDocks | QMainWindow::AllowTabbedDocks |
-        QMainWindow::GroupedDragging);
+        QMainWindow::AnimatedDocks | QMainWindow::AllowTabbedDocks);
 
     auto* central = new QWidget(this);
     auto* central_layout = new QVBoxLayout(central);
