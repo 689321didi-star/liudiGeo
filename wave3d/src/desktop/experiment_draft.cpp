@@ -45,9 +45,15 @@ bool safe_relative_path(const QString& value) {
 }
 
 QString source_mode_name(DraftSourceMode mode) {
-    return mode == DraftSourceMode::IsotropicExplosion
-               ? QStringLiteral("isotropic_explosion")
-               : QStringLiteral("moment_tensor");
+    switch (mode) {
+    case DraftSourceMode::IsotropicExplosion:
+        return QStringLiteral("isotropic_explosion");
+    case DraftSourceMode::MomentTensor:
+        return QStringLiteral("moment_tensor");
+    case DraftSourceMode::DoubleCouple:
+        return QStringLiteral("double_couple");
+    }
+    fail(QStringLiteral("experiment source mode is unsupported"));
 }
 
 DraftSourceMode parse_source_mode(const QString& value) {
@@ -56,6 +62,9 @@ DraftSourceMode parse_source_mode(const QString& value) {
     }
     if (value == QStringLiteral("moment_tensor")) {
         return DraftSourceMode::MomentTensor;
+    }
+    if (value == QStringLiteral("double_couple")) {
+        return DraftSourceMode::DoubleCouple;
     }
     fail(QStringLiteral("experiment source mode is unsupported"));
 }
@@ -115,6 +124,14 @@ QJsonObject draft_json(const ExperimentDraft& draft) {
               draft.explosion_moment_nm},
              {QStringLiteral("moment_tensor_nm"),
               tensor_json(draft.moment_tensor_nm)},
+             {QStringLiteral("double_couple"),
+              QJsonObject{
+                  {QStringLiteral("scalar_moment_nm"),
+                   draft.double_couple.scalar_moment_nm},
+                  {QStringLiteral("strike_deg"),
+                   draft.double_couple.strike_deg},
+                  {QStringLiteral("dip_deg"), draft.double_couple.dip_deg},
+                  {QStringLiteral("rake_deg"), draft.double_couple.rake_deg}}},
              {QStringLiteral("ricker"),
               QJsonObject{
                   {QStringLiteral("dominant_frequency_hz"),
@@ -204,7 +221,7 @@ void ExperimentDraftStore::validate(const ExperimentDraft& draft) {
     if (!safe_relative_path(draft.model_reference)) {
         fail(QStringLiteral("experiment model reference must be a safe path"));
     }
-    const std::array<double, 18> finite_values{
+    const std::array<double, 22> finite_values{
         draft.dt_s,
         draft.total_time_s,
         draft.cfl_safety_factor,
@@ -222,7 +239,11 @@ void ExperimentDraftStore::validate(const ExperimentDraft& draft) {
         draft.moment_tensor_nm.m_zz_nm,
         draft.moment_tensor_nm.m_xy_nm,
         draft.moment_tensor_nm.m_xz_nm,
-        draft.moment_tensor_nm.m_yz_nm};
+        draft.moment_tensor_nm.m_yz_nm,
+        draft.double_couple.scalar_moment_nm,
+        draft.double_couple.strike_deg,
+        draft.double_couple.dip_deg,
+        draft.double_couple.rake_deg};
     if (!std::all_of(finite_values.begin(), finite_values.end(), [](double value) {
             return std::isfinite(value);
         })) {
@@ -235,14 +256,21 @@ void ExperimentDraftStore::validate(const ExperimentDraft& draft) {
         fail(QStringLiteral("experiment time and numerical values are invalid"));
     }
     if (draft.source_mode != DraftSourceMode::IsotropicExplosion &&
-        draft.source_mode != DraftSourceMode::MomentTensor) {
+        draft.source_mode != DraftSourceMode::MomentTensor &&
+        draft.source_mode != DraftSourceMode::DoubleCouple) {
         fail(QStringLiteral("experiment source mode is unsupported"));
     }
     require_valid_ricker_wavelet(draft.wavelet);
     if (draft.source_mode == DraftSourceMode::IsotropicExplosion) {
         static_cast<void>(isotropic_explosion(draft.explosion_moment_nm));
-    } else {
+    } else if (draft.source_mode == DraftSourceMode::MomentTensor) {
         require_valid_moment_tensor(draft.moment_tensor_nm);
+    } else {
+        static_cast<void>(double_couple_from_strike_dip_rake(
+            draft.double_couple.scalar_moment_nm,
+            draft.double_couple.strike_deg,
+            draft.double_couple.dip_deg,
+            draft.double_couple.rake_deg));
     }
     if (!draft.receiver_grid) {
         fail(QStringLiteral("experiment acquisition is missing"));
@@ -384,10 +412,22 @@ ResolvedExperimentDraft ExperimentDraftStore::resolve(
     if (!errors.empty()) {
         throw std::invalid_argument(errors.front());
     }
-    const auto moment =
-        draft.source_mode == DraftSourceMode::IsotropicExplosion
-            ? isotropic_explosion(draft.explosion_moment_nm)
-            : draft.moment_tensor_nm;
+    SymmetricMomentTensor moment;
+    switch (draft.source_mode) {
+    case DraftSourceMode::IsotropicExplosion:
+        moment = isotropic_explosion(draft.explosion_moment_nm);
+        break;
+    case DraftSourceMode::MomentTensor:
+        moment = draft.moment_tensor_nm;
+        break;
+    case DraftSourceMode::DoubleCouple:
+        moment = double_couple_from_strike_dip_rake(
+            draft.double_couple.scalar_moment_nm,
+            draft.double_couple.strike_deg,
+            draft.double_couple.dip_deg,
+            draft.double_couple.rake_deg);
+        break;
+    }
     auto source = prepare_moment_tensor_source(
         grid,
         draft.source_location_m,
@@ -432,8 +472,12 @@ ExperimentDraft ExperimentDraftStore::load(
     }
     const auto root = document.object();
     const auto schema = root.value(QStringLiteral("schema")).toString();
-    const bool legacy = schema == QString::fromUtf8(kLegacyExperimentDraftSchema);
-    if (!legacy && schema != QString::fromUtf8(kExperimentDraftSchema)) {
+    const bool legacy_v1 =
+        schema == QString::fromUtf8(kLegacyExperimentDraftSchema);
+    const bool legacy_v2 =
+        schema == QString::fromUtf8(kLegacyExperimentDraftSchemaV2);
+    if (!legacy_v1 && !legacy_v2 &&
+        schema != QString::fromUtf8(kExperimentDraftSchema)) {
         fail(QStringLiteral("unsupported experiment draft schema"));
     }
     if (!root.value(QStringLiteral("shot_id")).isString() ||
@@ -498,11 +542,31 @@ ExperimentDraft ExperimentDraftStore::load(
         tensor[3].toDouble(),
         tensor[4].toDouble(),
         tensor[5].toDouble()};
+    if (!legacy_v1 && !legacy_v2) {
+        if (!source.value(QStringLiteral("double_couple")).isObject()) {
+            fail(QStringLiteral(
+                "experiment double-couple parameters have invalid type"));
+        }
+        const auto double_couple =
+            source.value(QStringLiteral("double_couple")).toObject();
+        if (!double_couple.value(QStringLiteral("scalar_moment_nm")).isDouble() ||
+            !double_couple.value(QStringLiteral("strike_deg")).isDouble() ||
+            !double_couple.value(QStringLiteral("dip_deg")).isDouble() ||
+            !double_couple.value(QStringLiteral("rake_deg")).isDouble()) {
+            fail(QStringLiteral(
+                "experiment double-couple parameters have invalid types"));
+        }
+        draft.double_couple = {
+            double_couple.value(QStringLiteral("scalar_moment_nm")).toDouble(),
+            double_couple.value(QStringLiteral("strike_deg")).toDouble(),
+            double_couple.value(QStringLiteral("dip_deg")).toDouble(),
+            double_couple.value(QStringLiteral("rake_deg")).toDouble()};
+    }
     draft.wavelet = {
         ricker.value(QStringLiteral("dominant_frequency_hz")).toDouble(),
         ricker.value(QStringLiteral("peak_delay_s")).toDouble(),
         ricker.value(QStringLiteral("peak_rate_s_inv")).toDouble()};
-    if (!legacy) {
+    if (!legacy_v1) {
         if (!root.value(QStringLiteral("acquisition")).isObject()) {
             fail(QStringLiteral("experiment acquisition has invalid type"));
         }
@@ -552,7 +616,7 @@ ExperimentDraft ExperimentDraftStore::load(
             y_range[1].toDouble(),
             acquisition.value(QStringLiteral("depth_m")).toDouble()};
     }
-    if (legacy) {
+    if (legacy_v1) {
         auto legacy_validation = draft;
         legacy_validation.receiver_grid =
             RectangularReceiverGrid{2, 2, 0.0, 1.0, 0.0, 1.0, 0.0};

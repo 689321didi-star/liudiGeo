@@ -31,6 +31,83 @@ wave3d::Grid3D test_grid() {
         {3, 4}, {5, 6}, {0, 7}};
 }
 
+double scalar_moment(const wave3d::SymmetricMomentTensor& moment) {
+    return std::sqrt(0.5 *
+                     (moment.m_xx_nm * moment.m_xx_nm +
+                      moment.m_yy_nm * moment.m_yy_nm +
+                      moment.m_zz_nm * moment.m_zz_nm +
+                      2.0 * moment.m_xy_nm * moment.m_xy_nm +
+                      2.0 * moment.m_xz_nm * moment.m_xz_nm +
+                      2.0 * moment.m_yz_nm * moment.m_yz_nm));
+}
+
+void test_double_couple_conversion() {
+    constexpr double moment_nm = 2.0e12;
+    const auto strike_slip =
+        wave3d::double_couple_from_strike_dip_rake(
+            moment_nm, 0.0, 90.0, 0.0);
+    expect(
+        near(strike_slip.m_xy_nm, moment_nm, 1.0e-3) &&
+            near(strike_slip.m_xx_nm, 0.0, 1.0e-3) &&
+            near(strike_slip.m_yy_nm, 0.0, 1.0e-3) &&
+            near(strike_slip.m_zz_nm, 0.0, 1.0e-3),
+        "north-striking vertical strike-slip tensor is incorrect");
+
+    const auto horizontal =
+        wave3d::double_couple_from_strike_dip_rake(
+            moment_nm, 0.0, 0.0, 0.0);
+    expect(
+        near(horizontal.m_yz_nm, -moment_nm, 1.0e-3) &&
+            near(horizontal.m_xz_nm, 0.0, 1.0e-3),
+        "NED north-down component did not map to Wave3D Myz");
+
+    const auto reverse = wave3d::double_couple_from_strike_dip_rake(
+        moment_nm, 0.0, 45.0, 90.0);
+    const auto normal = wave3d::double_couple_from_strike_dip_rake(
+        moment_nm, 0.0, 45.0, -90.0);
+    expect(
+        near(reverse.m_xx_nm, -moment_nm, 1.0e-3) &&
+            near(reverse.m_yy_nm, 0.0, 1.0e-3) &&
+            near(reverse.m_zz_nm, moment_nm, 1.0e-3),
+        "north-striking reverse-fault tensor is incorrect");
+    expect(
+        near(normal.m_xx_nm, moment_nm, 1.0e-3) &&
+            near(normal.m_zz_nm, -moment_nm, 1.0e-3),
+        "north-striking normal-fault tensor is incorrect");
+
+    const auto oblique = wave3d::double_couple_from_strike_dip_rake(
+        moment_nm, 123.0, 38.0, -47.0);
+    expect(
+        near(
+            oblique.m_xx_nm + oblique.m_yy_nm + oblique.m_zz_nm,
+            0.0,
+            1.0e-3),
+        "double-couple tensor must be trace free");
+    expect(
+        near(scalar_moment(oblique), moment_nm, 1.0e-3),
+        "double-couple tensor must preserve scalar moment");
+
+    for (const auto& invalid : std::vector<std::vector<double>>{
+             {0.0, 0.0, 45.0, 0.0},
+             {moment_nm, 360.0, 45.0, 0.0},
+             {moment_nm, 0.0, 91.0, 0.0},
+             {moment_nm, 0.0, 45.0, 181.0},
+             {moment_nm,
+              0.0,
+              std::numeric_limits<double>::quiet_NaN(),
+              0.0}}) {
+        bool threw = false;
+        try {
+            static_cast<void>(
+                wave3d::double_couple_from_strike_dip_rake(
+                    invalid[0], invalid[1], invalid[2], invalid[3]));
+        } catch (const std::invalid_argument&) {
+            threw = true;
+        }
+        expect(threw, "invalid double-couple parameter must fail");
+    }
+}
+
 void test_ricker_wavelet() {
     const wave3d::RickerWavelet wavelet{20.0, 0.05, 2.0};
     expect(
@@ -206,6 +283,7 @@ void test_receiver_preparation() {
 } // namespace
 
 int main() {
+    test_double_couple_conversion();
     test_ricker_wavelet();
     test_source_preparation();
     test_receiver_preparation();

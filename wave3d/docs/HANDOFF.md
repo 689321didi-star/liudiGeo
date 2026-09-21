@@ -1861,3 +1861,41 @@ full suite, Overthrust propagation, screenshots, or every optional build unless
 their risk boundary requires it. The release milestone still runs the complete
 affected matrix. This documentation-only amendment was checked with `git diff
 --check`; no build was required.
+
+## Increment 28 source mechanisms
+
+**Status:** Verified on 2026-09-21.
+
+The active-shot editor now enables a double-couple source defined by positive
+scalar moment and strike/dip/rake. Core conversion evaluates the GFZ-documented
+Aki–Richards equations in north-east-down order and maps them to Wave3D's
+east-north-down tensor components. Canonical strike-slip, normal, and reverse
+mechanisms, zero trace, scalar-moment norm, input bounds, and non-finite values
+are tested. The general tensor passed to the solver is unchanged.
+
+Experiment drafts now write `wave3d.desktop.experiment.v3`; versions 1 and 2
+remain readable. The UI persists the four mechanism parameters and displays the
+resolved six-component tensor. Multi-shot and acquisition work were not
+included.
+
+Validation:
+
+```text
+cmake --build build/desktop24 -j2 --target \
+  wave3d_acquisition_tests wave3d_desktop_experiment_tests \
+  wave3d_desktop_shell_tests
+ctest --test-dir build/desktop24 \
+  -R 'wave3d_(acquisition|desktop_experiment|desktop_shell)_tests' \
+  --output-on-failure
+# 3/3 passed
+
+cmake --build build/desktop19 -j2 --target \
+  wave3d_desktop_experiment_tests wave3d_desktop_shell_tests
+ctest --test-dir build/desktop19 \
+  -R 'wave3d_desktop_(experiment|shell)_tests' --output-on-failure
+# CUDA/YAML/SEG-Y-off boundary: 2/2 passed
+```
+
+No screenshot, Overthrust propagation, CUDA regression, or full suite was run;
+this increment changes source parameterization and desktop state, not the
+propagator, renderer, or output format.

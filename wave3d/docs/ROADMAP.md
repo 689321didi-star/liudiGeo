@@ -703,6 +703,13 @@ the complete matrix is reserved for broad changes and release qualification.
 Finish double-couple presets and a convention-documented, numerically tested
 strike/dip/rake conversion for the active shot.
 
+**Status:** Verified on 2026-09-21. The core now converts positive scalar
+moment plus Aki–Richards strike/dip/rake into the established east-north-down
+tensor order. The desktop mode is enabled, previews all six resolved
+components, and persists schema-v3 drafts while reading versions 1 and 2.
+Focused scientific, persistence, shell, and CUDA/YAML/SEG-Y-off boundary tests
+passed.
+
 ### Increment 29 — Acquisition geometry
 
 Add receiver lines, explicit CSV coordinates, reusable templates, translation,

@@ -125,6 +125,20 @@ void test_defaults_and_resolution() {
             manual_resolved.source.moment.m_xy_nm == 1.0e12,
         "manual moment tensor did not remain exact");
 
+    auto double_couple = draft;
+    double_couple.source_mode =
+        wave3d::desktop::DraftSourceMode::DoubleCouple;
+    double_couple.double_couple = {2.0e12, 0.0, 90.0, 0.0};
+    const auto double_couple_resolved =
+        wave3d::desktop::ExperimentDraftStore::resolve(
+            double_couple, grid(), extrema());
+    expect(
+        std::abs(double_couple_resolved.source.moment.m_xy_nm - 2.0e12) <
+                1.0e-3 &&
+            std::abs(double_couple_resolved.source.moment.m_xx_nm) < 1.0e-3 &&
+            std::abs(double_couple_resolved.source.moment.m_yy_nm) < 1.0e-3,
+        "double-couple draft did not resolve through the core conversion");
+
     auto invalid = draft;
     invalid.dt_s = 0.01;
     expect_rejected(
@@ -154,6 +168,11 @@ void test_defaults_and_resolution() {
     expect_rejected(
         [&] { wave3d::desktop::ExperimentDraftStore::validate(invalid); },
         "zero manual moment tensor must be rejected");
+    invalid = double_couple;
+    invalid.double_couple.strike_deg = 360.0;
+    expect_rejected(
+        [&] { wave3d::desktop::ExperimentDraftStore::validate(invalid); },
+        "out-of-range double-couple strike must be rejected");
     invalid = draft;
     invalid.receiver_grid->count_x = 1;
     expect_rejected(
@@ -225,15 +244,19 @@ void test_atomic_persistence() {
         "experiment JSON did not round trip exactly");
 
     draft.total_time_s = 4.25;
-    draft.source_mode = wave3d::desktop::DraftSourceMode::MomentTensor;
-    draft.moment_tensor_nm = {0.0, 0.0, 0.0, 1.0e12, 0.0, 0.0};
+    draft.source_mode = wave3d::desktop::DraftSourceMode::DoubleCouple;
+    draft.double_couple = {3.0e12, 123.0, 38.0, -47.0};
     wave3d::desktop::ExperimentDraftStore::save(temporary.path(), draft);
     loaded = wave3d::desktop::ExperimentDraftStore::load(
         temporary.path(), QStringLiteral("shot-001"));
     expect(
         loaded.total_time_s == 4.25 &&
-            loaded.source_mode == wave3d::desktop::DraftSourceMode::MomentTensor &&
-            loaded.moment_tensor_nm.m_xy_nm == 1.0e12,
+            loaded.source_mode ==
+                wave3d::desktop::DraftSourceMode::DoubleCouple &&
+            loaded.double_couple.scalar_moment_nm == 3.0e12 &&
+            loaded.double_couple.strike_deg == 123.0 &&
+            loaded.double_couple.dip_deg == 38.0 &&
+            loaded.double_couple.rake_deg == -47.0,
         "atomic draft replacement did not retain the new complete document");
     expect(
         bytes(root.filePath(QStringLiteral("project.wave3d.json"))) ==
@@ -252,9 +275,33 @@ void test_atomic_persistence() {
     auto legacy_root = QJsonDocument::fromJson(bytes(draft_path)).object();
     legacy_root.insert(
         QStringLiteral("schema"),
+        QString::fromUtf8(wave3d::desktop::kLegacyExperimentDraftSchemaV2));
+    auto legacy_v2_source = legacy_root.value(QStringLiteral("source")).toObject();
+    legacy_v2_source.insert(
+        QStringLiteral("mode"), QStringLiteral("isotropic_explosion"));
+    legacy_v2_source.remove(QStringLiteral("double_couple"));
+    legacy_root.insert(QStringLiteral("source"), legacy_v2_source);
+    QFile legacy_file(draft_path);
+    expect(
+        legacy_file.open(QIODevice::WriteOnly | QIODevice::Truncate),
+        "cannot write version-2 draft fixture");
+    expect(
+        legacy_file.write(QJsonDocument(legacy_root).toJson()) > 0,
+        "cannot publish version-2 draft fixture");
+    legacy_file.close();
+    const auto legacy_v2 = wave3d::desktop::ExperimentDraftStore::load(
+        temporary.path(), QStringLiteral("shot-001"));
+    expect(
+        legacy_v2.receiver_grid.has_value() &&
+            legacy_v2.source_mode ==
+                wave3d::desktop::DraftSourceMode::IsotropicExplosion &&
+            legacy_v2.double_couple.scalar_moment_nm == 1.0e12,
+        "version-2 draft did not migrate with safe double-couple defaults");
+
+    legacy_root.insert(
+        QStringLiteral("schema"),
         QString::fromUtf8(wave3d::desktop::kLegacyExperimentDraftSchema));
     legacy_root.remove(QStringLiteral("acquisition"));
-    QFile legacy_file(draft_path);
     expect(
         legacy_file.open(QIODevice::WriteOnly | QIODevice::Truncate),
         "cannot write legacy draft fixture");

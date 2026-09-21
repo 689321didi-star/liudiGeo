@@ -492,9 +492,9 @@ and CUDA/OpenGL interoperation.
 
 Increment 22 adds `wave3d_desktop_experiment`, a Qt Core persistence and
 resolution layer below the Widgets shell. Each shot may own one mutable
-`source/<shot-id>.experiment.json` document with schema
-`wave3d.desktop.experiment.v2` (the earlier version 1 remains readable for
-migration). Atomic replacement is allowed while editing;
+`source/<shot-id>.experiment.json` document. Increment 28 advances its schema
+to `wave3d.desktop.experiment.v3`; versions 1 and 2 remain readable for
+migration. Atomic replacement is allowed while editing;
 prepared run directories remain immutable and independent. The draft records
 which project model reference it was designed against so a later crop or model
 switch is visible before resaving.
@@ -506,6 +506,15 @@ the existing `SimulationConfig` and `MomentTensorSource`; CFL, dispersion, and
 physical-domain validation are therefore shared with the command-line solver.
 The source marker is presentation state derived from the successfully resolved
 physical point.
+
+Increment 28 resolves a third source mode through the same core source path.
+Its scalar moment and strike/dip/rake are converted with the Aki–Richards
+north-east-down double-couple equations, then permuted to Wave3D's
+east-north-down `Mxx,Myy,Mzz,Mxy,Mxz,Myz` order. The resulting symmetric tensor
+is passed unchanged to `prepare_moment_tensor_source`; neither the propagator
+nor the injection sign convention has a source-mode branch. Schema-v3 drafts
+store both the four defining parameters and the existing inactive source-mode
+values so switching editor modes is lossless.
 
 Increment 23 extends the draft and its resolved form with a surface rectangular
 receiver grid. Public values remain physical metres; resolution generates

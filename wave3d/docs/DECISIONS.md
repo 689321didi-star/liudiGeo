@@ -989,3 +989,21 @@ checks are sufficient for narrow changes, while scientific, cross-boundary,
 and release changes widen validation. This changes scheduling and test
 repetition only; it does not relax the scientific validation ladder or permit
 untested code to be reported as complete.
+
+## D061 — Double-couple input uses Aki–Richards angles in END storage order
+
+**Status:** Accepted and verified, 2026-09-21
+
+The desktop accepts a positive scalar moment in N·m, strike clockwise from
+north in `[0,360)` degrees, dip downward from horizontal in `[0,90]` degrees,
+and rake from strike toward down-dip in `[-180,180]` degrees. The standard
+north-east-down double-couple equations are evaluated first and then permuted
+to Wave3D's `x=east, y=north, z=down` tensor order. No additional sign change is
+applied; the existing tension-positive stress-injection contract remains
+authoritative.
+
+The experiment schema becomes `wave3d.desktop.experiment.v3` and persists the
+four defining double-couple values. Versions 1 and 2 remain readable with safe
+inactive-mode defaults. The resolved source still contains only the general
+symmetric tensor, so propagation and output adapters do not depend on focal
+mechanism parameterization.

@@ -72,6 +72,78 @@ inline void require_valid_moment_tensor(const SymmetricMomentTensor& moment) {
         0.0};
 }
 
+// Aki-Richards double-couple convention. Strike is clockwise from north,
+// dip is downward from horizontal, and rake is measured from strike toward
+// down-dip. The published NED equations are mapped to Wave3D's END axes.
+[[nodiscard]] inline SymmetricMomentTensor double_couple_from_strike_dip_rake(
+    double scalar_moment_nm,
+    double strike_deg,
+    double dip_deg,
+    double rake_deg) {
+    const double values[]{scalar_moment_nm, strike_deg, dip_deg, rake_deg};
+    for (const auto value : values) {
+        if (!std::isfinite(value)) {
+            throw std::invalid_argument(
+                "double-couple parameters must be finite");
+        }
+    }
+    if (!(scalar_moment_nm > 0.0)) {
+        throw std::invalid_argument(
+            "double-couple scalar moment must be positive");
+    }
+    if (strike_deg < 0.0 || strike_deg >= 360.0) {
+        throw std::invalid_argument(
+            "double-couple strike must be in [0, 360) degrees");
+    }
+    if (dip_deg < 0.0 || dip_deg > 90.0) {
+        throw std::invalid_argument(
+            "double-couple dip must be in [0, 90] degrees");
+    }
+    if (rake_deg < -180.0 || rake_deg > 180.0) {
+        throw std::invalid_argument(
+            "double-couple rake must be in [-180, 180] degrees");
+    }
+
+    constexpr double pi = 3.141592653589793238462643383279502884;
+    constexpr double degrees_to_radians = pi / 180.0;
+    const double strike = strike_deg * degrees_to_radians;
+    const double dip = dip_deg * degrees_to_radians;
+    const double rake = rake_deg * degrees_to_radians;
+    const double sin_strike = std::sin(strike);
+    const double cos_strike = std::cos(strike);
+    const double sin_dip = std::sin(dip);
+    const double cos_dip = std::cos(dip);
+    const double sin_rake = std::sin(rake);
+    const double cos_rake = std::cos(rake);
+    const double sin_2strike = std::sin(2.0 * strike);
+    const double cos_2strike = std::cos(2.0 * strike);
+    const double sin_2dip = std::sin(2.0 * dip);
+    const double cos_2dip = std::cos(2.0 * dip);
+
+    // North-east-down components from GFZ IS 3.9 equation (4), DN=0.
+    const double m_nn = -scalar_moment_nm *
+                        (sin_2strike * sin_dip * cos_rake +
+                         sin_strike * sin_strike * sin_2dip * sin_rake);
+    const double m_ee = scalar_moment_nm *
+                        (sin_2strike * sin_dip * cos_rake -
+                         cos_strike * cos_strike * sin_2dip * sin_rake);
+    const double m_dd = scalar_moment_nm * sin_2dip * sin_rake;
+    const double m_ne = scalar_moment_nm *
+                        (cos_2strike * sin_dip * cos_rake +
+                         0.5 * sin_2strike * sin_2dip * sin_rake);
+    const double m_nd = -scalar_moment_nm *
+                        (cos_strike * cos_dip * cos_rake +
+                         sin_strike * cos_2dip * sin_rake);
+    const double m_ed = -scalar_moment_nm *
+                        (sin_strike * cos_dip * cos_rake -
+                         cos_strike * cos_2dip * sin_rake);
+
+    const SymmetricMomentTensor result{
+        m_ee, m_nn, m_dd, m_ne, m_ed, m_nd};
+    require_valid_moment_tensor(result);
+    return result;
+}
+
 inline void require_valid_ricker_wavelet(const RickerWavelet& wavelet) {
     if (!std::isfinite(wavelet.dominant_frequency_hz) ||
         !(wavelet.dominant_frequency_hz > 0.0)) {

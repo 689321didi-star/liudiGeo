@@ -153,13 +153,15 @@ ExperimentEditor::ExperimentEditor(QWidget* parent) : QWidget(parent) {
     auto* source_form = new QFormLayout;
     auto* mode = new QComboBox(source);
     mode->setObjectName(QStringLiteral("sourceModeCombo"));
-    mode->addItem(QStringLiteral("各向同性爆炸源"), 0);
-    mode->addItem(QStringLiteral("手工对称矩张量"), 1);
-    mode->addItem(QStringLiteral("双力偶（后续）"), 2);
-    mode->setToolTip(QStringLiteral("后续提供走向/倾角/滑动角转换"));
-    if (auto* items = qobject_cast<QStandardItemModel*>(mode->model())) {
-        items->item(2)->setEnabled(false);
-    }
+    mode->addItem(
+        QStringLiteral("各向同性爆炸源"),
+        static_cast<int>(DraftSourceMode::IsotropicExplosion));
+    mode->addItem(
+        QStringLiteral("手工对称矩张量"),
+        static_cast<int>(DraftSourceMode::MomentTensor));
+    mode->addItem(
+        QStringLiteral("双力偶（走向/倾角/滑动角）"),
+        static_cast<int>(DraftSourceMode::DoubleCouple));
     source_form->addRow(QStringLiteral("类型："), mode);
     for (const auto& specification : std::array{
              std::tuple{QStringLiteral("X："), QStringLiteral("sourceXSpin")},
@@ -234,6 +236,51 @@ ExperimentEditor::ExperimentEditor(QWidget* parent) : QWidget(parent) {
             (index % 2) * 2 + 1);
     }
     source_pages->addWidget(tensor);
+    auto* double_couple = new QWidget(source_pages);
+    auto* double_couple_form = new QFormLayout(double_couple);
+    double_couple_form->addRow(
+        QStringLiteral("标量矩 M₀ (N·m)："),
+        scientific_edit(
+            QStringLiteral("doubleCoupleMomentEdit"), double_couple));
+    double_couple_form->addRow(
+        QStringLiteral("走向："),
+        double_spin(
+            QStringLiteral("doubleCoupleStrikeSpin"),
+            0.0,
+            359.999,
+            3,
+            QStringLiteral("°"),
+            double_couple));
+    double_couple_form->addRow(
+        QStringLiteral("倾角："),
+        double_spin(
+            QStringLiteral("doubleCoupleDipSpin"),
+            0.0,
+            90.0,
+            3,
+            QStringLiteral("°"),
+            double_couple));
+    double_couple_form->addRow(
+        QStringLiteral("滑动角："),
+        double_spin(
+            QStringLiteral("doubleCoupleRakeSpin"),
+            -180.0,
+            180.0,
+            3,
+            QStringLiteral("°"),
+            double_couple));
+    auto* convention = new QLabel(
+        QStringLiteral(
+            "X 东 / Y 北 / Z 下；走向自北顺时针，滑动角从走向朝下倾方向"),
+        double_couple);
+    convention->setWordWrap(true);
+    double_couple_form->addRow(QStringLiteral("约定："), convention);
+    auto* resolved_tensor = new QLabel(QStringLiteral("等待有效参数"), double_couple);
+    resolved_tensor->setObjectName(QStringLiteral("doubleCoupleTensorLabel"));
+    resolved_tensor->setWordWrap(true);
+    resolved_tensor->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    double_couple_form->addRow(QStringLiteral("转换结果："), resolved_tensor);
+    source_pages->addWidget(double_couple);
     source_layout->addWidget(source_pages);
     layout->addWidget(source);
 
@@ -396,6 +443,14 @@ void ExperimentEditor::set_model_context(
         ->setText(scientific_text(draft.wavelet.peak_rate_s_inv));
     findChild<QLineEdit*>(QStringLiteral("explosionMomentEdit"))
         ->setText(scientific_text(draft.explosion_moment_nm));
+    findChild<QLineEdit*>(QStringLiteral("doubleCoupleMomentEdit"))
+        ->setText(scientific_text(draft.double_couple.scalar_moment_nm));
+    findChild<QDoubleSpinBox*>(QStringLiteral("doubleCoupleStrikeSpin"))
+        ->setValue(draft.double_couple.strike_deg);
+    findChild<QDoubleSpinBox*>(QStringLiteral("doubleCoupleDipSpin"))
+        ->setValue(draft.double_couple.dip_deg);
+    findChild<QDoubleSpinBox*>(QStringLiteral("doubleCoupleRakeSpin"))
+        ->setValue(draft.double_couple.rake_deg);
     const std::array<std::pair<const char*, double>, 6> tensor_values{{
         {"momentMxxEdit", draft.moment_tensor_nm.m_xx_nm},
         {"momentMyyEdit", draft.moment_tensor_nm.m_yy_nm},
@@ -408,8 +463,8 @@ void ExperimentEditor::set_model_context(
             ->setText(scientific_text(value));
     }
     findChild<QComboBox*>(QStringLiteral("sourceModeCombo"))
-        ->setCurrentIndex(
-            draft.source_mode == DraftSourceMode::IsotropicExplosion ? 0 : 1);
+        ->setCurrentIndex(findChild<QComboBox*>(QStringLiteral("sourceModeCombo"))
+                              ->findData(static_cast<int>(draft.source_mode)));
     update_source_mode_page();
     const auto receivers = draft.receiver_grid.value_or(
         ExperimentDraftStore::default_receiver_grid(grid));
@@ -478,10 +533,10 @@ ExperimentDraft ExperimentEditor::current_draft() const {
     draft.source_origin_time_s =
         findChild<QDoubleSpinBox*>(QStringLiteral("sourceOriginTimeSpin"))
             ->value();
-    draft.source_mode =
-        findChild<QComboBox*>(QStringLiteral("sourceModeCombo"))->currentIndex() == 0
-            ? DraftSourceMode::IsotropicExplosion
-            : DraftSourceMode::MomentTensor;
+    draft.source_mode = static_cast<DraftSourceMode>(
+        findChild<QComboBox*>(QStringLiteral("sourceModeCombo"))
+            ->currentData()
+            .toInt());
     draft.explosion_moment_nm = scientific_value(
         findChild<QLineEdit*>(QStringLiteral("explosionMomentEdit")));
     draft.moment_tensor_nm = {
@@ -491,6 +546,14 @@ ExperimentDraft ExperimentEditor::current_draft() const {
         scientific_value(findChild<QLineEdit*>(QStringLiteral("momentMxyEdit"))),
         scientific_value(findChild<QLineEdit*>(QStringLiteral("momentMxzEdit"))),
         scientific_value(findChild<QLineEdit*>(QStringLiteral("momentMyzEdit")))};
+    draft.double_couple = {
+        scientific_value(
+            findChild<QLineEdit*>(QStringLiteral("doubleCoupleMomentEdit"))),
+        findChild<QDoubleSpinBox*>(QStringLiteral("doubleCoupleStrikeSpin"))
+            ->value(),
+        findChild<QDoubleSpinBox*>(QStringLiteral("doubleCoupleDipSpin"))->value(),
+        findChild<QDoubleSpinBox*>(QStringLiteral("doubleCoupleRakeSpin"))
+            ->value()};
     draft.wavelet = {
         findChild<QDoubleSpinBox*>(QStringLiteral("sourceFrequencySpin"))->value(),
         findChild<QDoubleSpinBox*>(QStringLiteral("sourcePeakDelaySpin"))->value(),
@@ -534,6 +597,16 @@ void ExperimentEditor::show_validation(
                 .arg(resolved.acquisition.sample_count)
                 .arg(byte_text(resolved.acquisition.raw_trace_bytes))
                 .arg(byte_text(resolved.acquisition.segy_bytes)));
+    const auto& moment = resolved.source.moment;
+    findChild<QLabel*>(QStringLiteral("doubleCoupleTensorLabel"))
+        ->setText(
+            QStringLiteral("Mxx=%1  Myy=%2  Mzz=%3\nMxy=%4  Mxz=%5  Myz=%6 N·m")
+                .arg(moment.m_xx_nm, 0, 'g', 7)
+                .arg(moment.m_yy_nm, 0, 'g', 7)
+                .arg(moment.m_zz_nm, 0, 'g', 7)
+                .arg(moment.m_xy_nm, 0, 'g', 7)
+                .arg(moment.m_xz_nm, 0, 'g', 7)
+                .arg(moment.m_yz_nm, 0, 'g', 7));
     findChild<QPushButton*>(QStringLiteral("saveExperimentDraftButton"))
         ->setEnabled(true);
     if (model_reference_changed) {
@@ -549,6 +622,8 @@ void ExperimentEditor::show_validation_error(const QString& message) {
         ->setEnabled(false);
     findChild<QLabel*>(QStringLiteral("acquisitionEstimateLabel"))
         ->setText(QStringLiteral("无法生成观测系统或输出预估"));
+    findChild<QLabel*>(QStringLiteral("doubleCoupleTensorLabel"))
+        ->setText(QStringLiteral("参数无效，无法转换"));
 }
 
 void ExperimentEditor::mark_saved() {
@@ -571,7 +646,7 @@ void ExperimentEditor::update_source_mode_page() {
     const auto index =
         findChild<QComboBox*>(QStringLiteral("sourceModeCombo"))->currentIndex();
     findChild<QStackedWidget*>(QStringLiteral("sourceParameterStack"))
-        ->setCurrentIndex(index == 0 ? 0 : 1);
+        ->setCurrentIndex(index);
 }
 
 } // namespace wave3d::desktop

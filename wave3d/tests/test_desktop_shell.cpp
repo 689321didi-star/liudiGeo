@@ -370,14 +370,44 @@ void test_hdf5_model_import() {
         !require_child<QAction>(window, "validateExperimentAction")->isEnabled(),
         "desktop without the complete HDF5/YAML/SEG-Y adapters exposed preflight");
 #endif
-    const auto* source_modes =
+    auto* source_modes =
         require_child<QComboBox>(window, "sourceModeCombo");
     expect(
         source_modes->count() == 3 &&
-            !source_modes->model()
+            source_modes->model()
                  ->flags(source_modes->model()->index(2, 0))
                  .testFlag(Qt::ItemIsEnabled),
-        "future double-couple source option is not present and gated");
+        "double-couple source option is not enabled");
+
+    source_modes->setCurrentIndex(2);
+    require_child<QLineEdit>(window, "doubleCoupleMomentEdit")
+        ->setText(QStringLiteral("2e12"));
+    require_child<QDoubleSpinBox>(window, "doubleCoupleStrikeSpin")
+        ->setValue(0.0);
+    require_child<QDoubleSpinBox>(window, "doubleCoupleDipSpin")
+        ->setValue(90.0);
+    require_child<QDoubleSpinBox>(window, "doubleCoupleRakeSpin")
+        ->setValue(0.0);
+    expect(
+        require_child<QLabel>(window, "doubleCoupleTensorLabel")
+                ->text()
+                .contains(QStringLiteral("Mxy=2e+12")) &&
+            require_child<QPushButton>(window, "saveExperimentDraftButton")
+                ->isEnabled(),
+        "valid double-couple parameters did not show the resolved tensor");
+    error.clear();
+    expect(
+        window.save_experiment_draft(&error),
+        "valid double-couple draft save failed");
+    const auto saved_double_couple =
+        wave3d::desktop::ExperimentDraftStore::load(
+            project_root, QStringLiteral("shot-001"));
+    expect(
+        saved_double_couple.source_mode ==
+                wave3d::desktop::DraftSourceMode::DoubleCouple &&
+            saved_double_couple.double_couple.scalar_moment_nm == 2.0e12 &&
+            saved_double_couple.double_couple.dip_deg == 90.0,
+        "double-couple UI values did not persist");
 
     const std::array<std::pair<const char*, QSize>, 3> expected_images{{
         {"xyViewport", QSize(4, 3)},

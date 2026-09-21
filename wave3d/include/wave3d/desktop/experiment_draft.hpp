@@ -13,13 +13,23 @@
 namespace wave3d::desktop {
 
 inline constexpr auto kExperimentDraftSchema =
-    "wave3d.desktop.experiment.v2";
+    "wave3d.desktop.experiment.v3";
 inline constexpr auto kLegacyExperimentDraftSchema =
     "wave3d.desktop.experiment.v1";
+inline constexpr auto kLegacyExperimentDraftSchemaV2 =
+    "wave3d.desktop.experiment.v2";
 
 enum class DraftSourceMode {
     IsotropicExplosion,
     MomentTensor,
+    DoubleCouple,
+};
+
+struct DoubleCoupleParameters {
+    double scalar_moment_nm{1.0e12};
+    double strike_deg{0.0};
+    double dip_deg{90.0};
+    double rake_deg{0.0};
 };
 
 struct RectangularReceiverGrid {
@@ -53,6 +63,7 @@ struct ExperimentDraft {
     double explosion_moment_nm{1.0e12};
     SymmetricMomentTensor moment_tensor_nm{
         1.0e12, 1.0e12, 1.0e12, 0.0, 0.0, 0.0};
+    DoubleCoupleParameters double_couple{};
     RickerWavelet wavelet{3.0, 1.0 / 3.0, 1.0};
     std::optional<RectangularReceiverGrid> receiver_grid;
 };

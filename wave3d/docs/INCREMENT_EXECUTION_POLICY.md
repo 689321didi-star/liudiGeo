@@ -16,8 +16,8 @@ without a schema rewrite.
 
 The remaining active increments are:
 
-1. **Increment 28 — source mechanisms:** finish double-couple presets and the
-   documented strike/dip/rake conversion for the active shot.
+1. **Increment 28 — source mechanisms (complete):** double-couple presets and
+   the documented strike/dip/rake conversion for the active shot.
 2. **Increment 29 — acquisition geometry:** add receiver lines, explicit CSV
    coordinates, reusable templates, translation, and duplicate validation for
    the active shot.
