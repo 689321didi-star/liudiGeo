@@ -715,6 +715,12 @@ passed.
 Add receiver lines, explicit CSV coordinates, reusable templates, translation,
 and duplicate validation for the active shot.
 
+**Status:** Verified on 2026-09-21. Rectangle, line, and explicit CSV modes now
+resolve through one ordered receiver list. Schema-v4 drafts embed imported
+coordinates, templates round-trip independently, and X/Y translation precedes
+surface/bounds/count/duplicate validation. Focused complete-desktop and
+CUDA/YAML/SEG-Y-off boundary tests passed.
+
 ### Increment 30 — SEG-Y model conversion
 
 Convert the supported regular IEEE-float property-volume subset into canonical

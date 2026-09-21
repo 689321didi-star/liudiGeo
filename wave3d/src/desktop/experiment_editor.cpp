@@ -2,6 +2,8 @@
 
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QFile>
+#include <QFileDialog>
 #include <QFormLayout>
 #include <QGridLayout>
 #include <QGroupBox>
@@ -14,7 +16,6 @@
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStackedWidget>
-#include <QStandardItemModel>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -286,27 +287,36 @@ ExperimentEditor::ExperimentEditor(QWidget* parent) : QWidget(parent) {
 
     auto* acquisition = new QGroupBox(QStringLiteral("观测系统"), this);
     acquisition->setObjectName(QStringLiteral("acquisitionEditorGroup"));
-    auto* acquisition_form = new QFormLayout(acquisition);
+    auto* acquisition_layout = new QVBoxLayout(acquisition);
+    auto* acquisition_form = new QFormLayout;
     auto* geometry = new QComboBox(acquisition);
     geometry->setObjectName(QStringLiteral("receiverGeometryCombo"));
-    geometry->addItem(QStringLiteral("规则矩形面阵"), 0);
-    geometry->addItem(QStringLiteral("接收器测线（后续）"), 1);
-    geometry->addItem(QStringLiteral("CSV 不规则阵列（后续）"), 2);
-    if (auto* items = qobject_cast<QStandardItemModel*>(geometry->model())) {
-        items->item(1)->setEnabled(false);
-        items->item(2)->setEnabled(false);
-    }
+    geometry->addItem(
+        QStringLiteral("规则矩形面阵"),
+        static_cast<int>(ReceiverGeometryMode::SurfaceRectangular));
+    geometry->addItem(
+        QStringLiteral("接收器测线"),
+        static_cast<int>(ReceiverGeometryMode::SurfaceLine));
+    geometry->addItem(
+        QStringLiteral("CSV 显式坐标"),
+        static_cast<int>(ReceiverGeometryMode::ExplicitCoordinates));
     acquisition_form->addRow(QStringLiteral("几何类型："), geometry);
+    acquisition_layout->addLayout(acquisition_form);
+
+    auto* receiver_pages = new QStackedWidget(acquisition);
+    receiver_pages->setObjectName(QStringLiteral("receiverGeometryStack"));
+    auto* rectangular_page = new QWidget(receiver_pages);
+    auto* rectangular_form = new QFormLayout(rectangular_page);
     for (const auto& specification : std::array{
              std::pair{QStringLiteral("X 方向数量："),
                        QStringLiteral("receiverCountXSpin")},
              std::pair{QStringLiteral("Y 方向数量："),
                        QStringLiteral("receiverCountYSpin")}}) {
-        auto* spin = new QSpinBox(acquisition);
+        auto* spin = new QSpinBox(rectangular_page);
         spin->setObjectName(specification.second);
         spin->setRange(2, 1001);
         spin->setKeyboardTracking(false);
-        acquisition_form->addRow(specification.first, spin);
+        rectangular_form->addRow(specification.first, spin);
     }
     for (const auto& specification : std::array{
              std::pair{QStringLiteral("X 起点："),
@@ -317,7 +327,7 @@ ExperimentEditor::ExperimentEditor(QWidget* parent) : QWidget(parent) {
                        QStringLiteral("receiverMinYSpin")},
              std::pair{QStringLiteral("Y 终点："),
                        QStringLiteral("receiverMaxYSpin")}}) {
-        acquisition_form->addRow(
+        rectangular_form->addRow(
             specification.first,
             double_spin(
                 specification.second,
@@ -325,8 +335,68 @@ ExperimentEditor::ExperimentEditor(QWidget* parent) : QWidget(parent) {
                 1.0e12,
                 3,
                 QStringLiteral(" m"),
-                acquisition));
+                rectangular_page));
     }
+    receiver_pages->addWidget(rectangular_page);
+
+    auto* line_page = new QWidget(receiver_pages);
+    auto* line_form = new QFormLayout(line_page);
+    auto* line_count = new QSpinBox(line_page);
+    line_count->setObjectName(QStringLiteral("receiverLineCountSpin"));
+    line_count->setRange(2, 1'100'000);
+    line_count->setKeyboardTracking(false);
+    line_form->addRow(QStringLiteral("接收点数量："), line_count);
+    for (const auto& specification : std::array{
+             std::pair{QStringLiteral("起点 X："),
+                       QStringLiteral("receiverLineFirstXSpin")},
+             std::pair{QStringLiteral("起点 Y："),
+                       QStringLiteral("receiverLineFirstYSpin")},
+             std::pair{QStringLiteral("终点 X："),
+                       QStringLiteral("receiverLineLastXSpin")},
+             std::pair{QStringLiteral("终点 Y："),
+                       QStringLiteral("receiverLineLastYSpin")}}) {
+        line_form->addRow(
+            specification.first,
+            double_spin(
+                specification.second,
+                -1.0e12,
+                1.0e12,
+                3,
+                QStringLiteral(" m"),
+                line_page));
+    }
+    receiver_pages->addWidget(line_page);
+
+    auto* explicit_page = new QWidget(receiver_pages);
+    auto* explicit_layout = new QVBoxLayout(explicit_page);
+    auto* explicit_count = new QLabel(QStringLiteral("尚未导入坐标"), explicit_page);
+    explicit_count->setObjectName(QStringLiteral("explicitReceiverCountLabel"));
+    explicit_layout->addWidget(explicit_count);
+    auto* import_csv = new QPushButton(QStringLiteral("导入 CSV…"), explicit_page);
+    import_csv->setObjectName(QStringLiteral("importReceiverCsvButton"));
+    explicit_layout->addWidget(import_csv);
+    receiver_pages->addWidget(explicit_page);
+    acquisition_layout->addWidget(receiver_pages);
+
+    auto* common_form = new QFormLayout;
+    common_form->addRow(
+        QStringLiteral("整体平移 X："),
+        double_spin(
+            QStringLiteral("receiverTranslateXSpin"),
+            -1.0e12,
+            1.0e12,
+            3,
+            QStringLiteral(" m"),
+            acquisition));
+    common_form->addRow(
+        QStringLiteral("整体平移 Y："),
+        double_spin(
+            QStringLiteral("receiverTranslateYSpin"),
+            -1.0e12,
+            1.0e12,
+            3,
+            QStringLiteral(" m"),
+            acquisition));
     auto* receiver_depth = double_spin(
         QStringLiteral("receiverDepthSpin"),
         0.0,
@@ -335,14 +405,23 @@ ExperimentEditor::ExperimentEditor(QWidget* parent) : QWidget(parent) {
         QStringLiteral(" m"),
         acquisition);
     receiver_depth->setToolTip(QStringLiteral("当前求解范围固定为自由表面接收"));
-    acquisition_form->addRow(QStringLiteral("接收深度："), receiver_depth);
+    common_form->addRow(QStringLiteral("接收深度："), receiver_depth);
     auto* components = new QLabel(QStringLiteral("Vx / Vy / Vz"), acquisition);
     components->setObjectName(QStringLiteral("receiverComponentsLabel"));
-    acquisition_form->addRow(QStringLiteral("记录分量："), components);
+    common_form->addRow(QStringLiteral("记录分量："), components);
     auto* estimate = new QLabel(QStringLiteral("等待模型"), acquisition);
     estimate->setObjectName(QStringLiteral("acquisitionEstimateLabel"));
     estimate->setWordWrap(true);
-    acquisition_form->addRow(QStringLiteral("规模预估："), estimate);
+    common_form->addRow(QStringLiteral("规模预估："), estimate);
+    acquisition_layout->addLayout(common_form);
+    auto* template_actions = new QHBoxLayout;
+    auto* load_template = new QPushButton(QStringLiteral("载入模板…"), acquisition);
+    load_template->setObjectName(QStringLiteral("loadAcquisitionTemplateButton"));
+    auto* save_template = new QPushButton(QStringLiteral("保存模板…"), acquisition);
+    save_template->setObjectName(QStringLiteral("saveAcquisitionTemplateButton"));
+    template_actions->addWidget(load_template);
+    template_actions->addWidget(save_template);
+    acquisition_layout->addLayout(template_actions);
     layout->addWidget(acquisition);
 
     auto* validation = new QLabel(QStringLiteral("等待模型"), this);
@@ -372,6 +451,44 @@ ExperimentEditor::ExperimentEditor(QWidget* parent) : QWidget(parent) {
     connect(mode, &QComboBox::currentIndexChanged, this, [this](int) {
         update_source_mode_page();
         publish_change();
+    });
+    connect(geometry, &QComboBox::currentIndexChanged, this, [this](int) {
+        update_receiver_mode_page();
+        publish_change();
+    });
+    connect(import_csv, &QPushButton::clicked, this, [this] {
+        const auto path = QFileDialog::getOpenFileName(
+            this, QStringLiteral("导入接收器 CSV"), QString(),
+            QStringLiteral("CSV (*.csv);;所有文件 (*)"));
+        if (!path.isEmpty()) {
+            QString error;
+            if (!import_receiver_csv_file(path, &error)) {
+                show_validation_error(error);
+            }
+        }
+    });
+    connect(save_template, &QPushButton::clicked, this, [this] {
+        const auto path = QFileDialog::getSaveFileName(
+            this, QStringLiteral("保存观测系统模板"), QString(),
+            QStringLiteral("Wave3D acquisition (*.wave3d-acquisition.json)"));
+        if (!path.isEmpty()) {
+            QString error;
+            if (!save_acquisition_template_file(path, &error)) {
+                show_validation_error(error);
+            }
+        }
+    });
+    connect(load_template, &QPushButton::clicked, this, [this] {
+        const auto path = QFileDialog::getOpenFileName(
+            this, QStringLiteral("载入观测系统模板"), QString(),
+            QStringLiteral("Wave3D acquisition (*.wave3d-acquisition.json);;"
+                           "所有文件 (*)"));
+        if (!path.isEmpty()) {
+            QString error;
+            if (!load_acquisition_template_file(path, &error)) {
+                show_validation_error(error);
+            }
+        }
     });
     connect(save, &QPushButton::clicked, this, [this] {
         if (save_callback_) {
@@ -466,21 +583,8 @@ void ExperimentEditor::set_model_context(
         ->setCurrentIndex(findChild<QComboBox*>(QStringLiteral("sourceModeCombo"))
                               ->findData(static_cast<int>(draft.source_mode)));
     update_source_mode_page();
-    const auto receivers = draft.receiver_grid.value_or(
-        ExperimentDraftStore::default_receiver_grid(grid));
-    findChild<QSpinBox*>(QStringLiteral("receiverCountXSpin"))
-        ->setValue(static_cast<int>(receivers.count_x));
-    findChild<QSpinBox*>(QStringLiteral("receiverCountYSpin"))
-        ->setValue(static_cast<int>(receivers.count_y));
-    const std::array<std::pair<const char*, double>, 5> receiver_values{{
-        {"receiverMinXSpin", receivers.minimum_x_m},
-        {"receiverMaxXSpin", receivers.maximum_x_m},
-        {"receiverMinYSpin", receivers.minimum_y_m},
-        {"receiverMaxYSpin", receivers.maximum_y_m},
-        {"receiverDepthSpin", receivers.depth_m}}};
-    for (const auto& [name, value] : receiver_values) {
-        findChild<QDoubleSpinBox*>(QString::fromUtf8(name))->setValue(value);
-    }
+    populate_acquisition(
+        draft.acquisition.value_or(ExperimentDraftStore::default_acquisition(grid)));
     findChild<QLabel*>(QStringLiteral("experimentSaveStateLabel"))
         ->setText(model_reference_changed
                       ? QStringLiteral("草稿来自另一模型，请重新验证并保存")
@@ -494,6 +598,7 @@ void ExperimentEditor::clear_model_context() {
     populating_ = true;
     shot_id_.clear();
     model_reference_.clear();
+    explicit_receivers_.clear();
     findChild<QLabel*>(QStringLiteral("experimentShotLabel"))
         ->setText(QStringLiteral("—"));
     findChild<QLabel*>(QStringLiteral("workspaceGridSummaryLabel"))
@@ -506,6 +611,8 @@ void ExperimentEditor::clear_model_context() {
         ->setText(QStringLiteral("等待模型"));
     findChild<QLabel*>(QStringLiteral("acquisitionEstimateLabel"))
         ->setText(QStringLiteral("等待模型"));
+    findChild<QLabel*>(QStringLiteral("explicitReceiverCountLabel"))
+        ->setText(QStringLiteral("尚未导入坐标"));
     setEnabled(false);
     populating_ = false;
 }
@@ -559,7 +666,17 @@ ExperimentDraft ExperimentEditor::current_draft() const {
         findChild<QDoubleSpinBox*>(QStringLiteral("sourcePeakDelaySpin"))->value(),
         scientific_value(
             findChild<QLineEdit*>(QStringLiteral("sourcePeakRateEdit")))};
-    draft.receiver_grid = RectangularReceiverGrid{
+    draft.acquisition = current_acquisition();
+    return draft;
+}
+
+AcquisitionGeometry ExperimentEditor::current_acquisition() const {
+    AcquisitionGeometry result;
+    result.mode = static_cast<ReceiverGeometryMode>(
+        findChild<QComboBox*>(QStringLiteral("receiverGeometryCombo"))
+            ->currentData()
+            .toInt());
+    result.rectangular = {
         static_cast<std::size_t>(
             findChild<QSpinBox*>(QStringLiteral("receiverCountXSpin"))->value()),
         static_cast<std::size_t>(
@@ -569,7 +686,136 @@ ExperimentDraft ExperimentEditor::current_draft() const {
         findChild<QDoubleSpinBox*>(QStringLiteral("receiverMinYSpin"))->value(),
         findChild<QDoubleSpinBox*>(QStringLiteral("receiverMaxYSpin"))->value(),
         findChild<QDoubleSpinBox*>(QStringLiteral("receiverDepthSpin"))->value()};
-    return draft;
+    result.line = {
+        static_cast<std::size_t>(
+            findChild<QSpinBox*>(QStringLiteral("receiverLineCountSpin"))->value()),
+        findChild<QDoubleSpinBox*>(QStringLiteral("receiverLineFirstXSpin"))
+            ->value(),
+        findChild<QDoubleSpinBox*>(QStringLiteral("receiverLineFirstYSpin"))
+            ->value(),
+        findChild<QDoubleSpinBox*>(QStringLiteral("receiverLineLastXSpin"))
+            ->value(),
+        findChild<QDoubleSpinBox*>(QStringLiteral("receiverLineLastYSpin"))
+            ->value(),
+        findChild<QDoubleSpinBox*>(QStringLiteral("receiverDepthSpin"))->value()};
+    result.explicit_coordinates = explicit_receivers_;
+    result.translate_x_m =
+        findChild<QDoubleSpinBox*>(QStringLiteral("receiverTranslateXSpin"))
+            ->value();
+    result.translate_y_m =
+        findChild<QDoubleSpinBox*>(QStringLiteral("receiverTranslateYSpin"))
+            ->value();
+    return result;
+}
+
+void ExperimentEditor::populate_acquisition(
+    const AcquisitionGeometry& acquisition) {
+    findChild<QComboBox*>(QStringLiteral("receiverGeometryCombo"))
+        ->setCurrentIndex(
+            findChild<QComboBox*>(QStringLiteral("receiverGeometryCombo"))
+                ->findData(static_cast<int>(acquisition.mode)));
+    findChild<QSpinBox*>(QStringLiteral("receiverCountXSpin"))
+        ->setValue(static_cast<int>(acquisition.rectangular.count_x));
+    findChild<QSpinBox*>(QStringLiteral("receiverCountYSpin"))
+        ->setValue(static_cast<int>(acquisition.rectangular.count_y));
+    const std::array<std::pair<const char*, double>, 4> rectangular_values{{
+        {"receiverMinXSpin", acquisition.rectangular.minimum_x_m},
+        {"receiverMaxXSpin", acquisition.rectangular.maximum_x_m},
+        {"receiverMinYSpin", acquisition.rectangular.minimum_y_m},
+        {"receiverMaxYSpin", acquisition.rectangular.maximum_y_m}}};
+    for (const auto& [name, value] : rectangular_values) {
+        findChild<QDoubleSpinBox*>(QString::fromUtf8(name))->setValue(value);
+    }
+    findChild<QSpinBox*>(QStringLiteral("receiverLineCountSpin"))
+        ->setValue(static_cast<int>(acquisition.line.count));
+    const std::array<std::pair<const char*, double>, 4> line_values{{
+        {"receiverLineFirstXSpin", acquisition.line.first_x_m},
+        {"receiverLineFirstYSpin", acquisition.line.first_y_m},
+        {"receiverLineLastXSpin", acquisition.line.last_x_m},
+        {"receiverLineLastYSpin", acquisition.line.last_y_m}}};
+    for (const auto& [name, value] : line_values) {
+        findChild<QDoubleSpinBox*>(QString::fromUtf8(name))->setValue(value);
+    }
+    findChild<QDoubleSpinBox*>(QStringLiteral("receiverDepthSpin"))
+        ->setValue(0.0);
+    findChild<QDoubleSpinBox*>(QStringLiteral("receiverTranslateXSpin"))
+        ->setValue(acquisition.translate_x_m);
+    findChild<QDoubleSpinBox*>(QStringLiteral("receiverTranslateYSpin"))
+        ->setValue(acquisition.translate_y_m);
+    explicit_receivers_ = acquisition.explicit_coordinates;
+    findChild<QLabel*>(QStringLiteral("explicitReceiverCountLabel"))
+        ->setText(explicit_receivers_.empty()
+                      ? QStringLiteral("尚未导入坐标")
+                      : QStringLiteral("已载入 %1 个有序接收点")
+                            .arg(explicit_receivers_.size()));
+    update_receiver_mode_page();
+}
+
+bool ExperimentEditor::import_receiver_csv_file(
+    const QString& path,
+    QString* error) {
+    try {
+        QFile input(path);
+        if (!input.open(QIODevice::ReadOnly)) {
+            throw std::invalid_argument("cannot open receiver CSV");
+        }
+        const auto receivers = ExperimentDraftStore::parse_receiver_csv(
+            input.readAll());
+        const auto was_populating = populating_;
+        populating_ = true;
+        explicit_receivers_ = receivers;
+        auto* combo =
+            findChild<QComboBox*>(QStringLiteral("receiverGeometryCombo"));
+        combo->setCurrentIndex(combo->findData(
+            static_cast<int>(ReceiverGeometryMode::ExplicitCoordinates)));
+        findChild<QLabel*>(QStringLiteral("explicitReceiverCountLabel"))
+            ->setText(QStringLiteral("已载入 %1 个有序接收点")
+                          .arg(explicit_receivers_.size()));
+        update_receiver_mode_page();
+        populating_ = was_populating;
+        publish_change();
+        return true;
+    } catch (const std::exception& exception) {
+        if (error) {
+            *error = QString::fromUtf8(exception.what());
+        }
+        return false;
+    }
+}
+
+bool ExperimentEditor::save_acquisition_template_file(
+    const QString& path,
+    QString* error) const {
+    try {
+        ExperimentDraftStore::save_acquisition_template(
+            path, current_acquisition());
+        return true;
+    } catch (const std::exception& exception) {
+        if (error) {
+            *error = QString::fromUtf8(exception.what());
+        }
+        return false;
+    }
+}
+
+bool ExperimentEditor::load_acquisition_template_file(
+    const QString& path,
+    QString* error) {
+    try {
+        const auto acquisition =
+            ExperimentDraftStore::load_acquisition_template(path);
+        const auto was_populating = populating_;
+        populating_ = true;
+        populate_acquisition(acquisition);
+        populating_ = was_populating;
+        publish_change();
+        return true;
+    } catch (const std::exception& exception) {
+        if (error) {
+            *error = QString::fromUtf8(exception.what());
+        }
+        return false;
+    }
 }
 
 void ExperimentEditor::show_validation(
@@ -646,6 +892,14 @@ void ExperimentEditor::update_source_mode_page() {
     const auto index =
         findChild<QComboBox*>(QStringLiteral("sourceModeCombo"))->currentIndex();
     findChild<QStackedWidget*>(QStringLiteral("sourceParameterStack"))
+        ->setCurrentIndex(index);
+}
+
+void ExperimentEditor::update_receiver_mode_page() {
+    const auto index =
+        findChild<QComboBox*>(QStringLiteral("receiverGeometryCombo"))
+            ->currentIndex();
+    findChild<QStackedWidget*>(QStringLiteral("receiverGeometryStack"))
         ->setCurrentIndex(index);
 }
 

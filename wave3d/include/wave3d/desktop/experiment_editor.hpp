@@ -23,6 +23,13 @@ public:
     void clear_model_context();
 
     [[nodiscard]] ExperimentDraft current_draft() const;
+    bool import_receiver_csv_file(const QString& path, QString* error = nullptr);
+    bool save_acquisition_template_file(
+        const QString& path,
+        QString* error = nullptr) const;
+    bool load_acquisition_template_file(
+        const QString& path,
+        QString* error = nullptr);
     void show_validation(
         const ResolvedExperimentDraft& resolved,
         bool model_reference_changed);
@@ -32,11 +39,15 @@ public:
 private:
     void publish_change();
     void update_source_mode_page();
+    void update_receiver_mode_page();
+    [[nodiscard]] AcquisitionGeometry current_acquisition() const;
+    void populate_acquisition(const AcquisitionGeometry& acquisition);
 
     std::function<void()> change_callback_;
     std::function<void()> save_callback_;
     QString shot_id_;
     QString model_reference_;
+    std::vector<PhysicalPoint3D> explicit_receivers_;
     bool populating_{false};
 };
 

@@ -18,9 +18,9 @@ The remaining active increments are:
 
 1. **Increment 28 — source mechanisms (complete):** double-couple presets and
    the documented strike/dip/rake conversion for the active shot.
-2. **Increment 29 — acquisition geometry:** add receiver lines, explicit CSV
-   coordinates, reusable templates, translation, and duplicate validation for
-   the active shot.
+2. **Increment 29 — acquisition geometry (complete):** receiver lines,
+   explicit CSV coordinates, reusable templates, translation, and duplicate
+   validation for the active shot.
 3. **Increment 30 — SEG-Y model conversion:** convert the supported regular
    IEEE-float property-volume subset into canonical Wave3D HDF5 with explicit
    dimensions, spacing, units, and provenance.

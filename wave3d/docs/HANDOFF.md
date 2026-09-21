@@ -1899,3 +1899,37 @@ ctest --test-dir build/desktop19 \
 No screenshot, Overthrust propagation, CUDA regression, or full suite was run;
 this increment changes source parameterization and desktop state, not the
 propagator, renderer, or output format.
+
+## Increment 29 acquisition geometry
+
+**Status:** Verified on 2026-09-21.
+
+The active shot now selects a surface rectangle, endpoint-interpolated surface
+line, or ordered explicit coordinates imported from strict `x_m,y_m,z_m` CSV.
+Imported rows are embedded in schema-v4 experiment drafts. A common finite X/Y
+translation runs before surface, model-boundary, 1,100,000-point, and exact
+duplicate checks. Resolved order remains the solver/SEG-Y receiver order.
+
+`wave3d.desktop.acquisition_template.v1` files atomically save and restore only
+geometry and translation. The editor enables all three modes, file-based CSV
+import and template actions, and updates estimates and overlays through the
+existing resolved receiver list. Draft versions 1–3 remain readable.
+
+Validation:
+
+```text
+cmake --build build/desktop24 -j2 --target \
+  wave3d_desktop_experiment_tests wave3d_desktop_shell_tests
+ctest --test-dir build/desktop24 \
+  -R 'wave3d_desktop_(experiment|shell)_tests' --output-on-failure
+# complete desktop: 2/2 passed
+
+cmake --build build/desktop19 -j2 --target \
+  wave3d_desktop_experiment_tests wave3d_desktop_shell_tests
+ctest --test-dir build/desktop19 \
+  -R 'wave3d_desktop_(experiment|shell)_tests' --output-on-failure
+# CUDA/YAML/SEG-Y-off boundary: 2/2 passed
+```
+
+No solver, CUDA, rendering, or SEG-Y layout code changed, so no full
+Overthrust run, screenshot, CUDA regression, or complete suite was repeated.

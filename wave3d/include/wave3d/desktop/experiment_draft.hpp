@@ -4,6 +4,7 @@
 #include "wave3d/model/physical_model.hpp"
 #include "wave3d/numerics/elastic_validation.hpp"
 
+#include <QByteArray>
 #include <QString>
 
 #include <cstddef>
@@ -13,11 +14,15 @@
 namespace wave3d::desktop {
 
 inline constexpr auto kExperimentDraftSchema =
-    "wave3d.desktop.experiment.v3";
+    "wave3d.desktop.experiment.v4";
 inline constexpr auto kLegacyExperimentDraftSchema =
     "wave3d.desktop.experiment.v1";
 inline constexpr auto kLegacyExperimentDraftSchemaV2 =
     "wave3d.desktop.experiment.v2";
+inline constexpr auto kLegacyExperimentDraftSchemaV3 =
+    "wave3d.desktop.experiment.v3";
+inline constexpr auto kAcquisitionTemplateSchema =
+    "wave3d.desktop.acquisition_template.v1";
 
 enum class DraftSourceMode {
     IsotropicExplosion,
@@ -40,6 +45,30 @@ struct RectangularReceiverGrid {
     double minimum_y_m{0.0};
     double maximum_y_m{0.0};
     double depth_m{0.0};
+};
+
+struct ReceiverLine {
+    std::size_t count{101};
+    double first_x_m{0.0};
+    double first_y_m{0.0};
+    double last_x_m{0.0};
+    double last_y_m{0.0};
+    double depth_m{0.0};
+};
+
+enum class ReceiverGeometryMode {
+    SurfaceRectangular,
+    SurfaceLine,
+    ExplicitCoordinates,
+};
+
+struct AcquisitionGeometry {
+    ReceiverGeometryMode mode{ReceiverGeometryMode::SurfaceRectangular};
+    RectangularReceiverGrid rectangular{};
+    ReceiverLine line{};
+    std::vector<PhysicalPoint3D> explicit_coordinates;
+    double translate_x_m{0.0};
+    double translate_y_m{0.0};
 };
 
 struct AcquisitionEstimate {
@@ -65,7 +94,7 @@ struct ExperimentDraft {
         1.0e12, 1.0e12, 1.0e12, 0.0, 0.0, 0.0};
     DoubleCoupleParameters double_couple{};
     RickerWavelet wavelet{3.0, 1.0 / 3.0, 1.0};
-    std::optional<RectangularReceiverGrid> receiver_grid;
+    std::optional<AcquisitionGeometry> acquisition;
 };
 
 struct ResolvedExperimentDraft {
@@ -91,11 +120,18 @@ public:
         const Grid3D& grid,
         const PhysicalModelExtrema& extrema);
 
-    [[nodiscard]] static RectangularReceiverGrid default_receiver_grid(
+    [[nodiscard]] static AcquisitionGeometry default_acquisition(
         const Grid3D& grid);
     [[nodiscard]] static std::vector<PhysicalPoint3D> generate_receivers(
-        const RectangularReceiverGrid& receiver_grid,
+        const AcquisitionGeometry& acquisition,
         const Grid3D& grid);
+    [[nodiscard]] static std::vector<PhysicalPoint3D> parse_receiver_csv(
+        const QByteArray& csv);
+    static void save_acquisition_template(
+        const QString& path,
+        const AcquisitionGeometry& acquisition);
+    [[nodiscard]] static AcquisitionGeometry load_acquisition_template(
+        const QString& path);
     [[nodiscard]] static AcquisitionEstimate acquisition_estimate(
         std::size_t receiver_count,
         std::size_t sample_count);

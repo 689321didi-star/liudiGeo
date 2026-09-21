@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTemporaryDir>
@@ -89,9 +90,11 @@ void test_defaults_and_resolution() {
             resolved.numerical.time_samples_per_period >= 20.0,
         "default draft is not numerically valid");
     expect(
-        draft.receiver_grid.has_value() &&
-            draft.receiver_grid->count_x == 101 &&
-            draft.receiver_grid->count_y == 101 &&
+        draft.acquisition.has_value() &&
+            draft.acquisition->mode ==
+                wave3d::desktop::ReceiverGeometryMode::SurfaceRectangular &&
+            draft.acquisition->rectangular.count_x == 101 &&
+            draft.acquisition->rectangular.count_y == 101 &&
             resolved.receivers.size() == 10201 &&
             resolved.acquisition.receiver_count == 10201 &&
             resolved.acquisition.sample_count == 3000,
@@ -174,22 +177,23 @@ void test_defaults_and_resolution() {
         [&] { wave3d::desktop::ExperimentDraftStore::validate(invalid); },
         "out-of-range double-couple strike must be rejected");
     invalid = draft;
-    invalid.receiver_grid->count_x = 1;
+    invalid.acquisition->rectangular.count_x = 1;
     expect_rejected(
         [&] { wave3d::desktop::ExperimentDraftStore::validate(invalid); },
         "single-point receiver axis must be rejected");
     invalid = draft;
-    invalid.receiver_grid->minimum_x_m = invalid.receiver_grid->maximum_x_m;
+    invalid.acquisition->rectangular.minimum_x_m =
+        invalid.acquisition->rectangular.maximum_x_m;
     expect_rejected(
         [&] { wave3d::desktop::ExperimentDraftStore::validate(invalid); },
         "degenerate receiver aperture must be rejected");
     invalid = draft;
-    invalid.receiver_grid->depth_m = 25.0;
+    invalid.acquisition->rectangular.depth_m = 25.0;
     expect_rejected(
         [&] { wave3d::desktop::ExperimentDraftStore::validate(invalid); },
         "non-surface receiver grid must be rejected");
     invalid = draft;
-    invalid.receiver_grid->maximum_x_m = 5000.0;
+    invalid.acquisition->rectangular.maximum_x_m = 5000.0;
     expect_rejected(
         [&] {
             static_cast<void>(wave3d::desktop::ExperimentDraftStore::resolve(
@@ -203,6 +207,142 @@ void test_defaults_and_resolution() {
                     std::numeric_limits<std::size_t>::max(), 2));
         },
         "receiver storage overflow must be rejected");
+}
+
+void test_acquisition_geometry_and_templates() {
+    auto draft = wave3d::desktop::ExperimentDraftStore::defaults(
+        QStringLiteral("shot-001"),
+        QStringLiteral("models/elastic.h5"),
+        grid(),
+        extrema());
+    draft.acquisition->mode =
+        wave3d::desktop::ReceiverGeometryMode::SurfaceLine;
+    draft.acquisition->line = {5, 100.0, 200.0, 500.0, 600.0, 0.0};
+    draft.acquisition->translate_x_m = 10.0;
+    draft.acquisition->translate_y_m = 20.0;
+    auto resolved = wave3d::desktop::ExperimentDraftStore::resolve(
+        draft, grid(), extrema());
+    expect(
+        resolved.receivers.size() == 5 &&
+            resolved.receivers.front().x_m == 110.0 &&
+            resolved.receivers.front().y_m == 220.0 &&
+            resolved.receivers[2].x_m == 310.0 &&
+            resolved.receivers[2].y_m == 420.0 &&
+            resolved.receivers.back().x_m == 510.0 &&
+            resolved.receivers.back().y_m == 620.0,
+        "translated diagonal receiver line is incorrect");
+
+    const auto csv = wave3d::desktop::ExperimentDraftStore::parse_receiver_csv(
+        QByteArray("x_m,y_m,z_m\n25,50,0\n75,100,0\n125,150,0\n"));
+    expect(
+        csv.size() == 3 && csv[0].x_m == 25.0 && csv[1].y_m == 100.0 &&
+            csv[2].x_m == 125.0,
+        "receiver CSV did not preserve row order");
+    draft.acquisition->mode =
+        wave3d::desktop::ReceiverGeometryMode::ExplicitCoordinates;
+    draft.acquisition->explicit_coordinates = csv;
+    draft.acquisition->translate_x_m = 5.0;
+    draft.acquisition->translate_y_m = -10.0;
+    resolved = wave3d::desktop::ExperimentDraftStore::resolve(
+        draft, grid(), extrema());
+    expect(
+        resolved.receivers.size() == 3 &&
+            resolved.receivers[0].x_m == 30.0 &&
+            resolved.receivers[0].y_m == 40.0,
+        "explicit receiver translation is incorrect");
+
+    expect_rejected(
+        [] {
+            static_cast<void>(
+                wave3d::desktop::ExperimentDraftStore::parse_receiver_csv(
+                    QByteArray("x_m,y_m,z_m\n1,2,0\n1,2,0\n")));
+        },
+        "duplicate CSV receivers must be rejected");
+    expect_rejected(
+        [] {
+            static_cast<void>(
+                wave3d::desktop::ExperimentDraftStore::parse_receiver_csv(
+                    QByteArray("x_m,y_m,z_m\n1,2,3\n")));
+        },
+        "buried CSV receiver must be rejected");
+    expect_rejected(
+        [] {
+            static_cast<void>(
+                wave3d::desktop::ExperimentDraftStore::parse_receiver_csv(
+                    QByteArray("x,y,z\n1,2,0\n")));
+        },
+        "unexpected CSV header must be rejected");
+
+    auto duplicate = *draft.acquisition;
+    duplicate.explicit_coordinates = {{10.0, 20.0, 0.0}, {10.0, 20.0, 0.0}};
+    expect_rejected(
+        [&] {
+            static_cast<void>(
+                wave3d::desktop::ExperimentDraftStore::generate_receivers(
+                    duplicate, grid()));
+        },
+        "duplicate explicit receiver geometry must be rejected");
+    auto outside = *draft.acquisition;
+    outside.translate_x_m = 5000.0;
+    expect_rejected(
+        [&] {
+            static_cast<void>(
+                wave3d::desktop::ExperimentDraftStore::generate_receivers(
+                    outside, grid()));
+        },
+        "translated out-of-domain receivers must be rejected");
+    auto excessive = wave3d::desktop::ExperimentDraftStore::default_acquisition(
+        grid());
+    excessive.mode = wave3d::desktop::ReceiverGeometryMode::SurfaceLine;
+    excessive.line.count = 1'100'001;
+    expect_rejected(
+        [&] {
+            static_cast<void>(
+                wave3d::desktop::ExperimentDraftStore::generate_receivers(
+                    excessive, grid()));
+        },
+        "receiver safety limit must be enforced before allocation");
+    auto nonfinite = *draft.acquisition;
+    nonfinite.translate_y_m = std::numeric_limits<double>::infinity();
+    expect_rejected(
+        [&] {
+            static_cast<void>(
+                wave3d::desktop::ExperimentDraftStore::generate_receivers(
+                    nonfinite, grid()));
+        },
+        "non-finite receiver translation must be rejected");
+
+    QTemporaryDir temporary;
+    expect(temporary.isValid(), "cannot create acquisition template directory");
+    const auto template_path =
+        QDir(temporary.path()).filePath(QStringLiteral("line.wave3d-acquisition.json"));
+    auto line = wave3d::desktop::ExperimentDraftStore::default_acquisition(grid());
+    line.mode = wave3d::desktop::ReceiverGeometryMode::SurfaceLine;
+    line.line = {7, 0.0, 100.0, 600.0, 100.0, 0.0};
+    line.translate_y_m = 25.0;
+    wave3d::desktop::ExperimentDraftStore::save_acquisition_template(
+        template_path, line);
+    const auto loaded =
+        wave3d::desktop::ExperimentDraftStore::load_acquisition_template(
+            template_path);
+    expect(
+        loaded.mode == wave3d::desktop::ReceiverGeometryMode::SurfaceLine &&
+            loaded.line.count == 7 && loaded.line.last_x_m == 600.0 &&
+            loaded.translate_y_m == 25.0,
+        "acquisition template did not round trip");
+    QFile malformed(template_path);
+    expect(
+        malformed.open(QIODevice::WriteOnly | QIODevice::Truncate),
+        "cannot create malformed acquisition template");
+    malformed.write("{}");
+    malformed.close();
+    expect_rejected(
+        [&] {
+            static_cast<void>(
+                wave3d::desktop::ExperimentDraftStore::load_acquisition_template(
+                    template_path));
+        },
+        "malformed acquisition template must be rejected");
 }
 
 void test_atomic_persistence() {
@@ -238,14 +378,19 @@ void test_atomic_persistence() {
             loaded.dt_s == draft.dt_s &&
             loaded.source_location_m.z_m == draft.source_location_m.z_m &&
             loaded.wavelet.peak_delay_s == draft.wavelet.peak_delay_s &&
-            loaded.receiver_grid.has_value() &&
-            loaded.receiver_grid->count_x == 101 &&
-            loaded.receiver_grid->maximum_y_m == 4975.0,
+            loaded.acquisition.has_value() &&
+            loaded.acquisition->rectangular.count_x == 101 &&
+            loaded.acquisition->rectangular.maximum_y_m == 4975.0,
         "experiment JSON did not round trip exactly");
 
     draft.total_time_s = 4.25;
     draft.source_mode = wave3d::desktop::DraftSourceMode::DoubleCouple;
     draft.double_couple = {3.0e12, 123.0, 38.0, -47.0};
+    draft.acquisition->mode =
+        wave3d::desktop::ReceiverGeometryMode::ExplicitCoordinates;
+    draft.acquisition->explicit_coordinates = {
+        {100.0, 200.0, 0.0}, {300.0, 400.0, 0.0}};
+    draft.acquisition->translate_x_m = 25.0;
     wave3d::desktop::ExperimentDraftStore::save(temporary.path(), draft);
     loaded = wave3d::desktop::ExperimentDraftStore::load(
         temporary.path(), QStringLiteral("shot-001"));
@@ -256,7 +401,12 @@ void test_atomic_persistence() {
             loaded.double_couple.scalar_moment_nm == 3.0e12 &&
             loaded.double_couple.strike_deg == 123.0 &&
             loaded.double_couple.dip_deg == 38.0 &&
-            loaded.double_couple.rake_deg == -47.0,
+            loaded.double_couple.rake_deg == -47.0 &&
+            loaded.acquisition->mode ==
+                wave3d::desktop::ReceiverGeometryMode::ExplicitCoordinates &&
+            loaded.acquisition->explicit_coordinates.size() == 2 &&
+            loaded.acquisition->explicit_coordinates[1].y_m == 400.0 &&
+            loaded.acquisition->translate_x_m == 25.0,
         "atomic draft replacement did not retain the new complete document");
     expect(
         bytes(root.filePath(QStringLiteral("project.wave3d.json"))) ==
@@ -273,6 +423,47 @@ void test_atomic_persistence() {
         wave3d::desktop::ExperimentDraftStore::relative_path(
             QStringLiteral("shot-001")));
     auto legacy_root = QJsonDocument::fromJson(bytes(draft_path)).object();
+    const auto current_acquisition =
+        legacy_root.value(QStringLiteral("acquisition")).toObject();
+    const auto rectangular =
+        current_acquisition.value(QStringLiteral("rectangular")).toObject();
+    legacy_root.insert(
+        QStringLiteral("acquisition"),
+        QJsonObject{
+            {QStringLiteral("mode"), QStringLiteral("surface_rectangular")},
+            {QStringLiteral("count_x"),
+             rectangular.value(QStringLiteral("count_x"))},
+            {QStringLiteral("count_y"),
+             rectangular.value(QStringLiteral("count_y"))},
+            {QStringLiteral("x_range_m"),
+             rectangular.value(QStringLiteral("x_range_m"))},
+            {QStringLiteral("y_range_m"),
+             rectangular.value(QStringLiteral("y_range_m"))},
+            {QStringLiteral("depth_m"),
+             rectangular.value(QStringLiteral("depth_m"))},
+            {QStringLiteral("components"),
+             QJsonArray{QStringLiteral("vx"), QStringLiteral("vy"),
+                        QStringLiteral("vz")}}});
+    legacy_root.insert(
+        QStringLiteral("schema"),
+        QString::fromUtf8(wave3d::desktop::kLegacyExperimentDraftSchemaV3));
+    QFile legacy_file(draft_path);
+    expect(
+        legacy_file.open(QIODevice::WriteOnly | QIODevice::Truncate),
+        "cannot write version-3 draft fixture");
+    expect(
+        legacy_file.write(QJsonDocument(legacy_root).toJson()) > 0,
+        "cannot publish version-3 draft fixture");
+    legacy_file.close();
+    const auto legacy_v3 = wave3d::desktop::ExperimentDraftStore::load(
+        temporary.path(), QStringLiteral("shot-001"));
+    expect(
+        legacy_v3.acquisition.has_value() &&
+            legacy_v3.source_mode ==
+                wave3d::desktop::DraftSourceMode::DoubleCouple &&
+            legacy_v3.double_couple.strike_deg == 123.0,
+        "version-3 draft did not retain source and rectangular acquisition");
+
     legacy_root.insert(
         QStringLiteral("schema"),
         QString::fromUtf8(wave3d::desktop::kLegacyExperimentDraftSchemaV2));
@@ -281,7 +472,6 @@ void test_atomic_persistence() {
         QStringLiteral("mode"), QStringLiteral("isotropic_explosion"));
     legacy_v2_source.remove(QStringLiteral("double_couple"));
     legacy_root.insert(QStringLiteral("source"), legacy_v2_source);
-    QFile legacy_file(draft_path);
     expect(
         legacy_file.open(QIODevice::WriteOnly | QIODevice::Truncate),
         "cannot write version-2 draft fixture");
@@ -292,7 +482,7 @@ void test_atomic_persistence() {
     const auto legacy_v2 = wave3d::desktop::ExperimentDraftStore::load(
         temporary.path(), QStringLiteral("shot-001"));
     expect(
-        legacy_v2.receiver_grid.has_value() &&
+        legacy_v2.acquisition.has_value() &&
             legacy_v2.source_mode ==
                 wave3d::desktop::DraftSourceMode::IsotropicExplosion &&
             legacy_v2.double_couple.scalar_moment_nm == 1.0e12,
@@ -312,7 +502,7 @@ void test_atomic_persistence() {
     const auto legacy = wave3d::desktop::ExperimentDraftStore::load(
         temporary.path(), QStringLiteral("shot-001"));
     expect(
-        !legacy.receiver_grid.has_value(),
+        !legacy.acquisition.has_value(),
         "version-1 draft did not retain its missing-acquisition migration marker");
     expect_rejected(
         [&] {
@@ -342,6 +532,7 @@ int main(int argc, char** argv) {
     QCoreApplication application(argc, argv);
     try {
         test_defaults_and_resolution();
+        test_acquisition_geometry_and_templates();
         test_atomic_persistence();
         std::cout << "desktop experiment draft tests passed\n";
         return 0;

@@ -1007,3 +1007,20 @@ four defining double-couple values. Versions 1 and 2 remain readable with safe
 inactive-mode defaults. The resolved source still contains only the general
 symmetric tensor, so propagation and output adapters do not depend on focal
 mechanism parameterization.
+
+## D062 — Acquisition modes resolve to one immutable ordered receiver list
+
+**Status:** Accepted and verified, 2026-09-21
+
+The active shot may define a surface rectangular array, a surface line, or
+ordered explicit coordinates. CSV input must use `x_m,y_m,z_m`; imported rows
+are stored in the experiment document rather than referenced by path. A finite
+X/Y translation is applied to every generated/imported point before the common
+surface, model-boundary, safety-count, and exact-duplicate validation. The
+resolved row/generation order is the receiver and SEG-Y trace order.
+
+Experiment schema v4 owns the acquisition variant and keeps versions 1–3
+readable. Standalone acquisition-template v1 files store geometry and
+translation without shot, source, model, or run identity. Templates are
+atomically written and may be reused across projects; applying one still
+requires validation against the active model before save or preflight.

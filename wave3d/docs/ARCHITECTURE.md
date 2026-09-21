@@ -492,8 +492,8 @@ and CUDA/OpenGL interoperation.
 
 Increment 22 adds `wave3d_desktop_experiment`, a Qt Core persistence and
 resolution layer below the Widgets shell. Each shot may own one mutable
-`source/<shot-id>.experiment.json` document. Increment 28 advances its schema
-to `wave3d.desktop.experiment.v3`; versions 1 and 2 remain readable for
+`source/<shot-id>.experiment.json` document. Increment 29 advances its schema
+to `wave3d.desktop.experiment.v4`; versions 1 through 3 remain readable for
 migration. Atomic replacement is allowed while editing;
 prepared run directories remain immutable and independent. The draft records
 which project model reference it was designed against so a later crop or model
@@ -531,6 +531,20 @@ immutable `ProjectWorkspace::prepare_run` API, reloads it with the production
 YAML adapter, and requires an exact resolved-YAML round trip. CUDA ownership
 and execution remain outside the GUI thread and are not connected by this
 increment.
+
+Increment 29 replaces the rectangle-only draft field with one acquisition
+geometry that selects a surface rectangle, an endpoint-interpolated surface
+line, or ordered explicit coordinates. Strict `x_m,y_m,z_m` CSV import copies
+rows into the draft; the run never depends on the imported file. A finite X/Y
+translation is applied after generation, followed by the common surface,
+count, exact-duplicate, and physical-domain checks. All modes resolve to the
+same ordered `std::vector<PhysicalPoint3D>` consumed by preflight and the
+solver, so receiver and SEG-Y ordering contracts do not branch by editor mode.
+
+Standalone `wave3d.desktop.acquisition_template.v1` JSON stores geometry and
+translation only. Template publication is atomic and carries no shot, source,
+model, or run state. Explicit coordinates remain inline for reproducibility;
+the accepted desktop safety limit is 1,100,000 points.
 
 Increment 24 composes that immutable configuration through a reusable
 `CudaForwardJob`. The job owns input validation, memory planning, one stable

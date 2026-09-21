@@ -15,8 +15,10 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <set>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 
 namespace wave3d::desktop {
 namespace {
@@ -69,6 +71,31 @@ DraftSourceMode parse_source_mode(const QString& value) {
     fail(QStringLiteral("experiment source mode is unsupported"));
 }
 
+QString receiver_mode_name(ReceiverGeometryMode mode) {
+    switch (mode) {
+    case ReceiverGeometryMode::SurfaceRectangular:
+        return QStringLiteral("surface_rectangular");
+    case ReceiverGeometryMode::SurfaceLine:
+        return QStringLiteral("surface_line");
+    case ReceiverGeometryMode::ExplicitCoordinates:
+        return QStringLiteral("explicit_coordinates");
+    }
+    fail(QStringLiteral("receiver geometry mode is unsupported"));
+}
+
+ReceiverGeometryMode parse_receiver_mode(const QString& value) {
+    if (value == QStringLiteral("surface_rectangular")) {
+        return ReceiverGeometryMode::SurfaceRectangular;
+    }
+    if (value == QStringLiteral("surface_line")) {
+        return ReceiverGeometryMode::SurfaceLine;
+    }
+    if (value == QStringLiteral("explicit_coordinates")) {
+        return ReceiverGeometryMode::ExplicitCoordinates;
+    }
+    fail(QStringLiteral("receiver geometry mode is unsupported"));
+}
+
 QJsonArray point_json(const PhysicalPoint3D& point) {
     return {point.x_m, point.y_m, point.z_m};
 }
@@ -81,6 +108,14 @@ QJsonArray tensor_json(const SymmetricMomentTensor& tensor) {
         tensor.m_xy_nm,
         tensor.m_xz_nm,
         tensor.m_yz_nm};
+}
+
+QJsonArray points_json(const std::vector<PhysicalPoint3D>& points) {
+    QJsonArray result;
+    for (const auto& point : points) {
+        result.append(point_json(point));
+    }
+    return result;
 }
 
 void require_number_array(
@@ -97,11 +132,302 @@ void require_number_array(
     }
 }
 
+std::size_t checked_json_count(const QJsonValue& value, const QString& name) {
+    if (!value.isDouble()) {
+        fail(name + QStringLiteral(" must be an integer"));
+    }
+    const auto count = value.toDouble();
+    if (count < 0.0 || std::floor(count) != count ||
+        count > static_cast<double>(std::numeric_limits<std::size_t>::max())) {
+        fail(name + QStringLiteral(" must be an integer"));
+    }
+    return static_cast<std::size_t>(count);
+}
+
+void validate_receiver_locations(
+    const std::vector<PhysicalPoint3D>& receivers,
+    bool check_duplicates = true) {
+    if (receivers.empty()) {
+        fail(QStringLiteral("receiver geometry must not be empty"));
+    }
+    if (receivers.size() > maximum_desktop_receiver_count) {
+        fail(QStringLiteral(
+            "desktop receiver geometry exceeds the 1,100,000 point safety limit"));
+    }
+    std::set<std::tuple<double, double, double>> unique;
+    for (const auto& point : receivers) {
+        if (!std::isfinite(point.x_m) || !std::isfinite(point.y_m) ||
+            !std::isfinite(point.z_m)) {
+            fail(QStringLiteral("receiver coordinates must be finite"));
+        }
+        if (point.z_m != 0.0) {
+            fail(QStringLiteral("desktop receivers must remain at depth 0 m"));
+        }
+        if (check_duplicates &&
+            !unique.emplace(point.x_m, point.y_m, point.z_m).second) {
+            fail(QStringLiteral("receiver geometry contains duplicate coordinates"));
+        }
+    }
+}
+
+std::vector<PhysicalPoint3D> receiver_locations(
+    const AcquisitionGeometry& acquisition) {
+    if (!std::isfinite(acquisition.translate_x_m) ||
+        !std::isfinite(acquisition.translate_y_m)) {
+        fail(QStringLiteral("receiver translation must be finite"));
+    }
+    std::vector<PhysicalPoint3D> result;
+    if (acquisition.mode == ReceiverGeometryMode::SurfaceRectangular) {
+        const auto& grid = acquisition.rectangular;
+        if (grid.count_x < 2 || grid.count_y < 2 ||
+            !std::isfinite(grid.minimum_x_m) ||
+            !std::isfinite(grid.maximum_x_m) ||
+            !std::isfinite(grid.minimum_y_m) ||
+            !std::isfinite(grid.maximum_y_m) ||
+            !std::isfinite(grid.depth_m) ||
+            !(grid.minimum_x_m < grid.maximum_x_m) ||
+            !(grid.minimum_y_m < grid.maximum_y_m) || grid.depth_m != 0.0) {
+            fail(QStringLiteral(
+                "surface receiver grid needs finite increasing bounds, two or "
+                "more points per axis, and depth 0 m"));
+        }
+        const auto count = detail::checked_size_product(
+            grid.count_x, grid.count_y, "receiver count overflows size_t");
+        if (count > maximum_desktop_receiver_count) {
+            fail(QStringLiteral(
+                "desktop receiver geometry exceeds the 1,100,000 point safety limit"));
+        }
+        result.reserve(count);
+        for (std::size_t iy = 0; iy < grid.count_y; ++iy) {
+            const auto fy = static_cast<double>(iy) /
+                            static_cast<double>(grid.count_y - 1);
+            const auto y = grid.minimum_y_m +
+                           fy * (grid.maximum_y_m - grid.minimum_y_m);
+            for (std::size_t ix = 0; ix < grid.count_x; ++ix) {
+                const auto fx = static_cast<double>(ix) /
+                                static_cast<double>(grid.count_x - 1);
+                result.push_back({
+                    grid.minimum_x_m +
+                        fx * (grid.maximum_x_m - grid.minimum_x_m),
+                    y,
+                    grid.depth_m});
+            }
+        }
+    } else if (acquisition.mode == ReceiverGeometryMode::SurfaceLine) {
+        const auto& line = acquisition.line;
+        if (line.count < 2 || !std::isfinite(line.first_x_m) ||
+            !std::isfinite(line.first_y_m) ||
+            !std::isfinite(line.last_x_m) ||
+            !std::isfinite(line.last_y_m) ||
+            !std::isfinite(line.depth_m) || line.depth_m != 0.0 ||
+            (line.first_x_m == line.last_x_m &&
+             line.first_y_m == line.last_y_m)) {
+            fail(QStringLiteral(
+                "surface receiver line needs distinct finite endpoints, two or "
+                "more points, and depth 0 m"));
+        }
+        if (line.count > maximum_desktop_receiver_count) {
+            fail(QStringLiteral(
+                "desktop receiver geometry exceeds the 1,100,000 point safety limit"));
+        }
+        result.reserve(line.count);
+        for (std::size_t index = 0; index < line.count; ++index) {
+            const auto fraction = static_cast<double>(index) /
+                                  static_cast<double>(line.count - 1);
+            result.push_back({
+                line.first_x_m + fraction * (line.last_x_m - line.first_x_m),
+                line.first_y_m + fraction * (line.last_y_m - line.first_y_m),
+                line.depth_m});
+        }
+    } else if (acquisition.mode ==
+               ReceiverGeometryMode::ExplicitCoordinates) {
+        result = acquisition.explicit_coordinates;
+    } else {
+        fail(QStringLiteral("receiver geometry mode is unsupported"));
+    }
+    for (auto& point : result) {
+        point.x_m += acquisition.translate_x_m;
+        point.y_m += acquisition.translate_y_m;
+    }
+    validate_receiver_locations(
+        result, acquisition.mode == ReceiverGeometryMode::ExplicitCoordinates);
+    return result;
+}
+
+QJsonObject acquisition_json(const AcquisitionGeometry& acquisition) {
+    const auto& rectangular = acquisition.rectangular;
+    const auto& line = acquisition.line;
+    return {
+        {QStringLiteral("mode"), receiver_mode_name(acquisition.mode)},
+        {QStringLiteral("translation_m"),
+         QJsonArray{acquisition.translate_x_m, acquisition.translate_y_m}},
+        {QStringLiteral("rectangular"),
+         QJsonObject{
+             {QStringLiteral("count_x"), static_cast<qint64>(rectangular.count_x)},
+             {QStringLiteral("count_y"), static_cast<qint64>(rectangular.count_y)},
+             {QStringLiteral("x_range_m"),
+              QJsonArray{rectangular.minimum_x_m, rectangular.maximum_x_m}},
+             {QStringLiteral("y_range_m"),
+              QJsonArray{rectangular.minimum_y_m, rectangular.maximum_y_m}},
+             {QStringLiteral("depth_m"), rectangular.depth_m}}},
+        {QStringLiteral("line"),
+         QJsonObject{
+             {QStringLiteral("count"), static_cast<qint64>(line.count)},
+             {QStringLiteral("first_m"),
+              QJsonArray{line.first_x_m, line.first_y_m, line.depth_m}},
+             {QStringLiteral("last_m"),
+              QJsonArray{line.last_x_m, line.last_y_m, line.depth_m}}}},
+        {QStringLiteral("explicit_coordinates_m"),
+         points_json(acquisition.explicit_coordinates)},
+        {QStringLiteral("components"),
+         QJsonArray{QStringLiteral("vx"), QStringLiteral("vy"),
+                    QStringLiteral("vz")}}};
+}
+
+void require_receiver_components(const QJsonObject& object) {
+    const auto components = object.value(QStringLiteral("components")).toArray();
+    if (components.size() != 3 ||
+        components[0].toString() != QStringLiteral("vx") ||
+        components[1].toString() != QStringLiteral("vy") ||
+        components[2].toString() != QStringLiteral("vz")) {
+        fail(QStringLiteral("experiment receiver components must be vx,vy,vz"));
+    }
+}
+
+AcquisitionGeometry parse_acquisition_v4(const QJsonObject& object) {
+    if (!object.value(QStringLiteral("mode")).isString() ||
+        !object.value(QStringLiteral("rectangular")).isObject() ||
+        !object.value(QStringLiteral("line")).isObject() ||
+        !object.value(QStringLiteral("explicit_coordinates_m")).isArray()) {
+        fail(QStringLiteral("experiment acquisition values are invalid"));
+    }
+    require_number_array(
+        object.value(QStringLiteral("translation_m")),
+        2,
+        QStringLiteral("acquisition.translation_m"));
+    require_receiver_components(object);
+    const auto rectangular = object.value(QStringLiteral("rectangular")).toObject();
+    require_number_array(
+        rectangular.value(QStringLiteral("x_range_m")),
+        2,
+        QStringLiteral("acquisition.rectangular.x_range_m"));
+    require_number_array(
+        rectangular.value(QStringLiteral("y_range_m")),
+        2,
+        QStringLiteral("acquisition.rectangular.y_range_m"));
+    if (!rectangular.value(QStringLiteral("depth_m")).isDouble()) {
+        fail(QStringLiteral("acquisition rectangular depth must be numeric"));
+    }
+    const auto line = object.value(QStringLiteral("line")).toObject();
+    require_number_array(
+        line.value(QStringLiteral("first_m")),
+        3,
+        QStringLiteral("acquisition.line.first_m"));
+    require_number_array(
+        line.value(QStringLiteral("last_m")),
+        3,
+        QStringLiteral("acquisition.line.last_m"));
+    const auto translation = object.value(QStringLiteral("translation_m")).toArray();
+    const auto x_range = rectangular.value(QStringLiteral("x_range_m")).toArray();
+    const auto y_range = rectangular.value(QStringLiteral("y_range_m")).toArray();
+    const auto first = line.value(QStringLiteral("first_m")).toArray();
+    const auto last = line.value(QStringLiteral("last_m")).toArray();
+    AcquisitionGeometry result;
+    result.mode = parse_receiver_mode(
+        object.value(QStringLiteral("mode")).toString());
+    result.translate_x_m = translation[0].toDouble();
+    result.translate_y_m = translation[1].toDouble();
+    result.rectangular = {
+        checked_json_count(
+            rectangular.value(QStringLiteral("count_x")),
+            QStringLiteral("acquisition.rectangular.count_x")),
+        checked_json_count(
+            rectangular.value(QStringLiteral("count_y")),
+            QStringLiteral("acquisition.rectangular.count_y")),
+        x_range[0].toDouble(),
+        x_range[1].toDouble(),
+        y_range[0].toDouble(),
+        y_range[1].toDouble(),
+        rectangular.value(QStringLiteral("depth_m")).toDouble()};
+    result.line = {
+        checked_json_count(
+            line.value(QStringLiteral("count")),
+            QStringLiteral("acquisition.line.count")),
+        first[0].toDouble(),
+        first[1].toDouble(),
+        last[0].toDouble(),
+        last[1].toDouble(),
+        first[2].toDouble()};
+    if (last[2].toDouble() != result.line.depth_m) {
+        fail(QStringLiteral("receiver line endpoints must share one depth"));
+    }
+    const auto explicit_points =
+        object.value(QStringLiteral("explicit_coordinates_m")).toArray();
+    if (explicit_points.size() >
+        static_cast<qsizetype>(maximum_desktop_receiver_count)) {
+        fail(QStringLiteral(
+            "desktop receiver geometry exceeds the 1,100,000 point safety limit"));
+    }
+    result.explicit_coordinates.reserve(
+        static_cast<std::size_t>(explicit_points.size()));
+    for (const auto& value : explicit_points) {
+        require_number_array(
+            value, 3, QStringLiteral("acquisition.explicit_coordinates_m row"));
+        const auto point = value.toArray();
+        result.explicit_coordinates.push_back(
+            {point[0].toDouble(), point[1].toDouble(), point[2].toDouble()});
+    }
+    static_cast<void>(receiver_locations(result));
+    return result;
+}
+
+AcquisitionGeometry parse_legacy_acquisition(const QJsonObject& object) {
+    if (object.value(QStringLiteral("mode")).toString() !=
+            QStringLiteral("surface_rectangular") ||
+        !object.value(QStringLiteral("depth_m")).isDouble()) {
+        fail(QStringLiteral("legacy experiment acquisition values are invalid"));
+    }
+    require_receiver_components(object);
+    require_number_array(
+        object.value(QStringLiteral("x_range_m")),
+        2,
+        QStringLiteral("acquisition.x_range_m"));
+    require_number_array(
+        object.value(QStringLiteral("y_range_m")),
+        2,
+        QStringLiteral("acquisition.y_range_m"));
+    const auto x_range = object.value(QStringLiteral("x_range_m")).toArray();
+    const auto y_range = object.value(QStringLiteral("y_range_m")).toArray();
+    AcquisitionGeometry result;
+    result.rectangular = {
+        checked_json_count(
+            object.value(QStringLiteral("count_x")),
+            QStringLiteral("acquisition.count_x")),
+        checked_json_count(
+            object.value(QStringLiteral("count_y")),
+            QStringLiteral("acquisition.count_y")),
+        x_range[0].toDouble(),
+        x_range[1].toDouble(),
+        y_range[0].toDouble(),
+        y_range[1].toDouble(),
+        object.value(QStringLiteral("depth_m")).toDouble()};
+    result.line = {
+        result.rectangular.count_x,
+        result.rectangular.minimum_x_m,
+        0.5 * (result.rectangular.minimum_y_m +
+               result.rectangular.maximum_y_m),
+        result.rectangular.maximum_x_m,
+        0.5 * (result.rectangular.minimum_y_m +
+               result.rectangular.maximum_y_m),
+        result.rectangular.depth_m};
+    static_cast<void>(receiver_locations(result));
+    return result;
+}
+
 QJsonObject draft_json(const ExperimentDraft& draft) {
-    if (!draft.receiver_grid) {
+    if (!draft.acquisition) {
         fail(QStringLiteral("experiment acquisition is missing"));
     }
-    const auto& receivers = *draft.receiver_grid;
     return {
         {QStringLiteral("schema"), QString::fromUtf8(kExperimentDraftSchema)},
         {QStringLiteral("shot_id"), draft.shot_id},
@@ -140,21 +466,7 @@ QJsonObject draft_json(const ExperimentDraft& draft) {
                    draft.wavelet.peak_delay_s},
                   {QStringLiteral("peak_rate_s_inv"),
                    draft.wavelet.peak_rate_s_inv}}}}},
-        {QStringLiteral("acquisition"),
-         QJsonObject{
-             {QStringLiteral("mode"), QStringLiteral("surface_rectangular")},
-             {QStringLiteral("count_x"),
-              static_cast<qint64>(receivers.count_x)},
-             {QStringLiteral("count_y"),
-              static_cast<qint64>(receivers.count_y)},
-             {QStringLiteral("x_range_m"),
-              QJsonArray{receivers.minimum_x_m, receivers.maximum_x_m}},
-             {QStringLiteral("y_range_m"),
-              QJsonArray{receivers.minimum_y_m, receivers.maximum_y_m}},
-             {QStringLiteral("depth_m"), receivers.depth_m},
-             {QStringLiteral("components"),
-              QJsonArray{QStringLiteral("vx"), QStringLiteral("vy"),
-                         QStringLiteral("vz")}}}}};
+        {QStringLiteral("acquisition"), acquisition_json(*draft.acquisition)}};
 }
 
 QString absolute_path(const QString& root, const QString& shot_id) {
@@ -208,7 +520,7 @@ ExperimentDraft ExperimentDraftStore::defaults(
         static_cast<double>(grid.nx / 2) * grid.dx_m,
         static_cast<double>(grid.ny / 2) * grid.dy_m,
         static_cast<double>(grid.nz / 4) * grid.dz_m};
-    draft.receiver_grid = default_receiver_grid(grid);
+    draft.acquisition = default_acquisition(grid);
     validate(draft);
     static_cast<void>(resolve(draft, grid, extrema));
     return draft;
@@ -272,44 +584,17 @@ void ExperimentDraftStore::validate(const ExperimentDraft& draft) {
             draft.double_couple.dip_deg,
             draft.double_couple.rake_deg));
     }
-    if (!draft.receiver_grid) {
+    if (!draft.acquisition) {
         fail(QStringLiteral("experiment acquisition is missing"));
     }
-    const auto& receivers = *draft.receiver_grid;
-    const std::array<double, 5> receiver_values{
-        receivers.minimum_x_m,
-        receivers.maximum_x_m,
-        receivers.minimum_y_m,
-        receivers.maximum_y_m,
-        receivers.depth_m};
-    if (!std::all_of(
-            receiver_values.begin(), receiver_values.end(), [](double value) {
-                return std::isfinite(value);
-            })) {
-        fail(QStringLiteral("receiver coordinates must be finite"));
-    }
-    if (receivers.count_x < 2 || receivers.count_y < 2 ||
-        !(receivers.minimum_x_m < receivers.maximum_x_m) ||
-        !(receivers.minimum_y_m < receivers.maximum_y_m) ||
-        receivers.depth_m != 0.0) {
-        fail(QStringLiteral(
-            "surface receiver grid needs two or more points per axis, "
-            "increasing bounds, and depth 0 m"));
-    }
-    const auto receiver_count = detail::checked_size_product(
-        receivers.count_x,
-        receivers.count_y,
-        "receiver count overflows size_t");
-    if (receiver_count > maximum_desktop_receiver_count) {
-        fail(QStringLiteral(
-            "desktop receiver grid exceeds the 1,100,000 point safety limit"));
-    }
+    static_cast<void>(receiver_locations(*draft.acquisition));
 }
 
-RectangularReceiverGrid ExperimentDraftStore::default_receiver_grid(
+AcquisitionGeometry ExperimentDraftStore::default_acquisition(
     const Grid3D& grid) {
     require_valid_grid_geometry(grid);
-    return {
+    AcquisitionGeometry result;
+    result.rectangular = {
         101,
         101,
         0.0,
@@ -317,42 +602,23 @@ RectangularReceiverGrid ExperimentDraftStore::default_receiver_grid(
         0.0,
         static_cast<double>(grid.ny - 1) * grid.dy_m,
         0.0};
+    result.line = {
+        101,
+        0.0,
+        static_cast<double>(grid.ny / 2) * grid.dy_m,
+        static_cast<double>(grid.nx - 1) * grid.dx_m,
+        static_cast<double>(grid.ny / 2) * grid.dy_m,
+        0.0};
+    return result;
 }
 
 std::vector<PhysicalPoint3D> ExperimentDraftStore::generate_receivers(
-    const RectangularReceiverGrid& receiver_grid,
+    const AcquisitionGeometry& acquisition,
     const Grid3D& grid) {
-    ExperimentDraft validation;
-    validation.shot_id = QStringLiteral("validation");
-    validation.model_reference = QStringLiteral("models/validation.h5");
-    validation.receiver_grid = receiver_grid;
-    validate(validation);
-    const auto count = detail::checked_size_product(
-        receiver_grid.count_x,
-        receiver_grid.count_y,
-        "receiver count overflows size_t");
-    std::vector<PhysicalPoint3D> result;
-    result.reserve(count);
-    for (std::size_t iy = 0; iy < receiver_grid.count_y; ++iy) {
-        const auto y_fraction = static_cast<double>(iy) /
-                                static_cast<double>(receiver_grid.count_y - 1);
-        const auto y = receiver_grid.minimum_y_m +
-                       y_fraction *
-                           (receiver_grid.maximum_y_m -
-                            receiver_grid.minimum_y_m);
-        for (std::size_t ix = 0; ix < receiver_grid.count_x; ++ix) {
-            const auto x_fraction = static_cast<double>(ix) /
-                                    static_cast<double>(receiver_grid.count_x - 1);
-            const PhysicalPoint3D point{
-                receiver_grid.minimum_x_m +
-                    x_fraction *
-                        (receiver_grid.maximum_x_m -
-                         receiver_grid.minimum_x_m),
-                y,
-                receiver_grid.depth_m};
-            static_cast<void>(physical_to_storage_coordinate(grid, point));
-            result.push_back(point);
-        }
+    require_valid_grid_geometry(grid);
+    auto result = receiver_locations(acquisition);
+    for (const auto& point : result) {
+        static_cast<void>(physical_to_storage_coordinate(grid, point));
     }
     return result;
 }
@@ -391,12 +657,102 @@ AcquisitionEstimate ExperimentDraftStore::acquisition_estimate(
         segy_bytes};
 }
 
+std::vector<PhysicalPoint3D> ExperimentDraftStore::parse_receiver_csv(
+    const QByteArray& csv) {
+    auto lines = csv.split('\n');
+    while (!lines.empty() && lines.front().trimmed().isEmpty()) {
+        lines.removeFirst();
+    }
+    if (lines.empty()) {
+        fail(QStringLiteral("receiver CSV is empty"));
+    }
+    auto header = lines.takeFirst().trimmed();
+    if (header.startsWith("\xEF\xBB\xBF")) {
+        header.remove(0, 3);
+    }
+    const auto header_columns = header.split(',');
+    if (header_columns.size() != 3 ||
+        header_columns[0].trimmed() != QByteArray("x_m") ||
+        header_columns[1].trimmed() != QByteArray("y_m") ||
+        header_columns[2].trimmed() != QByteArray("z_m")) {
+        fail(QStringLiteral("receiver CSV header must be x_m,y_m,z_m"));
+    }
+    std::vector<PhysicalPoint3D> result;
+    result.reserve(static_cast<std::size_t>(lines.size()));
+    for (qsizetype row = 0; row < lines.size(); ++row) {
+        const auto line = lines[row].trimmed();
+        if (line.isEmpty()) {
+            continue;
+        }
+        const auto columns = line.split(',');
+        if (columns.size() != 3) {
+            fail(QStringLiteral("receiver CSV row %1 must have three columns")
+                     .arg(row + 2));
+        }
+        bool x_valid = false;
+        bool y_valid = false;
+        bool z_valid = false;
+        const auto x = columns[0].trimmed().toDouble(&x_valid);
+        const auto y = columns[1].trimmed().toDouble(&y_valid);
+        const auto z = columns[2].trimmed().toDouble(&z_valid);
+        if (!x_valid || !y_valid || !z_valid) {
+            fail(QStringLiteral("receiver CSV row %1 is not numeric").arg(row + 2));
+        }
+        result.push_back({x, y, z});
+        if (result.size() > maximum_desktop_receiver_count) {
+            fail(QStringLiteral(
+                "desktop receiver geometry exceeds the 1,100,000 point safety limit"));
+        }
+    }
+    validate_receiver_locations(result);
+    return result;
+}
+
+void ExperimentDraftStore::save_acquisition_template(
+    const QString& path,
+    const AcquisitionGeometry& acquisition) {
+    static_cast<void>(receiver_locations(acquisition));
+    QSaveFile output(path);
+    if (!output.open(QIODevice::WriteOnly)) {
+        fail(QStringLiteral("cannot open acquisition template output"));
+    }
+    const QJsonObject root{
+        {QStringLiteral("schema"),
+         QString::fromUtf8(kAcquisitionTemplateSchema)},
+        {QStringLiteral("acquisition"), acquisition_json(acquisition)}};
+    const auto bytes = QJsonDocument(root).toJson(QJsonDocument::Indented);
+    if (output.write(bytes) != bytes.size() || !output.commit()) {
+        fail(QStringLiteral("cannot atomically publish acquisition template"));
+    }
+}
+
+AcquisitionGeometry ExperimentDraftStore::load_acquisition_template(
+    const QString& path) {
+    QFile input(path);
+    if (!input.open(QIODevice::ReadOnly)) {
+        fail(QStringLiteral("cannot open acquisition template"));
+    }
+    QJsonParseError parse_error;
+    const auto document = QJsonDocument::fromJson(input.readAll(), &parse_error);
+    if (parse_error.error != QJsonParseError::NoError || !document.isObject()) {
+        fail(QStringLiteral("acquisition template is not valid JSON"));
+    }
+    const auto root = document.object();
+    if (root.value(QStringLiteral("schema")).toString() !=
+            QString::fromUtf8(kAcquisitionTemplateSchema) ||
+        !root.value(QStringLiteral("acquisition")).isObject()) {
+        fail(QStringLiteral("unsupported acquisition template schema"));
+    }
+    return parse_acquisition_v4(
+        root.value(QStringLiteral("acquisition")).toObject());
+}
+
 ResolvedExperimentDraft ExperimentDraftStore::resolve(
     const ExperimentDraft& draft,
     const Grid3D& grid,
     const PhysicalModelExtrema& extrema) {
     validate(draft);
-    if (!draft.receiver_grid) {
+    if (!draft.acquisition) {
         fail(QStringLiteral("experiment acquisition is missing"));
     }
     SimulationConfig simulation;
@@ -434,7 +790,7 @@ ResolvedExperimentDraft ExperimentDraftStore::resolve(
         draft.source_origin_time_s,
         moment,
         draft.wavelet);
-    auto receivers = generate_receivers(*draft.receiver_grid, grid);
+    auto receivers = generate_receivers(*draft.acquisition, grid);
     auto acquisition = acquisition_estimate(
         receivers.size(), simulation.time.step_count());
     return {
@@ -476,7 +832,9 @@ ExperimentDraft ExperimentDraftStore::load(
         schema == QString::fromUtf8(kLegacyExperimentDraftSchema);
     const bool legacy_v2 =
         schema == QString::fromUtf8(kLegacyExperimentDraftSchemaV2);
-    if (!legacy_v1 && !legacy_v2 &&
+    const bool legacy_v3 =
+        schema == QString::fromUtf8(kLegacyExperimentDraftSchemaV3);
+    if (!legacy_v1 && !legacy_v2 && !legacy_v3 &&
         schema != QString::fromUtf8(kExperimentDraftSchema)) {
         fail(QStringLiteral("unsupported experiment draft schema"));
     }
@@ -570,55 +928,15 @@ ExperimentDraft ExperimentDraftStore::load(
         if (!root.value(QStringLiteral("acquisition")).isObject()) {
             fail(QStringLiteral("experiment acquisition has invalid type"));
         }
-        const auto acquisition =
-            root.value(QStringLiteral("acquisition")).toObject();
-        if (acquisition.value(QStringLiteral("mode")).toString() !=
-                QStringLiteral("surface_rectangular") ||
-            !acquisition.value(QStringLiteral("count_x")).isDouble() ||
-            !acquisition.value(QStringLiteral("count_y")).isDouble() ||
-            !acquisition.value(QStringLiteral("depth_m")).isDouble()) {
-            fail(QStringLiteral("experiment acquisition values are invalid"));
-        }
-        require_number_array(
-            acquisition.value(QStringLiteral("x_range_m")),
-            2,
-            QStringLiteral("acquisition.x_range_m"));
-        require_number_array(
-            acquisition.value(QStringLiteral("y_range_m")),
-            2,
-            QStringLiteral("acquisition.y_range_m"));
-        const auto components =
-            acquisition.value(QStringLiteral("components")).toArray();
-        if (components.size() != 3 ||
-            components[0].toString() != QStringLiteral("vx") ||
-            components[1].toString() != QStringLiteral("vy") ||
-            components[2].toString() != QStringLiteral("vz")) {
-            fail(QStringLiteral("experiment receiver components must be vx,vy,vz"));
-        }
-        const auto count_x = acquisition.value(QStringLiteral("count_x")).toDouble();
-        const auto count_y = acquisition.value(QStringLiteral("count_y")).toDouble();
-        if (count_x < 0.0 || count_y < 0.0 ||
-            std::floor(count_x) != count_x || std::floor(count_y) != count_y ||
-            count_x > static_cast<double>(std::numeric_limits<std::size_t>::max()) ||
-            count_y > static_cast<double>(std::numeric_limits<std::size_t>::max())) {
-            fail(QStringLiteral("experiment receiver counts must be integers"));
-        }
-        const auto x_range =
-            acquisition.value(QStringLiteral("x_range_m")).toArray();
-        const auto y_range =
-            acquisition.value(QStringLiteral("y_range_m")).toArray();
-        draft.receiver_grid = RectangularReceiverGrid{
-            static_cast<std::size_t>(count_x),
-            static_cast<std::size_t>(count_y),
-            x_range[0].toDouble(),
-            x_range[1].toDouble(),
-            y_range[0].toDouble(),
-            y_range[1].toDouble(),
-            acquisition.value(QStringLiteral("depth_m")).toDouble()};
+        const auto acquisition = root.value(QStringLiteral("acquisition")).toObject();
+        draft.acquisition = legacy_v2 || legacy_v3
+                                ? parse_legacy_acquisition(acquisition)
+                                : parse_acquisition_v4(acquisition);
     }
     if (legacy_v1) {
         auto legacy_validation = draft;
-        legacy_validation.receiver_grid =
+        legacy_validation.acquisition = AcquisitionGeometry{};
+        legacy_validation.acquisition->rectangular =
             RectangularReceiverGrid{2, 2, 0.0, 1.0, 0.0, 1.0, 0.0};
         validate(legacy_validation);
     } else {

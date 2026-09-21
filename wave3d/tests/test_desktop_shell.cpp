@@ -1,4 +1,5 @@
 #include "wave3d/desktop/main_window.hpp"
+#include "wave3d/desktop/experiment_editor.hpp"
 #include "wave3d/desktop/project_workspace.hpp"
 #include "wave3d/desktop/theme.hpp"
 #include "wave3d/desktop/volume_viewport.hpp"
@@ -93,13 +94,13 @@ void test_shell_contract() {
         require_child<QComboBox>(window, "receiverGeometryCombo");
     expect(
         receiver_geometry->count() == 3 &&
-            !receiver_geometry->model()
+            receiver_geometry->model()
                  ->flags(receiver_geometry->model()->index(1, 0))
                  .testFlag(Qt::ItemIsEnabled) &&
-            !receiver_geometry->model()
+            receiver_geometry->model()
                  ->flags(receiver_geometry->model()->index(2, 0))
                  .testFlag(Qt::ItemIsEnabled),
-        "reserved line and CSV receiver modes are not visible and gated");
+        "line and CSV receiver modes are not enabled");
 
     const auto* four_view = require_child<QSplitter>(window, "fourViewSplitter");
     const auto* slices = require_child<QSplitter>(window, "sliceViewSplitter");
@@ -465,6 +466,68 @@ void test_hdf5_model_import() {
         volume->property("receiverCount").toULongLong() == 10201,
         "default receivers were not synchronized to the 3-D viewport");
 
+    auto* receiver_geometry =
+        require_child<QComboBox>(window, "receiverGeometryCombo");
+    receiver_geometry->setCurrentIndex(1);
+    require_child<QSpinBox>(window, "receiverLineCountSpin")->setValue(3);
+    require_child<QDoubleSpinBox>(window, "receiverLineFirstXSpin")
+        ->setValue(0.0);
+    require_child<QDoubleSpinBox>(window, "receiverLineFirstYSpin")
+        ->setValue(10.0);
+    require_child<QDoubleSpinBox>(window, "receiverLineLastXSpin")
+        ->setValue(30.0);
+    require_child<QDoubleSpinBox>(window, "receiverLineLastYSpin")
+        ->setValue(10.0);
+    expect(
+        volume->property("receiverCount").toULongLong() == 3 &&
+            require_child<QPushButton>(window, "saveExperimentDraftButton")
+                ->isEnabled(),
+        "valid receiver line did not update the resolved overlay");
+
+    const auto csv_path = QDir(project_root).filePath(QStringLiteral("receivers.csv"));
+    QFile csv_file(csv_path);
+    expect(csv_file.open(QIODevice::WriteOnly), "cannot create receiver CSV fixture");
+    expect(
+        csv_file.write("x_m,y_m,z_m\n0,0,0\n10,10,0\n20,20,0\n") > 0,
+        "cannot write receiver CSV fixture");
+    csv_file.close();
+    auto* editor = dynamic_cast<wave3d::desktop::ExperimentEditor*>(
+        require_child<QWidget>(window, "experimentEditor"));
+    expect(editor != nullptr, "experiment editor type is unavailable");
+    error.clear();
+    expect(
+        editor->import_receiver_csv_file(csv_path, &error) &&
+            receiver_geometry->currentIndex() == 2 &&
+            require_child<QLabel>(window, "explicitReceiverCountLabel")
+                ->text()
+                .contains(QStringLiteral("3 个")) &&
+            volume->property("receiverCount").toULongLong() == 3,
+        "CSV receiver import did not preserve and resolve three rows");
+    require_child<QDoubleSpinBox>(window, "receiverTranslateXSpin")
+        ->setValue(5.0);
+    expect(
+        require_child<QPushButton>(window, "saveExperimentDraftButton")
+            ->isEnabled(),
+        "in-domain receiver translation was rejected");
+    const auto template_path =
+        QDir(project_root).filePath(QStringLiteral("fixture.wave3d-acquisition.json"));
+    error.clear();
+    expect(
+        editor->save_acquisition_template_file(template_path, &error),
+        "acquisition template save failed");
+    receiver_geometry->setCurrentIndex(1);
+    error.clear();
+    expect(
+        editor->load_acquisition_template_file(template_path, &error) &&
+            receiver_geometry->currentIndex() == 2 &&
+            require_child<QDoubleSpinBox>(window, "receiverTranslateXSpin")
+                    ->value() == 5.0 &&
+            volume->property("receiverCount").toULongLong() == 3,
+        "acquisition template load did not restore CSV geometry");
+    receiver_geometry->setCurrentIndex(0);
+    require_child<QDoubleSpinBox>(window, "receiverTranslateXSpin")
+        ->setValue(0.0);
+
     require_child<QDoubleSpinBox>(window, "sourceXSpin")->setValue(15.0);
     require_child<QDoubleSpinBox>(window, "totalTimeSpin")->setValue(4.25);
     require_child<QComboBox>(window, "sourceModeCombo")->setCurrentIndex(1);
@@ -497,9 +560,9 @@ void test_hdf5_model_import() {
             saved_draft.source_mode ==
                 wave3d::desktop::DraftSourceMode::MomentTensor &&
             saved_draft.moment_tensor_nm.m_xy_nm == 1.0e12 &&
-            saved_draft.receiver_grid.has_value() &&
-            saved_draft.receiver_grid->count_x == 5 &&
-            saved_draft.receiver_grid->count_y == 4 &&
+            saved_draft.acquisition.has_value() &&
+            saved_draft.acquisition->rectangular.count_x == 5 &&
+            saved_draft.acquisition->rectangular.count_y == 4 &&
             volume->property("receiverCount").toULongLong() == 20,
         "saved UI draft did not preserve workspace/source/acquisition values");
     const auto source_marker = volume->property("sourceMarkerPosition").toList();
