@@ -1845,3 +1845,19 @@ three SEG-Y members to appear in the results workspace with a rendered gather.
 No full Overthrust propagation or screenshot was added because this increment
 changes result inspection rather than solver physics or the accepted live
 four-view renderer.
+
+## Development workflow amendment — single-shot first
+
+**Status:** Accepted on 2026-09-21.
+
+The active desktop route now postpones multi-shot management, shot CSV import,
+and sequential queue execution. Four increments remain: source mechanisms,
+active-shot acquisition geometry, SEG-Y property-model conversion, and
+single-shot release qualification. Existing schema seams are retained.
+
+`docs/INCREMENT_EXECUTION_POLICY.md` defines the minimal increment packet and a
+proportionate validation matrix. Routine narrow changes no longer repeat the
+full suite, Overthrust propagation, screenshots, or every optional build unless
+their risk boundary requires it. The release milestone still runs the complete
+affected matrix. This documentation-only amendment was checked with `git diff
+--check`; no build was required.

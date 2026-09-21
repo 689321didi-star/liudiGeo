@@ -971,3 +971,21 @@ particle velocity units and the applied clip in the figure. The only export is
 PNG. SEG-Y files, checksums, manifests, and terminal result records remain
 immutable. Processing, picks, resampling, and run-to-run amplitude arithmetic
 require separate scientific contracts.
+
+## D060 — Complete the single-shot desktop path before multi-shot workflow
+
+**Status:** Accepted, 2026-09-21
+
+The active desktop milestone is narrowed to a complete single-shot forward
+workflow. Multi-shot table operations, shot CSV import, and sequential queue
+execution are postponed. Stable shot identities, per-shot experiment paths,
+SEG-Y shot metadata, and queue-preference fields remain compatible so the
+postponed workflow can be added without replacing persisted projects.
+
+Remaining delivery is source mechanisms, acquisition geometry, SEG-Y property
+model conversion, and single-shot release qualification. Each increment uses
+the risk-based validation matrix in `INCREMENT_EXECUTION_POLICY.md`: focused
+checks are sufficient for narrow changes, while scientific, cross-boundary,
+and release changes widen validation. This changes scheduling and test
+repetition only; it does not relax the scientific validation ladder or permit
+untested code to be reported as complete.

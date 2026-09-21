@@ -2,9 +2,14 @@
 
 This file is the authoritative working agreement for every agent modifying this
 repository. Read it completely before inspecting or changing implementation
-files. Also read `docs/HANDOFF.md`, `docs/ARCHITECTURE.md`,
-`docs/DECISIONS.md`, and `docs/ROADMAP.md` before beginning a development
-increment.
+files. Before beginning a development increment, read
+`docs/INCREMENT_EXECUTION_POLICY.md`, the current `docs/ROADMAP.md` entry, the
+latest relevant `docs/HANDOFF.md` record, and the sections of
+`docs/ARCHITECTURE.md` and `docs/DECISIONS.md` that govern the changed
+boundary. Read those four long documents completely only for a release audit,
+a broad cross-module change, or when the relevant boundary cannot be located
+reliably. This targeted-reading rule reduces repeated context without relaxing
+any requirement below.
 
 ## Project objective
 

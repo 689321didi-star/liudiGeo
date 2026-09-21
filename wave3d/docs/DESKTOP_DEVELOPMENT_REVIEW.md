@@ -1,6 +1,14 @@
 # Wave3D Desktop Development Review
 
-**Status:** Accepted as the fixed first-release reference, 2026-09-15.
+**Status:** Accepted as the fixed first-release reference, 2026-09-15;
+single-shot execution amendment accepted 2026-09-21.
+
+The active development milestone now completes and qualifies the single-shot
+workflow first. Multi-shot editing/import and sequential queue execution are
+postponed while their existing schema seams remain compatible. The remaining
+sequence and proportionate validation rules are fixed in
+`INCREMENT_EXECUTION_POLICY.md`. This amendment changes delivery order, not the
+solver, SEG-Y, source-coordinate, or immutable-run contracts below.
 
 ## Product boundary
 
@@ -79,7 +87,8 @@ individual modules.
 11. **Diagnostics** — records configuration, solver/device information,
     timings, warnings, failures, cancellation state, and output checksums in
     each run.
-12. **Optional run queue** — executes experiments and their shots sequentially
+12. **Deferred optional run queue** — when resumed, executes experiments and
+    their shots sequentially
     on the single GPU, with explicit queued/running/completed/failed/cancelled
     states. It never launches concurrent full forward sessions on one device.
 
@@ -137,9 +146,9 @@ partial set as a completed SEG-Y product.
 A shot owns one source and either references the experiment acquisition or
 overrides it. Every shot produces separate trace data, logs, status, and
 checksums. Single-shot operation is the default UI path, while the underlying
-schema and a basic shot table support add/copy/delete and CSV shot import from
-the first release. SEG-Y trace headers must preserve shot identifiers and
-source coordinates.
+schema retains stable shot identities and per-shot paths. Basic shot-table
+editing and CSV shot import are postponed from the active milestone. SEG-Y
+trace headers continue to preserve shot identifiers and source coordinates.
 
 Source models are immutable. Crop, Vp-to-Vs/density derivation, smoothing,
 resampling, and later region editing create a derived model with an ordered
@@ -203,3 +212,7 @@ test execution.
 
 Changes to these product or scientific-data boundaries require a recorded
 decision and an updated acceptance plan before implementation.
+
+The 2026-09-21 execution amendment postpones the multi-shot table and optional
+queue defaults above. They remain backlog requirements and are not Increment
+31 single-shot release gates.

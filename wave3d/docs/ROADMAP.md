@@ -690,6 +690,40 @@ export the current gather as PNG.
 header, immutable export, navigation, real desktop completion, optional build,
 and regression gates in `INCREMENT_27_RESULTS_WORKSPACE_PLAN.md` pass.
 
+## Remaining single-shot desktop sequence
+
+**Execution amendment:** Accepted on 2026-09-21. Multi-shot editing/import and
+sequential queue execution are deferred. Existing schema seams stay readable;
+they are not acceptance gates for the following work. Validation follows
+`INCREMENT_EXECUTION_POLICY.md` so routine increments use focused evidence and
+the complete matrix is reserved for broad changes and release qualification.
+
+### Increment 28 — Source mechanisms
+
+Finish double-couple presets and a convention-documented, numerically tested
+strike/dip/rake conversion for the active shot.
+
+### Increment 29 — Acquisition geometry
+
+Add receiver lines, explicit CSV coordinates, reusable templates, translation,
+and duplicate validation for the active shot.
+
+### Increment 30 — SEG-Y model conversion
+
+Convert the supported regular IEEE-float property-volume subset into canonical
+Wave3D HDF5 with explicit geometry, units, validation, and provenance.
+
+### Increment 31 — Single-shot release qualification
+
+Audit the reserved snapshot and RTM seams, then qualify the complete native
+Linux single-shot workflow. This milestone runs the complete affected build
+matrix and required end-to-end evidence.
+
+### Deferred backlog
+
+- Multi-shot add/copy/delete and shot CSV import.
+- Sequential single-GPU run queue and its lifecycle UI.
+
 ## Deferred research phases
 
 After elastic forward qualification, separate future phases may implement
