@@ -1,10 +1,10 @@
 #pragma once
 
 #include "wave3d/desktop/experiment_draft.hpp"
+#include "wave3d/desktop/main_window_shell.hpp"
 #include "wave3d/desktop/project_workspace.hpp"
 #include "wave3d/desktop/segy_model_conversion.hpp"
 
-#include <QMainWindow>
 #include <QString>
 
 #include <memory>
@@ -12,6 +12,7 @@
 
 class QCloseEvent;
 class QTimer;
+class QAction;
 
 namespace wave3d::desktop {
 
@@ -21,7 +22,7 @@ class ForwardRunWorker;
 struct LiveWavefieldFrame;
 #endif
 
-class MainWindow final : public QMainWindow {
+class MainWindow final : public MainWindowShell {
 public:
     explicit MainWindow(
         QWidget* parent = nullptr,
@@ -86,6 +87,10 @@ private:
     std::shared_ptr<const LiveWavefieldFrame> presented_frame_;
 #endif
     QTimer* run_poll_timer_{nullptr};
+    QAction* save_project_action_{nullptr};
+    QAction* pause_run_action_{nullptr};
+    QAction* resume_run_action_{nullptr};
+    QAction* stop_run_action_{nullptr};
     bool experiment_model_reference_changed_{false};
     int volume_property_index_{-1};
 };

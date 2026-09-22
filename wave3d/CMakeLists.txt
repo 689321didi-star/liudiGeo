@@ -467,6 +467,7 @@ if(WAVE3D_BUILD_DESKTOP)
         wave3d_desktop_shell STATIC
         src/desktop/experiment_editor.cpp
         src/desktop/main_window.cpp
+        src/desktop/main_window_shell.cpp
         src/desktop/result_workspace.cpp
         src/desktop/theme.cpp
         src/desktop/volume_viewport.cpp)

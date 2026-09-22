@@ -1,0 +1,64 @@
+#pragma once
+
+#include <QMainWindow>
+#include <QString>
+
+class QAction;
+class QDockWidget;
+class QLabel;
+class QTabWidget;
+class QToolBar;
+class QWidget;
+
+namespace wave3d::desktop {
+
+class MainWindowShell : public QMainWindow {
+public:
+    explicit MainWindowShell(QWidget* parent = nullptr);
+
+    void set_workspace_host(QWidget* workspace);
+    void set_navigator_pages(
+        QWidget* project_page,
+        QWidget* files_page,
+        QWidget* workflow_page);
+    void set_inspector_pages(QWidget* model_page, QWidget* experiment_page);
+    void set_bottom_tool_pages(
+        QWidget* jobs_page,
+        QWidget* log_page,
+        QWidget* seismogram_page,
+        QWidget* performance_page);
+
+    [[nodiscard]] QToolBar* command_bar() const noexcept;
+    [[nodiscard]] QDockWidget* navigator_dock() const noexcept;
+    [[nodiscard]] QDockWidget* context_inspector_dock() const noexcept;
+    [[nodiscard]] QDockWidget* bottom_tool_dock() const noexcept;
+    [[nodiscard]] QTabWidget* navigator_host() const noexcept;
+    [[nodiscard]] QTabWidget* context_inspector_host() const noexcept;
+    [[nodiscard]] QTabWidget* bottom_tool_area() const noexcept;
+    [[nodiscard]] QAction* reset_layout_action() const noexcept;
+
+    void reset_default_layout();
+    [[nodiscard]] bool restore_v2_layout();
+    void save_v2_layout() const;
+    void set_run_telemetry(
+        const QString& status,
+        const QString& step,
+        const QString& physical_time,
+        const QString& gpu_device);
+
+private:
+    QToolBar* command_bar_{nullptr};
+    QDockWidget* navigator_dock_{nullptr};
+    QDockWidget* context_inspector_dock_{nullptr};
+    QDockWidget* bottom_tool_dock_{nullptr};
+    QTabWidget* navigator_host_{nullptr};
+    QTabWidget* context_inspector_host_{nullptr};
+    QTabWidget* bottom_tool_area_{nullptr};
+    QAction* reset_layout_action_{nullptr};
+    QLabel* telemetry_status_{nullptr};
+    QLabel* telemetry_step_{nullptr};
+    QLabel* telemetry_time_{nullptr};
+    QLabel* telemetry_gpu_{nullptr};
+};
+
+} // namespace wave3d::desktop

@@ -57,6 +57,7 @@
 #include <QSpinBox>
 #include <QSplitter>
 #include <QStatusBar>
+#include <QTabWidget>
 #include <QTextEdit>
 #include <QTimer>
 #include <QToolBar>
@@ -73,8 +74,6 @@
 
 namespace wave3d::desktop {
 namespace {
-
-constexpr int kWindowStateVersion = 2;
 
 #if defined(WAVE3D_DESKTOP_HAS_HDF5) && defined(WAVE3D_DESKTOP_HAS_SEGY)
 std::optional<SegyModelConversionRequest> prompt_segy_model_conversion(
@@ -517,10 +516,10 @@ QWidget* make_run_controls(QWidget* parent) {
     return group;
 }
 
-QDockWidget* make_experiment_dock(QMainWindow* window) {
-    auto* dock = new QDockWidget(QStringLiteral("实验工作区"), window);
-    dock->setObjectName(QStringLiteral("experimentDock"));
-    auto* contents = new QWidget(dock);
+QWidget* make_navigator_project_page(QWidget* parent) {
+    auto* scroll = new QScrollArea(parent);
+    scroll->setObjectName(QStringLiteral("navigatorProjectPage"));
+    auto* contents = new QWidget(scroll);
     auto* layout = new QVBoxLayout(contents);
 
     auto* navigation = new QListWidget(contents);
@@ -571,31 +570,25 @@ QDockWidget* make_experiment_dock(QMainWindow* window) {
     layout->addWidget(display_group);
     layout->addWidget(make_run_controls(contents));
 
-    auto* scroll = new QScrollArea(dock);
-    scroll->setObjectName(QStringLiteral("experimentWorkspaceScroll"));
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     scroll->setWidget(contents);
-    dock->setWidget(scroll);
-    return dock;
+    return scroll;
 }
 
-QDockWidget* make_log_dock(QMainWindow* window) {
-    auto* dock = new QDockWidget(QStringLiteral("运行日志"), window);
-    dock->setObjectName(QStringLiteral("logDock"));
-    auto* log = new QTextEdit(dock);
+QWidget* make_log_page(QWidget* parent) {
+    auto* log = new QTextEdit(parent);
     log->setObjectName(QStringLiteral("runLog"));
     log->setReadOnly(true);
     log->setPlainText(QStringLiteral("Wave3D Studio 已就绪。"));
-    dock->setWidget(log);
-    return dock;
+    return log;
 }
 
-QDockWidget* make_model_information_dock(QMainWindow* window) {
-    auto* dock = new QDockWidget(QStringLiteral("模型信息"), window);
-    dock->setObjectName(QStringLiteral("modelInformationDock"));
-    auto* contents = new QWidget(dock);
+QWidget* make_model_information_page(QWidget* parent) {
+    auto* scroll = new QScrollArea(parent);
+    scroll->setObjectName(QStringLiteral("modelInformationScroll"));
+    auto* contents = new QWidget(scroll);
     auto* layout = new QVBoxLayout(contents);
     auto* form = new QFormLayout;
 
@@ -686,44 +679,55 @@ QDockWidget* make_model_information_dock(QMainWindow* window) {
     rendering_form->addRow(reset_camera);
     layout->addWidget(rendering);
     layout->addStretch();
-    auto* scroll = new QScrollArea(dock);
-    scroll->setObjectName(QStringLiteral("modelInformationScroll"));
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     scroll->setMinimumWidth(250);
     scroll->setWidget(contents);
-    dock->setWidget(scroll);
-    return dock;
+    return scroll;
 }
 
-QDockWidget* make_experiment_editor_dock(QMainWindow* window) {
-    auto* dock = new QDockWidget(QStringLiteral("实验设置"), window);
-    dock->setObjectName(QStringLiteral("experimentEditorDock"));
-    auto* scroll = new QScrollArea(dock);
+QWidget* make_experiment_editor_page(QWidget* parent) {
+    auto* scroll = new QScrollArea(parent);
     scroll->setObjectName(QStringLiteral("experimentEditorScroll"));
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     scroll->setMinimumWidth(340);
     scroll->setWidget(new ExperimentEditor(scroll));
-    dock->setWidget(scroll);
-    return dock;
+    return scroll;
 }
 
-QDockWidget* make_results_dock(QMainWindow* window) {
-    auto* dock = new QDockWidget(QStringLiteral("结果工作区"), window);
-    dock->setObjectName(QStringLiteral("resultsDock"));
-    auto* workspace = new ResultWorkspace(dock);
+QWidget* make_results_page(QWidget* parent) {
+    auto* workspace = new ResultWorkspace(parent);
     workspace->setMinimumWidth(540);
-    dock->setWidget(workspace);
-    return dock;
+    return workspace;
 }
 
-void focus_dock(QDockWidget* dock) {
-    const auto apply = [dock] {
+QWidget* make_empty_state(
+    QWidget* parent,
+    const char* object_name,
+    const QString& title,
+    const QString& description) {
+    auto* page = new QWidget(parent);
+    page->setObjectName(QString::fromUtf8(object_name));
+    auto* layout = new QVBoxLayout(page);
+    layout->setContentsMargins(18, 18, 18, 18);
+    auto* heading = new QLabel(title, page);
+    heading->setProperty("panelTitle", true);
+    layout->addWidget(heading);
+    auto* message = new QLabel(description, page);
+    message->setWordWrap(true);
+    layout->addWidget(message);
+    layout->addStretch();
+    return page;
+}
+
+void focus_dock_page(QDockWidget* dock, QTabWidget* host, int page) {
+    const auto apply = [dock, host, page] {
         dock->show();
         dock->raise();
+        host->setCurrentIndex(page);
         if (dock->isFloating()) {
             dock->activateWindow();
         }
@@ -747,15 +751,8 @@ void scroll_to_widget_top(QScrollArea* scroll, QWidget* target) {
 } // namespace
 
 MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
-    : QMainWindow(parent) {
-    setObjectName(QStringLiteral("wave3dMainWindow"));
-    setWindowTitle(QStringLiteral("Wave3D 科研实验工作台"));
-    resize(1440, 900);
-    setDockOptions(
-        QMainWindow::AnimatedDocks | QMainWindow::AllowTabbedDocks);
-
+    : MainWindowShell(parent) {
     auto* central = new QWidget(this);
-    central->setObjectName(QStringLiteral("workspaceCentral"));
     auto* central_layout = new QVBoxLayout(central);
     central_layout->setContentsMargins(10, 10, 10, 10);
     central_layout->setSpacing(9);
@@ -802,42 +799,33 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
     horizontal->setChildrenCollapsible(false);
     slices->setChildrenCollapsible(false);
     central_layout->addWidget(horizontal, 1);
-    setCentralWidget(central);
+    set_workspace_host(central);
 
-    auto* experiment_dock = make_experiment_dock(this);
-    auto* log_dock = make_log_dock(this);
-    auto* model_information_dock = make_model_information_dock(this);
-    auto* experiment_editor_dock = make_experiment_editor_dock(this);
-    auto* results_dock = make_results_dock(this);
-    const auto reset_layout = [this, central, experiment_dock, log_dock,
-                               model_information_dock, experiment_editor_dock,
-                               results_dock] {
-        for (auto* dock : {experiment_dock, log_dock, model_information_dock,
-                           experiment_editor_dock, results_dock}) {
-            dock->setFloating(false);
-            removeDockWidget(dock);
-        }
-        addDockWidget(Qt::LeftDockWidgetArea, experiment_dock);
-        addDockWidget(Qt::BottomDockWidgetArea, log_dock);
-        addDockWidget(Qt::RightDockWidgetArea, model_information_dock);
-        addDockWidget(Qt::RightDockWidgetArea, experiment_editor_dock);
-        addDockWidget(Qt::BottomDockWidgetArea, results_dock);
-        tabifyDockWidget(model_information_dock, experiment_editor_dock);
-        tabifyDockWidget(log_dock, results_dock);
-        experiment_dock->show();
-        model_information_dock->show();
-        experiment_editor_dock->show();
-        log_dock->show();
-        results_dock->hide();
-        central->show();
-        model_information_dock->raise();
-        log_dock->raise();
-        resizeDocks({log_dock}, {145}, Qt::Vertical);
-        resizeDocks({model_information_dock}, {270}, Qt::Horizontal);
-        findChild<QListWidget*>(QStringLiteral("moduleNavigation"))
-            ->setCurrentRow(0);
-    };
-    reset_layout();
+    set_navigator_pages(
+        make_navigator_project_page(navigator_host()),
+        make_empty_state(
+            navigator_host(), "navigatorFilesPage",
+            QStringLiteral("Files"),
+            QStringLiteral("文件树将在后续阶段接入。当前模型导入仍通过 File/Model 命令完成。")),
+        make_empty_state(
+            navigator_host(), "navigatorWorkflowPage",
+            QStringLiteral("Workflow"),
+            QStringLiteral("工作流状态模型将在后续阶段接入。现有预检与运行流程保持可用。")));
+    set_inspector_pages(
+        make_model_information_page(context_inspector_host()),
+        make_experiment_editor_page(context_inspector_host()));
+    set_bottom_tool_pages(
+        make_empty_state(
+            bottom_tool_area(), "jobsPage",
+            QStringLiteral("Jobs"),
+            QStringLiteral("当前单炮任务的状态由顶部遥测与运行控制显示。任务队列将在后续阶段接入。")),
+        make_log_page(bottom_tool_area()),
+        make_results_page(bottom_tool_area()),
+        make_empty_state(
+            bottom_tool_area(), "performancePage",
+            QStringLiteral("Performance"),
+            QStringLiteral("性能视图已预留；本阶段不引入 NVML 或新的采集逻辑。")));
+    reset_default_layout();
 #ifndef WAVE3D_DESKTOP_HAS_SEGY
     result_workspace(this)->set_segy_available(false);
 #endif
@@ -847,6 +835,10 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
     new_project->setObjectName(QStringLiteral("newProjectAction"));
     auto* open_project = file_menu->addAction(QStringLiteral("打开项目"));
     open_project->setObjectName(QStringLiteral("openProjectAction"));
+    save_project_action_ =
+        file_menu->addAction(QStringLiteral("保存实验设置"));
+    save_project_action_->setObjectName(QStringLiteral("saveProjectAction"));
+    save_project_action_->setEnabled(false);
 
     auto* model_menu = menuBar()->addMenu(QStringLiteral("模型"));
     auto* import_model =
@@ -865,22 +857,17 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
 #endif
 
     auto* view_menu = menuBar()->addMenu(QStringLiteral("视图"));
-    const std::array<std::pair<QDockWidget*, const char*>, 5> dock_actions{{
-        {experiment_dock, "toggleExperimentWorkspaceAction"},
-        {model_information_dock, "toggleModelInformationAction"},
-        {experiment_editor_dock, "toggleExperimentEditorAction"},
-        {log_dock, "toggleRunLogAction"},
-        {results_dock, "toggleResultsWorkspaceAction"}}};
+    const std::array<std::pair<QDockWidget*, const char*>, 3> dock_actions{{
+        {navigator_dock(), "toggleNavigatorAction"},
+        {context_inspector_dock(), "toggleContextInspectorAction"},
+        {bottom_tool_dock(), "toggleBottomToolsAction"}}};
     for (const auto& [dock, object_name] : dock_actions) {
         auto* action = dock->toggleViewAction();
         action->setObjectName(QString::fromUtf8(object_name));
         view_menu->addAction(action);
     }
     view_menu->addSeparator();
-    auto* reset_layout_action =
-        view_menu->addAction(QStringLiteral("重置默认布局"));
-    reset_layout_action->setObjectName(QStringLiteral("resetLayoutAction"));
-    connect(reset_layout_action, &QAction::triggered, this, reset_layout);
+    view_menu->addAction(reset_layout_action());
 
     auto* run_menu = menuBar()->addMenu(QStringLiteral("运行"));
     auto* snapshot = run_menu->addAction(QStringLiteral("保存波场快照（预留）"));
@@ -889,11 +876,10 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
     snapshot->setToolTip(
         QStringLiteral("预留接口：当前版本不写入波场快照"));
 
-    auto* toolbar = addToolBar(QStringLiteral("主工具栏"));
-    toolbar->setObjectName(QStringLiteral("mainToolbar"));
-    toolbar->setMovable(false);
+    auto* toolbar = command_bar();
     toolbar->addAction(new_project);
     toolbar->addAction(open_project);
+    toolbar->addAction(save_project_action_);
     toolbar->addAction(import_model);
     toolbar->addSeparator();
     auto* validate = toolbar->addAction(QStringLiteral("实验预检"));
@@ -902,6 +888,18 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
     auto* run = toolbar->addAction(QStringLiteral("开始正演"));
     run->setObjectName(QStringLiteral("startRunAction"));
     run->setEnabled(false);
+    pause_run_action_ = toolbar->addAction(QStringLiteral("暂停"));
+    pause_run_action_->setObjectName(QStringLiteral("pauseRunAction"));
+    pause_run_action_->setEnabled(false);
+    resume_run_action_ = toolbar->addAction(QStringLiteral("继续"));
+    resume_run_action_->setObjectName(QStringLiteral("resumeRunAction"));
+    resume_run_action_->setEnabled(false);
+    stop_run_action_ = toolbar->addAction(QStringLiteral("停止"));
+    stop_run_action_->setObjectName(QStringLiteral("stopRunAction"));
+    stop_run_action_->setEnabled(false);
+    set_run_telemetry(
+        QStringLiteral("空闲"), QStringLiteral("0 / 0"),
+        QStringLiteral("0.000 s"), QStringLiteral("未启动"));
 
     run_poll_timer_ = new QTimer(this);
     run_poll_timer_->setInterval(100);
@@ -944,6 +942,13 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
         QString error;
         if (!this->open_project(QFileInfo(document).absolutePath(), &error)) {
             QMessageBox::critical(this, QStringLiteral("无法打开项目"), error);
+        }
+    });
+    connect(save_project_action_, &QAction::triggered, this, [this] {
+        QString error;
+        if (!save_experiment_draft(&error)) {
+            QMessageBox::critical(
+                this, QStringLiteral("无法保存实验设置"), error);
         }
     });
     connect(import_model, &QAction::triggered, this, [this] {
@@ -1010,8 +1015,14 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
             }
         });
 #ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
+    auto* pause_button =
+        findChild<QPushButton*>(QStringLiteral("pauseRunButton"));
+    auto* resume_button =
+        findChild<QPushButton*>(QStringLiteral("resumeRunButton"));
+    auto* stop_button =
+        findChild<QPushButton*>(QStringLiteral("stopRunButton"));
     connect(
-        findChild<QPushButton*>(QStringLiteral("pauseRunButton")),
+        pause_button,
         &QPushButton::clicked,
         this,
         [this] {
@@ -1020,7 +1031,7 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
             }
         });
     connect(
-        findChild<QPushButton*>(QStringLiteral("resumeRunButton")),
+        resume_button,
         &QPushButton::clicked,
         this,
         [this] {
@@ -1029,7 +1040,7 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
             }
         });
     connect(
-        findChild<QPushButton*>(QStringLiteral("stopRunButton")),
+        stop_button,
         &QPushButton::clicked,
         this,
         [this] {
@@ -1037,6 +1048,15 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
                 forward_worker_->request_stop();
             }
         });
+    connect(
+        pause_run_action_, &QAction::triggered,
+        pause_button, &QPushButton::click);
+    connect(
+        resume_run_action_, &QAction::triggered,
+        resume_button, &QPushButton::click);
+    connect(
+        stop_run_action_, &QAction::triggered,
+        stop_button, &QPushButton::click);
 #endif
 
     connect(
@@ -1195,24 +1215,20 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
                     this, QStringLiteral("无法保存实验草稿"), error);
             }
         });
+    auto* module_navigation =
+        findChild<QListWidget*>(QStringLiteral("moduleNavigation"));
     connect(
-        findChild<QListWidget*>(QStringLiteral("moduleNavigation")),
+        module_navigation,
         &QListWidget::currentRowChanged,
         this,
-        [this, central, log_dock, model_information_dock,
-         experiment_editor_dock, results_dock](int row) {
+        [this](int row) {
             if (row != 6) {
-                results_dock->hide();
-                const auto workspace_was_hidden = central->isHidden();
-                central->show();
-                if (workspace_was_hidden) {
-                    QTimer::singleShot(0, this, [this] { update_model_view(); });
-                }
-                focus_dock(log_dock);
-                resizeDocks({log_dock}, {145}, Qt::Vertical);
+                focus_dock_page(bottom_tool_dock(), bottom_tool_area(), 1);
+                resizeDocks({bottom_tool_dock()}, {180}, Qt::Vertical);
             }
             if (row == 0 || row == 1 || row == 7) {
-                focus_dock(model_information_dock);
+                focus_dock_page(
+                    context_inspector_dock(), context_inspector_host(), 0);
                 auto* scroll = findChild<QScrollArea*>(
                     QStringLiteral("modelInformationScroll"));
                 if (row == 7) {
@@ -1226,7 +1242,8 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
                 return;
             }
             if (row == 2 || row == 3 || row == 4) {
-                focus_dock(experiment_editor_dock);
+                focus_dock_page(
+                    context_inspector_dock(), context_inspector_host(), 1);
                 auto* scroll = findChild<QScrollArea*>(
                     QStringLiteral("experimentEditorScroll"));
                 if (row == 2) {
@@ -1248,33 +1265,27 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
                 return;
             }
             if (row == 6) {
-                central->hide();
-                log_dock->hide();
-                focus_dock(results_dock);
-                resizeDocks({results_dock}, {650}, Qt::Vertical);
+                focus_dock_page(bottom_tool_dock(), bottom_tool_area(), 2);
+                resizeDocks({bottom_tool_dock()}, {420}, Qt::Vertical);
             }
+        });
+    connect(
+        reset_layout_action(), &QAction::triggered,
+        module_navigation, [module_navigation] {
+            module_navigation->setCurrentRow(0);
         });
 
     QSettings settings;
     if (restore_last_project) {
-        restoreGeometry(
-            settings.value(QStringLiteral("desktop/geometry")).toByteArray());
-        const auto state =
-            settings.value(QStringLiteral("desktop/window_state")).toByteArray();
-        if (!state.isEmpty() &&
-            !restoreState(state, kWindowStateVersion)) {
-            reset_layout();
-        }
+        static_cast<void>(restore_v2_layout());
         const auto module_row =
-            settings.value(QStringLiteral("desktop/current_module"), 0).toInt();
-        auto* navigation = findChild<QListWidget*>(
-            QStringLiteral("moduleNavigation"));
-        if (module_row >= 0 && module_row < navigation->count() &&
-            navigation->item(module_row)->flags().testFlag(Qt::ItemIsEnabled)) {
-            if (navigation->currentRow() == module_row) {
-                navigation->setCurrentRow(-1);
+            settings.value(QStringLiteral("desktop/v2/current_module"), 0).toInt();
+        if (module_row >= 0 && module_row < module_navigation->count() &&
+            module_navigation->item(module_row)->flags().testFlag(Qt::ItemIsEnabled)) {
+            if (module_navigation->currentRow() == module_row) {
+                module_navigation->setCurrentRow(-1);
             }
-            navigation->setCurrentRow(module_row);
+            module_navigation->setCurrentRow(module_row);
         }
     } else {
         resize(1440, 900);
@@ -1403,7 +1414,8 @@ bool MainWindow::import_hdf5_model(
         update_model_view();
         findChild<QLabel*>(QStringLiteral("modelStateBadge"))
             ->setText(QStringLiteral("模型已加载"));
-        findChild<QDockWidget*>(QStringLiteral("modelInformationDock"))->raise();
+        focus_dock_page(
+            context_inspector_dock(), context_inspector_host(), 0);
         findChild<QTextEdit*>(QStringLiteral("runLog"))
             ->append(QStringLiteral("已加载模型：%1").arg(relative_reference));
         statusBar()->showMessage(QStringLiteral("模型已加载 · 静态中心切面"));
@@ -1610,6 +1622,9 @@ bool MainWindow::preflight_experiment(
 #endif
         findChild<QLabel*>(QStringLiteral("runStateLabel"))
             ->setText(QStringLiteral("预检完成 · %1").arg(run_id));
+        set_run_telemetry(
+            QStringLiteral("预检完成"), QStringLiteral("0 / 0"),
+            QStringLiteral("0.000 s"), QStringLiteral("未启动"));
         findChild<QTextEdit*>(QStringLiteral("runLog"))
             ->append(
                 QStringLiteral("正演预检完成：%1；%2 个接收器；配置 %3")
@@ -1685,6 +1700,12 @@ bool MainWindow::start_prepared_run(QString* error_message) {
         findChild<QPushButton*>(QStringLiteral("pauseRunButton"))->setEnabled(false);
         findChild<QPushButton*>(QStringLiteral("resumeRunButton"))->setEnabled(false);
         findChild<QPushButton*>(QStringLiteral("stopRunButton"))->setEnabled(true);
+        pause_run_action_->setEnabled(false);
+        resume_run_action_->setEnabled(false);
+        stop_run_action_->setEnabled(true);
+        set_run_telemetry(
+            QStringLiteral("准备中"), QStringLiteral("0 / 0"),
+            QStringLiteral("0.000 s"), QStringLiteral("CUDA"));
         set_run_editing_locked(true);
         findChild<QTextEdit*>(QStringLiteral("runLog"))
             ->append(QStringLiteral("后台正演已启动：%1")
@@ -1717,6 +1738,9 @@ void MainWindow::invalidate_prepared_run() {
     if (had_prepared) {
         findChild<QLabel*>(QStringLiteral("runStateLabel"))
             ->setText(QStringLiteral("配置已修改 · 请重新预检"));
+        set_run_telemetry(
+            QStringLiteral("等待预检"), QStringLiteral("0 / 0"),
+            QStringLiteral("0.000 s"), QStringLiteral("未启动"));
     }
 }
 
@@ -1730,6 +1754,7 @@ void MainWindow::set_run_editing_locked(bool locked) {
         ->setEnabled(!locked && project_.has_value());
 #endif
     experiment_editor(this)->setEnabled(!locked && model_scene_ != nullptr);
+    save_project_action_->setEnabled(!locked && model_scene_ != nullptr);
     if (locked) {
         findChild<QAction*>(QStringLiteral("validateExperimentAction"))
             ->setEnabled(false);
@@ -1785,6 +1810,9 @@ void MainWindow::poll_forward_run() {
         snapshot.state == ForwardRunState::Preparing ||
         snapshot.state == ForwardRunState::Running ||
         snapshot.state == ForwardRunState::Paused);
+    pause_run_action_->setEnabled(pause->isEnabled());
+    resume_run_action_->setEnabled(resume->isEnabled());
+    stop_run_action_->setEnabled(stop->isEnabled());
 
     switch (snapshot.state) {
     case ForwardRunState::Idle:
@@ -1821,6 +1849,18 @@ void MainWindow::poll_forward_run() {
         state_label->setText(QStringLiteral("正演失败"));
         break;
     }
+    const auto physical_time_s =
+        resolved_experiment_
+            ? static_cast<double>(snapshot.completed_steps) *
+                  resolved_experiment_->simulation.time.dt_s
+            : 0.0;
+    set_run_telemetry(
+        state_label->text(),
+        QStringLiteral("%1 / %2")
+            .arg(snapshot.completed_steps)
+            .arg(snapshot.total_steps),
+        QStringLiteral("%1 s").arg(physical_time_s, 0, 'f', 3),
+        QStringLiteral("CUDA"));
 
     const bool terminal = snapshot.state == ForwardRunState::Completed ||
                           snapshot.state == ForwardRunState::Cancelled ||
@@ -1884,6 +1924,13 @@ void MainWindow::poll_forward_run() {
                                    .arg(report.sample_count)
                                    .arg(total_bytes);
             progress->setValue(100);
+            set_run_telemetry(
+                QStringLiteral("正演完成"),
+                QStringLiteral("%1 / %2")
+                    .arg(snapshot.completed_steps)
+                    .arg(snapshot.total_steps),
+                QStringLiteral("%1 s").arg(physical_time_s, 0, 'f', 3),
+                QString::fromStdString(report.device_name));
         } else if (snapshot.state == ForwardRunState::Cancelled) {
             result = {
                 RunTerminalState::Cancelled,
@@ -1930,6 +1977,9 @@ void MainWindow::poll_forward_run() {
     pause->setEnabled(false);
     resume->setEnabled(false);
     stop->setEnabled(false);
+    pause_run_action_->setEnabled(false);
+    resume_run_action_->setEnabled(false);
+    stop_run_action_->setEnabled(false);
     findChild<QLabel*>(QStringLiteral("liveFrameLabel"))
         ->setText(QStringLiteral("波场帧：运行已结束"));
     set_run_editing_locked(false);
@@ -2135,6 +2185,7 @@ void MainWindow::clear_model_view() {
     volume_viewport(this)->clear_volume();
     findChild<QAction*>(QStringLiteral("validateExperimentAction"))
         ->setEnabled(false);
+    save_project_action_->setEnabled(false);
     experiment_editor(this)->clear_model_context();
     auto* property =
         findChild<QComboBox*>(QStringLiteral("modelPropertySelector"));
@@ -2302,9 +2353,11 @@ void MainWindow::configure_experiment_editor() {
             draft,
             stored,
             experiment_model_reference_changed_);
+        save_project_action_->setEnabled(true);
         update_experiment_validation();
     } catch (const std::exception& error) {
         resolved_experiment_.reset();
+        save_project_action_->setEnabled(false);
         experiment_editor(this)->clear_model_context();
         experiment_editor(this)->show_validation_error(
             QString::fromUtf8(error.what()));
@@ -2525,13 +2578,10 @@ void MainWindow::update_model_view() {
 }
 
 void MainWindow::save_window_settings() {
+    save_v2_layout();
     QSettings settings;
-    settings.setValue(QStringLiteral("desktop/geometry"), saveGeometry());
     settings.setValue(
-        QStringLiteral("desktop/window_state"),
-        saveState(kWindowStateVersion));
-    settings.setValue(
-        QStringLiteral("desktop/current_module"),
+        QStringLiteral("desktop/v2/current_module"),
         findChild<QListWidget*>(QStringLiteral("moduleNavigation"))->currentRow());
 }
 

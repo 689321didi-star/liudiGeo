@@ -41,6 +41,7 @@
 #include <QSpinBox>
 #include <QStandardPaths>
 #include <QStatusBar>
+#include <QTabWidget>
 #include <QTemporaryDir>
 #include <QThread>
 #include <QToolBar>
@@ -76,7 +77,7 @@ void test_shell_contract() {
         !qApp->styleSheet().isEmpty(),
         "desktop application must use the centralized scientific theme");
     static_cast<void>(require_child<QFrame>(window, "workspaceHeader"));
-    static_cast<void>(require_child<QToolBar>(window, "mainToolbar"));
+    static_cast<void>(require_child<QToolBar>(window, "commandBar"));
     expect(
         window.findChildren<QOpenGLWidget*>().size() == 4,
         "desktop shell must contain exactly four OpenGL viewports");
@@ -134,23 +135,37 @@ void test_shell_contract() {
     expect(
         window.minimumSizeHint().height() <= 920,
         "desktop shell must stay near the accepted 1440 by 900 viewport");
+    auto* navigator_host =
+        require_child<QTabWidget>(window, "navigatorHost");
+    auto* inspector_host =
+        require_child<QTabWidget>(window, "contextInspectorHost");
+    auto* bottom_tools =
+        require_child<QTabWidget>(window, "bottomToolArea");
     expect(
-        require_child<QDockWidget>(window, "resultsDock")->isHidden(),
-        "results workspace must stay hidden until selected");
+        navigator_host->count() == 3 &&
+            navigator_host->tabText(0) == QStringLiteral("Project") &&
+            navigator_host->tabText(1) == QStringLiteral("Files") &&
+            navigator_host->tabText(2) == QStringLiteral("Workflow"),
+        "navigator host pages are incomplete");
+    expect(
+        inspector_host->count() == 2 && bottom_tools->count() == 4 &&
+            bottom_tools->currentIndex() == 1,
+        "inspector or bottom tool host pages are incomplete");
     navigation->setCurrentRow(6);
     QCoreApplication::processEvents();
     expect(
-        !require_child<QDockWidget>(window, "resultsDock")->isHidden() &&
-            require_child<QWidget>(window, "workspaceCentral")->isHidden() &&
+        !require_child<QDockWidget>(window, "bottomToolDock")->isHidden() &&
+            bottom_tools->currentIndex() == 2 &&
+            !require_child<QWidget>(window, "workspaceHost")->isHidden() &&
             window.minimumSizeHint().height() <= 920,
-        "selected results workspace must stay near the review viewport");
+        "selected results page must coexist with the scientific workspace");
     navigation->setCurrentRow(2);
     QCoreApplication::processEvents();
     expect(
-        require_child<QDockWidget>(window, "resultsDock")->isHidden() &&
-            !require_child<QWidget>(window, "workspaceCentral")->isHidden() &&
-            !require_child<QDockWidget>(window, "logDock")->isHidden(),
-        "leaving results must restore the normal workspace dock");
+        bottom_tools->currentIndex() == 1 &&
+            !require_child<QWidget>(window, "workspaceHost")->isHidden() &&
+            !require_child<QDockWidget>(window, "bottomToolDock")->isHidden(),
+        "leaving results must restore the log tool page");
 
     const auto* field =
         require_child<QComboBox>(window, "displayFieldSelector");
@@ -183,20 +198,22 @@ void test_shell_contract() {
             !navigation->item(5)->toolTip().isEmpty(),
         "deferred run queue must be visible but non-interactive");
     for (const char* name : {
-             "toggleExperimentWorkspaceAction", "toggleModelInformationAction",
-             "toggleExperimentEditorAction", "toggleRunLogAction",
-             "toggleResultsWorkspaceAction", "resetLayoutAction"}) {
+             "toggleNavigatorAction", "toggleContextInspectorAction",
+             "toggleBottomToolsAction", "resetLayoutAction"}) {
         static_cast<void>(require_child<QAction>(window, name));
     }
-    auto* editor_dock =
-        require_child<QDockWidget>(window, "experimentEditorDock");
-    editor_dock->setFloating(true);
+    auto* inspector_dock =
+        require_child<QDockWidget>(window, "contextInspectorDock");
+    inspector_dock->setFloating(true);
+    require_child<QDockWidget>(window, "navigatorDock")->hide();
+    require_child<QDockWidget>(window, "bottomToolDock")->hide();
     require_child<QAction>(window, "resetLayoutAction")->trigger();
     QCoreApplication::processEvents();
     expect(
-        !editor_dock->isFloating() &&
-            require_child<QDockWidget>(window, "resultsDock")->isHidden() &&
-            !require_child<QDockWidget>(window, "experimentDock")->isHidden(),
+        !inspector_dock->isFloating() &&
+            !require_child<QDockWidget>(window, "navigatorDock")->isHidden() &&
+            !require_child<QDockWidget>(window, "bottomToolDock")->isHidden() &&
+            bottom_tools->currentIndex() == 1,
         "reset layout did not recover the required desktop docks");
 
     const auto* snapshot = require_child<QAction>(window, "snapshotAction");
@@ -226,6 +243,37 @@ void test_shell_contract() {
             !require_child<QPushButton>(window, name)->isEnabled(),
             "inactive run controls must start disabled");
     }
+    for (const char* name : {
+             "pauseRunAction", "resumeRunAction", "stopRunAction"}) {
+        expect(
+            !require_child<QAction>(window, name)->isEnabled(),
+            "inactive command bar controls must start disabled");
+    }
+    int routed_run_commands = 0;
+    for (const auto& pair : std::array{
+             std::pair{"pauseRunAction", "pauseRunButton"},
+             std::pair{"resumeRunAction", "resumeRunButton"},
+             std::pair{"stopRunAction", "stopRunButton"}}) {
+        auto* action = require_child<QAction>(window, pair.first);
+        auto* button = require_child<QPushButton>(window, pair.second);
+        QObject::connect(
+            button, &QPushButton::clicked,
+            [&routed_run_commands] { ++routed_run_commands; });
+        button->setEnabled(true);
+        action->setEnabled(true);
+        action->trigger();
+        button->setEnabled(false);
+        action->setEnabled(false);
+    }
+    expect(
+        routed_run_commands == 3,
+        "command bar pause, resume, and stop did not reuse legacy controls");
+    expect(
+        require_child<QLabel>(window, "runTelemetryStatus")->text() ==
+                QStringLiteral("空闲") &&
+            require_child<QLabel>(window, "runTelemetryGpu")->text() ==
+                QStringLiteral("未启动"),
+        "compact run telemetry did not initialize");
 }
 
 void test_project_window_state() {
@@ -314,11 +362,11 @@ void test_project_window_state() {
     expect(window.close(), "desktop window refused normal close");
     settings.sync();
     expect(
-        !settings.value(QStringLiteral("desktop/geometry")).toByteArray().isEmpty() &&
-            !settings.value(QStringLiteral("desktop/window_state"))
+        !settings.value(QStringLiteral("desktop/v2/geometry")).toByteArray().isEmpty() &&
+            !settings.value(QStringLiteral("desktop/v2/window_state"))
                  .toByteArray()
                  .isEmpty() &&
-            settings.value(QStringLiteral("desktop/current_module")).toInt() == 6,
+            settings.value(QStringLiteral("desktop/v2/current_module")).toInt() == 6,
         "window geometry, dock state, or active module was not persisted on close");
 
     wave3d::desktop::MainWindow reopened;
@@ -328,8 +376,9 @@ void test_project_window_state() {
         "last project was not reopened from desktop settings");
     expect(
         require_child<QListWidget>(reopened, "moduleNavigation")->currentRow() == 6 &&
-            !require_child<QDockWidget>(reopened, "resultsDock")->isHidden() &&
-            require_child<QWidget>(reopened, "workspaceCentral")->isHidden(),
+            require_child<QTabWidget>(reopened, "bottomToolArea")->currentIndex() ==
+                2 &&
+            !require_child<QWidget>(reopened, "workspaceHost")->isHidden(),
         "reopened desktop did not restore a consistent active module");
     expect(
         require_child<QComboBox>(reopened, "displayFieldSelector")
@@ -578,7 +627,7 @@ void test_hdf5_model_import() {
                 1.0e-5F,
         "volume drag must move the grabbed volume in the mouse direction");
     auto* editor_dock =
-        require_child<QDockWidget>(window, "experimentEditorDock");
+        require_child<QDockWidget>(window, "contextInspectorDock");
     auto* frequency =
         require_child<QDoubleSpinBox>(window, "designFrequencySpin");
     window.show();
@@ -617,7 +666,9 @@ void test_hdf5_model_import() {
     module_navigation->setCurrentRow(6);
     QApplication::processEvents();
     expect(
-        !require_child<QDockWidget>(window, "resultsDock")->isHidden(),
+        !require_child<QDockWidget>(window, "bottomToolDock")->isHidden() &&
+            require_child<QTabWidget>(window, "bottomToolArea")->currentIndex() ==
+                2,
         "results navigation did not expose the gather workspace");
     module_navigation->setCurrentRow(3);
     QApplication::processEvents();
@@ -882,7 +933,9 @@ void test_hdf5_model_import() {
     require_child<QListWidget>(window, "moduleNavigation")->setCurrentRow(6);
     QCoreApplication::processEvents();
     expect(
-        !require_child<QDockWidget>(window, "resultsDock")->isHidden() &&
+        !require_child<QDockWidget>(window, "bottomToolDock")->isHidden() &&
+            require_child<QTabWidget>(window, "bottomToolArea")->currentIndex() ==
+                2 &&
             require_child<QListWidget>(window, "moduleNavigation")
                     ->currentRow() == 6,
         "results navigation did not expose the results workspace");

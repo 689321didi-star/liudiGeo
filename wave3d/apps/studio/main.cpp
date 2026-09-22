@@ -6,12 +6,14 @@
 #include <QComboBox>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
+#include <QDockWidget>
 #include <QListWidget>
 #include <QOpenGLWidget>
 #include <QPainter>
 #include <QPixmap>
 #include <QSurfaceFormat>
 #include <QSpinBox>
+#include <QTabWidget>
 #include <QTimer>
 
 #include <array>
@@ -41,9 +43,18 @@ int inspect_shell(wave3d::desktop::MainWindow& window) {
               << '\n'
               << "default_display_field="
               << (field == nullptr ? "" : field->currentData().toString().toStdString())
+              << '\n'
+              << "navigator_page_count=" << window.navigator_host()->count()
+              << '\n'
+              << "inspector_page_count="
+              << window.context_inspector_host()->count() << '\n'
+              << "bottom_tool_page_count=" << window.bottom_tool_area()->count()
               << '\n';
     return viewports.size() == 4 && field != nullptr && field->count() == 6 &&
-                   field->findData(QStringLiteral("speed")) >= 0
+                   field->findData(QStringLiteral("speed")) >= 0 &&
+                   window.navigator_host()->count() == 3 &&
+                   window.context_inspector_host()->count() == 2 &&
+                   window.bottom_tool_area()->count() == 4
                ? 0
                : 1;
 }
@@ -179,6 +190,19 @@ int main(int argc, char** argv) {
             "打开审查模块：project、model、workspace、source、acquisition、"
             "results 或 display"),
         QStringLiteral("name"));
+    const QCommandLineOption hide_navigator_option(
+        QStringLiteral("hide-navigator"),
+        QStringLiteral("审查截图中隐藏 Navigator"));
+    const QCommandLineOption hide_inspector_option(
+        QStringLiteral("hide-inspector"),
+        QStringLiteral("审查截图中隐藏 Context Inspector"));
+    const QCommandLineOption collapse_bottom_option(
+        QStringLiteral("collapse-bottom"),
+        QStringLiteral("审查截图中折叠 Bottom Tool Area"));
+    const QCommandLineOption auto_run_option(
+        QStringLiteral("auto-run"),
+        QStringLiteral("保存、预检并启动指定编号的审查运行"),
+        QStringLiteral("run-id"));
     parser.addOption(inspect_option);
     parser.addOption(smoke_option);
     parser.addOption(capture_option);
@@ -188,6 +212,10 @@ int main(int argc, char** argv) {
     parser.addOption(crop_option);
     parser.addOption(volume_camera_option);
     parser.addOption(module_option);
+    parser.addOption(hide_navigator_option);
+    parser.addOption(hide_inspector_option);
+    parser.addOption(collapse_bottom_option);
+    parser.addOption(auto_run_option);
     parser.process(application);
 
     wave3d::desktop::MainWindow window(
@@ -254,6 +282,24 @@ int main(int argc, char** argv) {
         }
         navigation->setCurrentRow(row);
     }
+    if (parser.isSet(hide_navigator_option)) {
+        window.navigator_dock()->hide();
+    }
+    if (parser.isSet(hide_inspector_option)) {
+        window.context_inspector_dock()->hide();
+    }
+    if (parser.isSet(collapse_bottom_option)) {
+        window.bottom_tool_dock()->hide();
+    }
+    if (parser.isSet(auto_run_option)) {
+        if (!window.save_experiment_draft(&error) ||
+            !window.preflight_experiment(parser.value(auto_run_option), &error) ||
+            !window.start_prepared_run(&error)) {
+            std::cerr << "Cannot start review run: " << error.toStdString()
+                      << '\n';
+            return 2;
+        }
+    }
     if (parser.isSet(inspect_option)) {
         return inspect_shell(window);
     }
@@ -261,7 +307,9 @@ int main(int argc, char** argv) {
     window.show();
     if (parser.isSet(capture_option)) {
         const auto output_path = parser.value(capture_option);
-        QTimer::singleShot(1500, &application, [&application, &window, output_path] {
+        const auto capture_delay_ms =
+            parser.isSet(auto_run_option) ? 8000 : 1500;
+        QTimer::singleShot(capture_delay_ms, &application, [&application, &window, output_path] {
             application.exit(capture_shell(window, output_path) ? 0 : 2);
         });
     } else if (parser.isSet(smoke_option)) {

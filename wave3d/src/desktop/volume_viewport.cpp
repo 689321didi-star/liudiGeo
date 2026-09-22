@@ -323,8 +323,15 @@ void VolumeViewport::reset_camera() {
 }
 
 void VolumeViewport::initializeGL() {
-    initializeOpenGLFunctions();
-    setProperty("openGlReady", context() != nullptr && context()->isValid());
+    const bool context_ready =
+        context() != nullptr && context()->isValid() &&
+        initializeOpenGLFunctions();
+    setProperty("openGlReady", context_ready);
+    if (!context_ready) {
+        failure_message_ = QStringLiteral("OpenGL 3.3 上下文不可用");
+        setProperty("volumeShaderReady", false);
+        return;
+    }
     try {
         program_ = std::make_unique<QOpenGLShaderProgram>();
         if (!program_->addShaderFromSourceCode(
@@ -460,6 +467,9 @@ void VolumeViewport::upload_pending_live_volume() {
 
 void VolumeViewport::paintGL() {
     setProperty("volumeFrameReady", false);
+    if (!property("openGlReady").toBool()) {
+        return;
+    }
     glClearColor(0.035F, 0.055F, 0.075F, 1.0F);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     if (program_ && property("volumeShaderReady").toBool()) {
