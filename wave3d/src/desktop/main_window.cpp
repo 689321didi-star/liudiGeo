@@ -1,8 +1,11 @@
 #include "wave3d/desktop/main_window.hpp"
+
+#include "wave3d/desktop/context_inspector.hpp"
 #include "wave3d/desktop/experiment_editor.hpp"
 #include "wave3d/desktop/model_derivation.hpp"
 #include "wave3d/desktop/project_navigator.hpp"
 #include "wave3d/desktop/result_workspace.hpp"
+#include "wave3d/desktop/selection_controller.hpp"
 #include "wave3d/desktop/static_model_scene.hpp"
 #include "wave3d/desktop/volume_viewport.hpp"
 
@@ -572,6 +575,7 @@ QWidget* make_navigator_project_page(
     project_path->setObjectName(QStringLiteral("projectPathLabel"));
     project_path->setWordWrap(true);
     project_path->setProperty("secondaryText", true);
+    project_path->hide();
     auto* shot_count = new QLabel(QStringLiteral("0"), contents);
     shot_count->setObjectName(QStringLiteral("projectShotCountLabel"));
     shot_count->hide();
@@ -913,9 +917,28 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
         project_navigator_, [this](int index) {
             if (index == 0) project_navigator_->publishCurrentSelection();
         });
-    set_inspector_pages(
-        make_model_information_page(context_inspector_host()),
-        make_experiment_editor_page(context_inspector_host()));
+    context_inspector_ =
+        new ContextInspector(selection_controller(), context_inspector_host());
+    set_context_inspector(context_inspector_);
+    refresh_context_inspector();
+
+    legacy_inspector_dialog_ = new QDialog(this);
+    legacy_inspector_dialog_->setObjectName(
+        QStringLiteral("legacyInspectorDialog"));
+    legacy_inspector_dialog_->setWindowTitle(
+        QStringLiteral("Legacy Model and Experiment Controls"));
+    legacy_inspector_dialog_->resize(430, 720);
+    auto* legacy_dialog_layout = new QVBoxLayout(legacy_inspector_dialog_);
+    legacy_dialog_layout->setContentsMargins(0, 0, 0, 0);
+    legacy_inspector_host_ = new QTabWidget(legacy_inspector_dialog_);
+    legacy_inspector_host_->setObjectName(QStringLiteral("legacyInspectorHost"));
+    legacy_inspector_host_->addTab(
+        make_model_information_page(legacy_inspector_host_),
+        QStringLiteral("Model Controls"));
+    legacy_inspector_host_->addTab(
+        make_experiment_editor_page(legacy_inspector_host_),
+        QStringLiteral("Experiment Editor"));
+    legacy_dialog_layout->addWidget(legacy_inspector_host_);
     set_bottom_tool_pages(
         make_empty_state(
             bottom_tool_area(), "jobsPage",
@@ -1328,9 +1351,18 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
                 focus_dock_page(bottom_tool_dock(), bottom_tool_area(), 1);
                 resizeDocks({bottom_tool_dock()}, {180}, Qt::Vertical);
             }
-            if (row == 0 || row == 1 || row == 7) {
+            if (row == 0) {
                 focus_dock_page(
                     context_inspector_dock(), context_inspector_host(), 0);
+                if (project_) {
+                    selection_controller()->setSelection(SelectionContext{
+                        SelectionKind::Project, project_->project_id,
+                        project_->project_id});
+                }
+                return;
+            }
+            if (row == 1 || row == 7) {
+                legacy_inspector_host_->setCurrentIndex(0);
                 auto* scroll = findChild<QScrollArea*>(
                     QStringLiteral("modelInformationScroll"));
                 if (row == 7) {
@@ -1341,11 +1373,12 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
                 } else {
                     scroll->verticalScrollBar()->setValue(0);
                 }
+                legacy_inspector_dialog_->show();
+                legacy_inspector_dialog_->raise();
                 return;
             }
             if (row == 2 || row == 3 || row == 4) {
-                focus_dock_page(
-                    context_inspector_dock(), context_inspector_host(), 1);
+                legacy_inspector_host_->setCurrentIndex(1);
                 auto* scroll = findChild<QScrollArea*>(
                     QStringLiteral("experimentEditorScroll"));
                 if (row == 2) {
@@ -1364,6 +1397,8 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
                         findChild<QGroupBox*>(
                             QStringLiteral("acquisitionEditorGroup")));
                 }
+                legacy_inspector_dialog_->show();
+                legacy_inspector_dialog_->raise();
                 return;
             }
             if (row == 6) {
@@ -1514,6 +1549,7 @@ bool MainWindow::import_hdf5_model(
         }
         populate_model_information();
         update_model_view();
+        refresh_project_navigator();
         findChild<QLabel*>(QStringLiteral("modelStateBadge"))
             ->setText(QStringLiteral("模型已加载"));
         focus_dock_page(
@@ -2385,6 +2421,57 @@ void MainWindow::refresh_project_navigator() {
         state.runs = discover_project_navigator_runs(project_root_);
     }
     project_navigator_->setProjectState(state);
+    refresh_context_inspector();
+}
+
+void MainWindow::refresh_context_inspector() {
+    if (context_inspector_ == nullptr) {
+        return;
+    }
+    ContextInspectorState state;
+    if (project_) {
+        const auto runs = discover_project_navigator_runs(project_root_);
+        std::size_t result_count = 0;
+        for (const auto& run : runs) {
+            if (run.has_result) ++result_count;
+        }
+        state.project = ProjectInspectorState{
+            project_->project_id,
+            project_->name,
+            project_root_,
+            project_->model_reference,
+            model_scene_ != nullptr,
+            static_cast<std::size_t>(project_->shots.size()),
+            static_cast<std::size_t>(runs.size()),
+            result_count};
+    }
+#ifdef WAVE3D_DESKTOP_HAS_HDF5
+    if (project_ && model_scene_) {
+        const auto& summary = model_scene_->summary();
+        const auto model_id = project_->model_reference.isEmpty()
+                                  ? project_->project_id + QStringLiteral(":model")
+                                  : project_->model_reference;
+        state.model = ModelInspectorState{
+            model_id,
+            model_scene_->source_path(),
+            summary.grid.nx,
+            summary.grid.ny,
+            summary.grid.nz,
+            summary.grid.dx_m,
+            summary.grid.dy_m,
+            summary.grid.dz_m,
+            summary.maximum_coordinate_m.x_m,
+            summary.maximum_coordinate_m.y_m,
+            summary.maximum_coordinate_m.z_m,
+            summary.extrema.minimum.vp_m_s,
+            summary.extrema.maximum.vp_m_s,
+            summary.extrema.minimum.vs_m_s,
+            summary.extrema.maximum.vs_m_s,
+            summary.extrema.minimum.density_kg_m3,
+            summary.extrema.maximum.density_kg_m3};
+    }
+#endif
+    context_inspector_->setState(std::move(state));
 }
 
 void MainWindow::populate_model_information() {

@@ -1097,3 +1097,22 @@ receiver keys remain transient `shot-id` derivatives until a future project
 schema explicitly defines their identities. Run/result discovery accepts only
 existing v1 manifests and v2 completed result metadata. No future solver,
 multi-shot, RTM, Files, Workflow, or Workspace concept is exposed.
+
+## D067 — Context inspection is selection-driven and snapshot-only
+
+**Status:** Accepted and verified, 2026-09-23
+
+`ContextInspector` listens only to `SelectionController` and maps typed
+`SelectionKind` values to persistent stacked pages. Phase 4A supports Project,
+Model, ModelProperty, and Grid. Vp, Vs, and density share one property page and
+are distinguished by `SelectionModelProperty`; labels and tree text never
+select a page.
+
+The Inspector receives immutable presentation snapshots adapted from the
+current `ProjectDocument` and already-loaded `StaticModelScene`. It performs no
+HDF5 read, project discovery, editing, rendering, or solver operation. Object
+and project identities must match the active snapshot before model data is
+shown, so project close/switch cannot retain stale values. Unsupported kinds
+use a safe future-phase page. Legacy crop, slice, transfer-function, camera,
+and experiment controls remain intact in a compatibility dialog reached from
+Legacy Actions rather than as permanent Context Inspector tabs.

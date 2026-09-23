@@ -661,6 +661,27 @@ project exists. Files and Workflow remain Phase 1 placeholders. The old module
 routes remain available behind a temporary Legacy Actions menu, while shared
 display and run widgets remain available in a collapsed Legacy Controls area.
 
+Wave3D Studio V2 Phase 4A adds a one-way inspection boundary:
+
+```text
+ProjectNavigator -> SelectionController -> ContextInspector
+                                              ^
+MainWindow project/loaded-model adapter -------|
+```
+
+`ContextInspector` owns six pages created once: empty, project, model, shared
+model property, grid, and unsupported. Selection changes switch a
+`QStackedWidget`; they do not create pages or address them by visible text.
+`ContextInspectorState` contains read-only project and model presentation
+values. MainWindow builds it from its current `ProjectDocument`, validated
+run/result metadata, and the existing `StaticModelScene::summary()`; the
+Inspector does not reread the model file. The current page cannot control the
+workspace, camera, slices, renderer, solver, or project state.
+
+The right dock now exposes a single Properties tab. Existing model display,
+slice, crop, and ExperimentEditor widgets remain unchanged in a Legacy Actions
+compatibility dialog until their controller-backed replacements exist.
+
 Increment 11 verifies that behavior by configuring and building with the whole
 `optional/rtm` tree temporarily absent. RTM-off exposes only the forward views,
 observer, factory, and receiver reader. Increment 31 adds header-only

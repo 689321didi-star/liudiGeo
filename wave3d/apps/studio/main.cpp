@@ -56,7 +56,7 @@ int inspect_shell(wave3d::desktop::MainWindow& window) {
     return viewports.size() == 4 && field != nullptr && field->count() == 6 &&
                    field->findData(QStringLiteral("speed")) >= 0 &&
                    window.navigator_host()->count() == 3 &&
-                   window.context_inspector_host()->count() == 2 &&
+                   window.context_inspector_host()->count() == 1 &&
                    window.bottom_tool_area()->count() == 4
                ? 0
                : 1;
@@ -172,7 +172,15 @@ bool select_project_node(
             const bool matches_source =
                 key == QStringLiteral("source") && selection &&
                 selection->kind == wave3d::desktop::SelectionKind::Source;
-            if (matches_property || matches_source) return index;
+            const bool matches_object =
+                selection &&
+                ((key == QStringLiteral("project") &&
+                  selection->kind == wave3d::desktop::SelectionKind::Project) ||
+                 (key == QStringLiteral("model") &&
+                  selection->kind == wave3d::desktop::SelectionKind::Model) ||
+                 (key == QStringLiteral("grid") &&
+                  selection->kind == wave3d::desktop::SelectionKind::Grid));
+            if (matches_property || matches_source || matches_object) return index;
             const auto nested = find(index);
             if (nested.isValid()) return nested;
         }
@@ -254,7 +262,8 @@ int main(int argc, char** argv) {
         QStringLiteral("run-id"));
     const QCommandLineOption project_selection_option(
         QStringLiteral("project-selection"),
-        QStringLiteral("选择审查节点：vp、vs、density 或 source"),
+        QStringLiteral(
+            "选择审查节点：project、model、vp、vs、density、grid 或 source"),
         QStringLiteral("node"));
     const QCommandLineOption navigator_width_option(
         QStringLiteral("navigator-width"),

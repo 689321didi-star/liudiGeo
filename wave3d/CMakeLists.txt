@@ -475,6 +475,7 @@ if(WAVE3D_BUILD_DESKTOP)
     add_library(
         wave3d_desktop_shell STATIC
         src/desktop/experiment_editor.cpp
+        src/desktop/context_inspector.cpp
         src/desktop/main_window.cpp
         src/desktop/main_window_shell.cpp
         src/desktop/project_navigator.cpp
@@ -565,6 +566,21 @@ if(WAVE3D_BUILD_DESKTOP)
             COMMAND wave3d_desktop_project_navigator_tests)
         set_tests_properties(
             wave3d_desktop_project_navigator_tests
+            PROPERTIES
+                LABELS "desktop;interfaces"
+                ENVIRONMENT "QT_QPA_PLATFORM=minimal")
+
+        add_executable(
+            wave3d_desktop_context_inspector_tests
+            tests/test_desktop_context_inspector.cpp)
+        target_link_libraries(
+            wave3d_desktop_context_inspector_tests
+            PRIVATE wave3d_desktop_shell)
+        add_test(
+            NAME wave3d_desktop_context_inspector_tests
+            COMMAND wave3d_desktop_context_inspector_tests)
+        set_tests_properties(
+            wave3d_desktop_context_inspector_tests
             PROPERTIES
                 LABELS "desktop;interfaces"
                 ENVIRONMENT "QT_QPA_PLATFORM=minimal")

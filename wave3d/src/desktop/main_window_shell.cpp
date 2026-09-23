@@ -179,12 +179,9 @@ void MainWindowShell::set_navigator_selection_context(
     }
 }
 
-void MainWindowShell::set_inspector_pages(
-    QWidget* model_page,
-    QWidget* experiment_page) {
-    context_inspector_host_->addTab(model_page, QStringLiteral("Model"));
-    context_inspector_host_->addTab(
-        experiment_page, QStringLiteral("Experiment"));
+void MainWindowShell::set_context_inspector(QWidget* inspector) {
+    context_inspector_host_->clear();
+    context_inspector_host_->addTab(inspector, QStringLiteral("Properties"));
 }
 
 void MainWindowShell::set_bottom_tool_pages(

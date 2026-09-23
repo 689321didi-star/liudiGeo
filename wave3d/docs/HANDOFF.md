@@ -2170,3 +2170,48 @@ cooperatively stopped at a batch boundary. It published only a cancelled v2
 result record and no partial SEG-Y files. Existing worker tests cover
 pause/resume/completion; CUDA forward and three-component SEG-Y tests remain
 green.
+
+## Wave3D Studio V2 Phase 4A selection-driven Context Inspector
+
+**Status:** Verified on 2026-09-23.
+
+The permanent Model/Experiment tabs were replaced by one selection-driven
+Properties page. Project, loaded model, Vp/Vs/density, and Grid selections map
+through `SelectionController` to persistent read-only pages. Values come from
+the active `ProjectDocument` and already-loaded `StaticModelScene`; project
+replacement clears stale model values. Unsupported selection kinds show a
+safe later-phase message. Existing model visualization controls and the full
+ExperimentEditor remain available through the Legacy Actions compatibility
+dialog.
+
+Validation and six review captures are stored under the ignored
+`build/ui-v2-phase4a-screenshots/` directory. The real `200 x 200 x 187`
+Overthrust model reported Vp `2445.7593–6000 m/s`, density
+`2180.0432–2728.3464 kg/m³`, 25 m spacing, and 7,480,000 cells from the loaded
+scene rather than hard-coded UI values.
+
+```text
+cmake --build build/ui-v2-baseline-20260922 --parallel 6
+QT_QPA_PLATFORM=offscreen ctest \
+  --test-dir build/ui-v2-baseline-20260922 --output-on-failure -j4
+# complete build and 40/40 tests passed
+
+QT_QPA_PLATFORM=offscreen \
+  build/ui-v2-baseline-20260922/wave3d_studio --inspect-shell
+# 4 viewports; Navigator/Inspector/Bottom pages = 3/1/4
+
+QT_QPA_PLATFORM=xcb build/ui-v2-baseline-20260922/wave3d_studio \
+  --project /tmp/wave3d-v2-phase2-review-20260923 \
+  --module project --project-selection vs --smoke-test
+# real Overthrust model, typed Vs selection, and four OpenGL views passed
+
+QT_QPA_PLATFORM=xcb build/ui-v2-baseline-20260922/wave3d_studio \
+  --project /tmp/wave3d-v2-phase2-review-20260923 \
+  --auto-run phase4a-stop-smoke --smoke-test
+# real CUDA task started and cooperatively stopped; cancelled result only,
+# with no partial SEG-Y member published
+```
+
+No numerical kernel, CPML, free-surface, source/receiver mathematics, GPU
+layout, HDF5/SEG-Y definition, `CudaForwardSession`, or `VolumeViewport`
+rendering algorithm changed. Production code adds no `findChild` call.

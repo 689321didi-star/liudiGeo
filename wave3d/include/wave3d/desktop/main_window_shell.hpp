@@ -36,7 +36,7 @@ public:
     void set_navigator_selection_context(
         int page_index,
         SelectionContext selection);
-    void set_inspector_pages(QWidget* model_page, QWidget* experiment_page);
+    void set_context_inspector(QWidget* inspector);
     void set_bottom_tool_pages(
         QWidget* jobs_page,
         QWidget* log_page,

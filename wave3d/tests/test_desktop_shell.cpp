@@ -149,7 +149,9 @@ void test_shell_contract() {
             navigator_host->tabText(2) == QStringLiteral("Workflow"),
         "navigator host pages are incomplete");
     expect(
-        inspector_host->count() == 2 && bottom_tools->count() == 4 &&
+        inspector_host->count() == 1 &&
+            inspector_host->tabText(0) == QStringLiteral("Properties") &&
+            bottom_tools->count() == 4 &&
             bottom_tools->currentIndex() == 1,
         "inspector or bottom tool host pages are incomplete");
     navigation->setCurrentRow(6);
@@ -508,6 +510,34 @@ void test_hdf5_model_import() {
         require_child<QLabel>(window, "modelStateBadge")->text() ==
             QStringLiteral("模型已加载"),
         "model state badge was not updated");
+    window.selection_controller()->setSelection(
+        wave3d::desktop::SelectionContext{
+            wave3d::desktop::SelectionKind::ModelProperty,
+            QStringLiteral("models/fixture.h5:vp"),
+            window.current_project()->project_id,
+            std::nullopt,
+            wave3d::desktop::SelectionModelProperty::Vp});
+    expect(
+        require_child<QWidget>(window, "modelPropertyInspector")->isVisibleTo(&window) &&
+            require_child<QLabel>(window, "modelPropertyInspectorMinimum")
+                ->text()
+                .contains(QStringLiteral("3000")) &&
+            require_child<QLabel>(window, "modelPropertyInspectorMaximum")
+                ->text()
+                .contains(QStringLiteral("4500")),
+        "selection-driven inspector did not use the loaded model extrema");
+    window.selection_controller()->setSelection(
+        wave3d::desktop::SelectionContext{
+            wave3d::desktop::SelectionKind::Grid,
+            QStringLiteral("models/fixture.h5:grid"),
+            window.current_project()->project_id});
+    expect(
+        require_child<QLabel>(window, "gridInspectorNx")->text() ==
+                QStringLiteral("4") &&
+            require_child<QLabel>(window, "gridInspectorTotalCells")
+                ->text()
+                .contains(QStringLiteral("60")),
+        "selection-driven grid inspector did not use loaded geometry");
     expect(
         require_child<QWidget>(window, "experimentEditor")->isEnabled() &&
             require_child<QLabel>(window, "workspaceGridSummaryLabel")
@@ -1116,6 +1146,15 @@ void test_hdf5_model_import() {
         window.create_project(
             second_project_root, QStringLiteral("空模型项目"), &error),
         "second project creation failed");
+    expect(
+        require_child<QWidget>(window, "projectInspector")->isVisibleTo(&window) &&
+            require_child<QLabel>(window, "projectInspectorName")->text() ==
+                QStringLiteral("空模型项目") &&
+            require_child<QLabel>(window, "projectInspectorModelStatus")->text() ==
+                QStringLiteral("Not loaded") &&
+            require_child<QLabel>(window, "modelPropertyInspectorMinimum")->text() ==
+                QStringLiteral("—"),
+        "project switch retained stale context inspector data");
     expect(
         !require_child<QComboBox>(window, "modelPropertySelector")->isEnabled(),
         "switching to an empty project retained the prior model selector");
