@@ -435,6 +435,15 @@ if(WAVE3D_BUILD_DESKTOP)
         COMPONENTS Core Gui Widgets OpenGL OpenGLWidgets)
 
     add_library(
+        wave3d_desktop_selection STATIC
+        include/wave3d/desktop/selection_controller.hpp
+        src/desktop/selection_controller.cpp)
+    set_target_properties(wave3d_desktop_selection PROPERTIES AUTOMOC ON)
+    target_include_directories(
+        wave3d_desktop_selection PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    target_link_libraries(wave3d_desktop_selection PUBLIC Qt6::Core)
+
+    add_library(
         wave3d_desktop_project STATIC
         src/desktop/project_workspace.cpp)
     target_link_libraries(
@@ -477,6 +486,7 @@ if(WAVE3D_BUILD_DESKTOP)
             wave3d_core
             wave3d_desktop_experiment
             wave3d_desktop_project
+            wave3d_desktop_selection
             Qt6::Core
             Qt6::Gui
             Qt6::Widgets
@@ -523,6 +533,26 @@ if(WAVE3D_BUILD_DESKTOP)
     target_link_libraries(wave3d_studio PRIVATE wave3d_desktop_shell)
 
     if(WAVE3D_BUILD_TESTS)
+        find_package(Qt6 6.8 REQUIRED COMPONENTS Test)
+
+        add_executable(
+            wave3d_desktop_selection_tests
+            tests/test_desktop_selection_controller.cpp)
+        target_link_libraries(
+            wave3d_desktop_selection_tests
+            PRIVATE
+                wave3d_desktop_selection
+                wave3d_desktop_shell
+                Qt6::Test)
+        add_test(
+            NAME wave3d_desktop_selection_tests
+            COMMAND wave3d_desktop_selection_tests)
+        set_tests_properties(
+            wave3d_desktop_selection_tests
+            PROPERTIES
+                LABELS "desktop;interfaces"
+                ENVIRONMENT "QT_QPA_PLATFORM=minimal")
+
         add_executable(
             wave3d_desktop_experiment_tests
             tests/test_desktop_experiment_draft.cpp)

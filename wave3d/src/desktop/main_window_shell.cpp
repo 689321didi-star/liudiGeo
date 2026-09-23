@@ -1,5 +1,7 @@
 #include "wave3d/desktop/main_window_shell.hpp"
 
+#include "wave3d/desktop/selection_controller.hpp"
+
 #include <QAction>
 #include <QDockWidget>
 #include <QLabel>
@@ -10,6 +12,8 @@
 #include <QTabWidget>
 #include <QToolBar>
 #include <QWidget>
+
+#include <array>
 
 namespace wave3d::desktop {
 namespace {
@@ -101,6 +105,17 @@ MainWindowShell::MainWindowShell(QWidget* parent)
     addDockWidget(Qt::RightDockWidgetArea, context_inspector_dock_);
     addDockWidget(Qt::BottomDockWidgetArea, bottom_tool_dock_);
 
+    selection_controller_ = new SelectionController(this);
+    connect(
+        navigator_host_, &QTabWidget::currentChanged,
+        this, [this](int index) {
+            if (index >= 0 &&
+                static_cast<std::size_t>(index) < navigator_selections_.size()) {
+                selection_controller_->setSelection(
+                    navigator_selections_[static_cast<std::size_t>(index)]);
+            }
+        });
+
     reset_layout_action_ = new QAction(QStringLiteral("重置默认布局"), this);
     reset_layout_action_->setObjectName(QStringLiteral("resetLayoutAction"));
     connect(
@@ -109,6 +124,16 @@ MainWindowShell::MainWindowShell(QWidget* parent)
 
     statusBar()->setSizeGripEnabled(true);
     statusBar()->showMessage(QStringLiteral("空闲 · 速度模 · 未加载模型"));
+    auto* selection_status = new QLabel(QStringLiteral("选择：None"), this);
+    selection_status->setObjectName(QStringLiteral("selectionStatus"));
+    statusBar()->addPermanentWidget(selection_status);
+    connect(
+        selection_controller_, &SelectionController::selectionChanged,
+        selection_status, [selection_status](const SelectionContext& selection) {
+            selection_status->setText(
+                QStringLiteral("选择：%1")
+                    .arg(selection_kind_display_name(selection.kind)));
+        });
 }
 
 void MainWindowShell::set_workspace_host(QWidget* workspace) {
@@ -117,12 +142,41 @@ void MainWindowShell::set_workspace_host(QWidget* workspace) {
 }
 
 void MainWindowShell::set_navigator_pages(
-    QWidget* project_page,
-    QWidget* files_page,
-    QWidget* workflow_page) {
-    navigator_host_->addTab(project_page, QStringLiteral("Project"));
-    navigator_host_->addTab(files_page, QStringLiteral("Files"));
-    navigator_host_->addTab(workflow_page, QStringLiteral("Workflow"));
+    NavigatorPage project_page,
+    NavigatorPage files_page,
+    NavigatorPage workflow_page) {
+    const std::array pages{
+        std::move(project_page),
+        std::move(files_page),
+        std::move(workflow_page),
+    };
+    navigator_selections_.clear();
+    navigator_host_->clear();
+    navigator_selections_.reserve(pages.size());
+    for (const auto& page : pages) {
+        navigator_selections_.push_back(page.selection);
+        navigator_host_->addTab(page.widget, page.title);
+    }
+    if (navigator_host_->currentIndex() >= 0) {
+        selection_controller_->setSelection(
+            navigator_selections_[static_cast<std::size_t>(
+                navigator_host_->currentIndex())]);
+    }
+}
+
+void MainWindowShell::set_navigator_selection_context(
+    int page_index,
+    SelectionContext selection) {
+    if (page_index < 0 ||
+        static_cast<std::size_t>(page_index) >= navigator_selections_.size()) {
+        return;
+    }
+    navigator_selections_[static_cast<std::size_t>(page_index)] =
+        std::move(selection);
+    if (navigator_host_->currentIndex() == page_index) {
+        selection_controller_->setSelection(
+            navigator_selections_[static_cast<std::size_t>(page_index)]);
+    }
 }
 
 void MainWindowShell::set_inspector_pages(
@@ -166,6 +220,9 @@ QTabWidget* MainWindowShell::bottom_tool_area() const noexcept {
 }
 QAction* MainWindowShell::reset_layout_action() const noexcept {
     return reset_layout_action_;
+}
+SelectionController* MainWindowShell::selection_controller() const noexcept {
+    return selection_controller_;
 }
 
 void MainWindowShell::reset_default_layout() {

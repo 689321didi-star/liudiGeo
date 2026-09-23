@@ -1,7 +1,11 @@
 #pragma once
 
+#include "wave3d/desktop/selection_context.hpp"
+
 #include <QMainWindow>
 #include <QString>
+
+#include <vector>
 
 class QAction;
 class QDockWidget;
@@ -12,15 +16,26 @@ class QWidget;
 
 namespace wave3d::desktop {
 
+class SelectionController;
+
+struct NavigatorPage final {
+    QWidget* widget{nullptr};
+    QString title;
+    SelectionContext selection;
+};
+
 class MainWindowShell : public QMainWindow {
 public:
     explicit MainWindowShell(QWidget* parent = nullptr);
 
     void set_workspace_host(QWidget* workspace);
     void set_navigator_pages(
-        QWidget* project_page,
-        QWidget* files_page,
-        QWidget* workflow_page);
+        NavigatorPage project_page,
+        NavigatorPage files_page,
+        NavigatorPage workflow_page);
+    void set_navigator_selection_context(
+        int page_index,
+        SelectionContext selection);
     void set_inspector_pages(QWidget* model_page, QWidget* experiment_page);
     void set_bottom_tool_pages(
         QWidget* jobs_page,
@@ -36,6 +51,7 @@ public:
     [[nodiscard]] QTabWidget* context_inspector_host() const noexcept;
     [[nodiscard]] QTabWidget* bottom_tool_area() const noexcept;
     [[nodiscard]] QAction* reset_layout_action() const noexcept;
+    [[nodiscard]] SelectionController* selection_controller() const noexcept;
 
     void reset_default_layout();
     [[nodiscard]] bool restore_v2_layout();
@@ -59,6 +75,8 @@ private:
     QLabel* telemetry_step_{nullptr};
     QLabel* telemetry_time_{nullptr};
     QLabel* telemetry_gpu_{nullptr};
+    SelectionController* selection_controller_{nullptr};
+    std::vector<SelectionContext> navigator_selections_;
 };
 
 } // namespace wave3d::desktop

@@ -2088,3 +2088,47 @@ QT_QPA_PLATFORM=xcb build/desktop24/wave3d_studio \
 Reviewed 1440 by 900 XCB captures cover source, 101 by 101 acquisition, and the
 completed three-component SEG-Y result. This WSLg evidence does not replace the
 native Linux screenshot, input, font, and frame-pacing checks required by D048.
+
+## Wave3D Studio V2 Phase 2 selection and state contracts
+
+**Status:** Verified on 2026-09-23.
+
+Phase 2 adds a Qt Core-only `SelectionContext` and `SelectionController`.
+Selection kinds are enums, identity is pointer-free, equal values do not emit
+duplicate changes, and the Shell routes typed Project/Files/Workflow page
+contexts into the controller. Opening a real project replaces the placeholder
+with its stable project ID. Existing project, experiment, run, result, and
+visualization ownership remains in the legacy implementation and is documented
+in `ARCHITECTURE.md`; `ForwardRunState` remains unchanged.
+
+Validation:
+
+```text
+cmake --build build/ui-v2-baseline-20260922 --parallel 6
+# complete build passed
+
+QT_QPA_PLATFORM=offscreen ctest \
+  --test-dir build/ui-v2-baseline-20260922 --output-on-failure -j4
+# 38/38 passed, including selection, CUDA forward/session, worker lifecycle,
+# and three-component SEG-Y tests
+
+QT_QPA_PLATFORM=offscreen \
+  build/ui-v2-baseline-20260922/wave3d_studio --inspect-shell
+# 4 viewports; Navigator/Inspector/Bottom pages = 3/2/4
+
+QT_QPA_PLATFORM=xcb build/ui-v2-baseline-20260922/wave3d_studio \
+  --project /tmp/wave3d-v2-phase2-review-20260923 \
+  --module workspace --smoke-test
+# real Overthrust model and all visible OpenGL contexts passed
+
+QT_QPA_PLATFORM=xcb build/ui-v2-baseline-20260922/wave3d_studio \
+  --project /tmp/wave3d-v2-phase2-review-20260923 \
+  --auto-run phase2-stop-smoke --smoke-test
+# real CUDA task started and cooperatively published a cancelled v2 result;
+# no partial SEG-Y member was published
+```
+
+No numerical kernel, CPML, source/receiver mathematics, GPU layout, HDF5,
+SEG-Y definition, or `VolumeViewport` rendering algorithm changed. Phase 3 may
+consume the selection contract for a real Navigator/Inspector adapter, but it
+must not migrate unrelated state in the same increment.

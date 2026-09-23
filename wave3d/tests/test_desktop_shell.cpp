@@ -1,6 +1,7 @@
 #include "wave3d/desktop/main_window.hpp"
 #include "wave3d/desktop/experiment_editor.hpp"
 #include "wave3d/desktop/project_workspace.hpp"
+#include "wave3d/desktop/selection_controller.hpp"
 #include "wave3d/desktop/theme.hpp"
 #include "wave3d/desktop/volume_viewport.hpp"
 
@@ -294,6 +295,12 @@ void test_project_window_state() {
         "window could not create a valid project");
     expect(error.isEmpty(), "successful project creation reported an error");
     expect(window.current_project() != nullptr, "created project was not activated");
+    expect(
+        window.selection_controller()->currentSelection().kind ==
+                wave3d::desktop::SelectionKind::Project &&
+            window.selection_controller()->currentSelection().project_id ==
+                window.current_project()->project_id,
+        "active project identity did not reach the selection contract");
     expect(
         window.current_project_root() == QDir(root).absolutePath(),
         "active project root is not canonical");

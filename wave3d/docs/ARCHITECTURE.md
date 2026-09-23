@@ -609,6 +609,41 @@ loads only the selected contiguous receiver range, applies a display-only
 P99.5 colour clip, and exposes textual and binary metadata. PNG export writes
 the rendered gather and never rewrites SEG-Y or `result.json`.
 
+Wave3D Studio V2 Phase 2 adds a Qt Core-only selection contract below the
+Widgets shell. `SelectionContext` identifies the selected entity with a typed
+`SelectionKind`, stable object identity, and optional project, run, and model
+property scope. `SelectionController` is the sole owner of the current
+selection and emits a typed change only when the complete value changes. The
+shell owns the controller's QObject lifetime and routes already typed
+Navigator page contexts to it; it does not infer selection kinds from labels.
+No project, experiment, run, result, or visualization state moves in this
+phase.
+
+The current and recommended V2 state ownership boundary is:
+
+| State | Current owner | Current readers/writers | Recommended V2 owner |
+| --- | --- | --- | --- |
+| Current project | `MainWindow::project_` | MainWindow actions, project/model/run adapters | `ProjectController` |
+| `PhysicalModel` | `StaticModelScene::model_` | static scene derivations and MainWindow presentation | `ProjectController` model service; views receive immutable presentation data |
+| `ExperimentDraft` | `ExperimentEditor` controls/current draft | MainWindow validation/save and editor widgets | `ExperimentController` |
+| `ResolvedExperimentDraft` | `MainWindow::resolved_experiment_` | preflight, source/receiver presentation | `ExperimentController` immutable resolved state |
+| Source | draft plus resolved experiment | editor writes; MainWindow and run preparation read | `ExperimentController` |
+| Receiver set | acquisition draft plus resolved receiver vector | editor writes; MainWindow and run preparation read | `ExperimentController` |
+| Prepared run | `MainWindow::prepared_run_` | MainWindow preflight/start | `RunController` |
+| Run status | `ForwardRunWorker::snapshot_` using `ForwardRunState` | worker writes; MainWindow polling reads | `RunController`, reusing `ForwardRunState` |
+| Result selection/data | `ResultWorkspace::Impl` | result widget reads/writes | `ResultController` |
+| Display field | `ProjectDocument::display_field` and selector | MainWindow persists and worker reads | `VisualizationController` with project persistence adapter |
+| Slice indices | MainWindow spin boxes | MainWindow view update reads; widgets write | `VisualizationController` |
+| Camera | `VolumeViewport` private state | viewport input and renderer | `VisualizationController` view state, applied through the existing viewport API |
+| Colormap/transfer mapping | static/live render implementations | scene/viewport rendering paths | `VisualizationController` presentation policy |
+| Workspace mode | not implemented | not applicable | `VisualizationController` |
+
+The intended controller boundary remains `ProjectController`,
+`ExperimentController`, `RunController`, `VisualizationController`,
+`ResultController`, and `SelectionController`. Only `SelectionController` is
+implemented in Phase 2; later phases introduce a controller only when it owns
+real behavior and replaces a verified legacy responsibility.
+
 Increment 11 verifies that behavior by configuring and building with the whole
 `optional/rtm` tree temporarily absent. RTM-off exposes only the forward views,
 observer, factory, and receiver reader. Increment 31 adds header-only

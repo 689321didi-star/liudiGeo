@@ -802,15 +802,28 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
     set_workspace_host(central);
 
     set_navigator_pages(
-        make_navigator_project_page(navigator_host()),
-        make_empty_state(
-            navigator_host(), "navigatorFilesPage",
+        NavigatorPage{
+            make_navigator_project_page(navigator_host()),
+            QStringLiteral("Project"),
+            SelectionContext{
+                SelectionKind::Project, QStringLiteral("project-placeholder")}},
+        NavigatorPage{
+            make_empty_state(
+                navigator_host(), "navigatorFilesPage",
+                QStringLiteral("Files"),
+                QStringLiteral("文件树将在后续阶段接入。当前模型导入仍通过 File/Model 命令完成。")),
             QStringLiteral("Files"),
-            QStringLiteral("文件树将在后续阶段接入。当前模型导入仍通过 File/Model 命令完成。")),
-        make_empty_state(
-            navigator_host(), "navigatorWorkflowPage",
+            SelectionContext{
+                SelectionKind::File, QStringLiteral("files-placeholder")}},
+        NavigatorPage{
+            make_empty_state(
+                navigator_host(), "navigatorWorkflowPage",
+                QStringLiteral("Workflow"),
+                QStringLiteral("工作流状态模型将在后续阶段接入。现有预检与运行流程保持可用。")),
             QStringLiteral("Workflow"),
-            QStringLiteral("工作流状态模型将在后续阶段接入。现有预检与运行流程保持可用。")));
+            SelectionContext{
+                SelectionKind::WorkflowStep,
+                QStringLiteral("workflow-placeholder")}});
     set_inspector_pages(
         make_model_information_page(context_inspector_host()),
         make_experiment_editor_page(context_inspector_host()));
@@ -2123,6 +2136,22 @@ void MainWindow::activate_project(
     project_root_ = std::move(root_directory);
     project_ = std::move(project);
     clear_model_view();
+
+    set_navigator_selection_context(
+        0,
+        SelectionContext{
+            SelectionKind::Project, project_->project_id,
+            project_->project_id});
+    set_navigator_selection_context(
+        1,
+        SelectionContext{
+            SelectionKind::File, QStringLiteral("project-files-root"),
+            project_->project_id});
+    set_navigator_selection_context(
+        2,
+        SelectionContext{
+            SelectionKind::WorkflowStep,
+            QStringLiteral("single-shot-forward"), project_->project_id});
 
     findChild<QLabel*>(QStringLiteral("projectNameLabel"))->setText(project_->name);
     findChild<QLabel*>(QStringLiteral("projectPathLabel"))->setText(project_root_);

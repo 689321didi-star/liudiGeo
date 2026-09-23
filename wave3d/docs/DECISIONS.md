@@ -1062,3 +1062,20 @@ The D060 single-shot schedule also defers the generic desktop Vp-to-Vs/density
 derivation editor. The established Overthrust conversion and immutable crop
 workflow remain available; broader derived-model operations retain the D049
 provenance requirement and require a later increment.
+
+## D065 — V2 selection is one typed, UI-independent state contract
+
+**Status:** Accepted and verified, 2026-09-22
+
+`SelectionController` is the sole owner of the V2 current selection. Its value
+uses `SelectionKind` rather than labels or string type tags and contains only
+stable identities plus optional project, run, and model-property scope. It
+contains no widget, solver, renderer, or raw object pointer. Equal values do
+not produce duplicate notifications.
+
+`MainWindowShell` owns the controller's QObject lifetime and routes typed
+Navigator page contexts to it. The shell does not derive selection meaning
+from page titles. The legacy `MainWindow` supplies placeholder page identities
+and replaces their project scope when a real project opens. This bridge does
+not move project, experiment, run, result, or visualization ownership.
+`ForwardRunState` remains the only desktop run-lifecycle enum.
