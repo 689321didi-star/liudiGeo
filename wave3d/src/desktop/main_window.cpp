@@ -2471,6 +2471,48 @@ void MainWindow::refresh_context_inspector() {
             summary.extrema.maximum.density_kg_m3};
     }
 #endif
+    if (project_ && !project_->shots.isEmpty()) {
+        std::optional<ExperimentDraft> draft;
+        if (model_scene_) {
+            try {
+                draft = experiment_editor(this)->current_draft();
+                draft->model_reference = project_->model_reference;
+            } catch (const std::exception&) {
+                // The inspector represents invalid/incomplete editor state as
+                // unconfigured until the production resolver accepts it.
+            }
+        }
+        const auto visualization_component = [this]() {
+            if (!project_) return QStringLiteral("—");
+            const auto& key = project_->display_field;
+            if (key == QStringLiteral("vx")) return QStringLiteral("Vx");
+            if (key == QStringLiteral("vy")) return QStringLiteral("Vy");
+            if (key == QStringLiteral("vz")) return QStringLiteral("Vz");
+            if (key == QStringLiteral("divergence")) return QStringLiteral("Divergence");
+            if (key == QStringLiteral("curl_magnitude")) return QStringLiteral("Curl magnitude");
+            return QStringLiteral("Speed magnitude");
+        }();
+#ifdef WAVE3D_DESKTOP_HAS_SEGY
+        constexpr bool segy_enabled = true;
+#else
+        constexpr bool segy_enabled = false;
+#endif
+#ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
+        constexpr bool cuda_enabled = true;
+#else
+        constexpr bool cuda_enabled = false;
+#endif
+        state.experiment = make_experiment_inspector_state(
+            project_->project_id,
+            project_->shots.front().id,
+            draft,
+            resolved_experiment_,
+            prepared_run_.has_value(),
+            prepared_run_ ? prepared_run_->directory : QString{},
+            visualization_component,
+            segy_enabled,
+            cuda_enabled);
+    }
     context_inspector_->setState(std::move(state));
 }
 

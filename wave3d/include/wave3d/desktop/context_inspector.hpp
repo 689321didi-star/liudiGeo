@@ -1,5 +1,6 @@
 #pragma once
 
+#include "wave3d/desktop/experiment_inspector_state.hpp"
 #include "wave3d/desktop/selection_context.hpp"
 
 #include <QWidget>
@@ -48,6 +49,7 @@ struct ModelInspectorState final {
 struct ContextInspectorState final {
     std::optional<ProjectInspectorState> project;
     std::optional<ModelInspectorState> model;
+    std::optional<ExperimentInspectorState> experiment;
 };
 
 enum class InspectorPage {
@@ -56,6 +58,11 @@ enum class InspectorPage {
     Model,
     ModelProperty,
     Grid,
+    Source,
+    ReceiverSet,
+    Simulation,
+    Boundary,
+    Output,
     Unsupported,
 };
 
@@ -84,6 +91,11 @@ private:
     QWidget* model_page_{nullptr};
     QWidget* model_property_page_{nullptr};
     QWidget* grid_page_{nullptr};
+    QWidget* source_page_{nullptr};
+    QWidget* receiver_page_{nullptr};
+    QWidget* simulation_page_{nullptr};
+    QWidget* boundary_page_{nullptr};
+    QWidget* output_page_{nullptr};
     QWidget* unsupported_page_{nullptr};
     InspectorPage current_page_{InspectorPage::Empty};
 
@@ -127,6 +139,68 @@ private:
     QLabel* grid_y_range_{nullptr};
     QLabel* grid_z_range_{nullptr};
     QLabel* grid_total_cells_{nullptr};
+
+    QLabel* source_status_{nullptr};
+    QLabel* source_type_{nullptr};
+    QLabel* source_id_{nullptr};
+    QLabel* source_physical_position_{nullptr};
+    QLabel* source_storage_position_{nullptr};
+    QLabel* source_wavelet_type_{nullptr};
+    QLabel* source_frequency_{nullptr};
+    QLabel* source_peak_rate_{nullptr};
+    QLabel* source_peak_time_{nullptr};
+    QLabel* source_origin_time_{nullptr};
+    QLabel* source_mechanism_{nullptr};
+    QLabel* source_tensor_{nullptr};
+
+    QLabel* receiver_status_{nullptr};
+    QLabel* receiver_count_{nullptr};
+    QLabel* receiver_geometry_type_{nullptr};
+    QLabel* receiver_components_{nullptr};
+    QLabel* receiver_geometry_{nullptr};
+    QLabel* receiver_spacing_{nullptr};
+    QLabel* receiver_x_range_{nullptr};
+    QLabel* receiver_y_range_{nullptr};
+    QLabel* receiver_z_range_{nullptr};
+    QLabel* receiver_sample_interval_{nullptr};
+    QLabel* receiver_sample_count_{nullptr};
+    QLabel* receiver_duration_{nullptr};
+
+    QLabel* simulation_status_{nullptr};
+    QLabel* simulation_physics_{nullptr};
+    QLabel* simulation_formulation_{nullptr};
+    QLabel* simulation_grid_{nullptr};
+    QLabel* simulation_spatial_order_{nullptr};
+    QLabel* simulation_stencil_radius_{nullptr};
+    QLabel* simulation_dt_{nullptr};
+    QLabel* simulation_steps_{nullptr};
+    QLabel* simulation_time_{nullptr};
+    QLabel* simulation_backend_{nullptr};
+    QLabel* simulation_device_{nullptr};
+    QLabel* simulation_precision_{nullptr};
+    QLabel* simulation_preflight_{nullptr};
+
+    QLabel* boundary_status_{nullptr};
+    QLabel* boundary_type_{nullptr};
+    QLabel* boundary_x_{nullptr};
+    QLabel* boundary_y_{nullptr};
+    QLabel* boundary_z_{nullptr};
+    QLabel* boundary_free_surface_{nullptr};
+    QLabel* boundary_surface_face_{nullptr};
+    QLabel* boundary_halo_{nullptr};
+
+    QLabel* output_status_{nullptr};
+    QLabel* output_components_{nullptr};
+    QLabel* output_sample_interval_{nullptr};
+    QLabel* output_samples_{nullptr};
+    QLabel* output_format_{nullptr};
+    QLabel* output_segy_enabled_{nullptr};
+    QLabel* output_segy_revision_{nullptr};
+    QLabel* output_segy_sample_format_{nullptr};
+    QLabel* output_segy_names_{nullptr};
+    QLabel* output_visualization_component_{nullptr};
+    QLabel* output_run_directory_{nullptr};
+    QLabel* output_result_manifest_{nullptr};
 };
 
 } // namespace wave3d::desktop

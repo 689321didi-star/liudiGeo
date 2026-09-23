@@ -2215,3 +2215,51 @@ QT_QPA_PLATFORM=xcb build/ui-v2-baseline-20260922/wave3d_studio \
 No numerical kernel, CPML, free-surface, source/receiver mathematics, GPU
 layout, HDF5/SEG-Y definition, `CudaForwardSession`, or `VolumeViewport`
 rendering algorithm changed. Production code adds no `findChild` call.
+
+## Wave3D Studio V2 Phase 4B1 acquisition and simulation inspectors
+
+**Status:** Verified on 2026-09-23.
+
+The selection-driven Context Inspector now has persistent read-only Source,
+ReceiverSet, Simulation, Boundary, and Output pages. A value-only
+`ExperimentInspectorState` projects the current draft plus its existing
+production resolved state; it neither owns nor edits experiment data. The real
+Overthrust review project displayed its 2500/2500/1150 m source, 3 Hz Ricker,
+10,201 receivers, 12th-order radius-6 scheme, 1 ms/3,000-step time axis,
+20/20 X and Y CPML, 0/20 Z boundary with free surface, and three-component
+Revision 1 SEG-Y output. An unresolved shot remains selectable and explicitly
+shows `Not configured` without plausible default values. Run and Result remain
+unsupported, and ExperimentEditor remains the editing path.
+
+Validation and the six required review captures are stored under the ignored
+`build/ui-v2-phase4b1-screenshots/` directory.
+
+```text
+cmake --build build/ui-v2-baseline-20260922 --parallel 6
+# complete build passed
+
+QT_QPA_PLATFORM=offscreen ctest \
+  --test-dir build/ui-v2-baseline-20260922 --output-on-failure -j4
+# 41/41 passed, including CUDA/session/worker and three-component SEG-Y tests
+
+QT_QPA_PLATFORM=offscreen \
+  build/ui-v2-baseline-20260922/wave3d_studio --inspect-shell
+# 4 viewports; Navigator/Inspector/Bottom pages = 3/1/4
+
+QT_QPA_PLATFORM=xcb build/ui-v2-baseline-20260922/wave3d_studio \
+  --project /tmp/wave3d-v2-phase2-review-20260923 \
+  --module project --project-selection output --smoke-test
+# real Overthrust model and all visible OpenGL contexts passed
+
+QT_QPA_PLATFORM=xcb build/ui-v2-baseline-20260922/wave3d_studio \
+  --project /tmp/wave3d-v2-phase2-review-20260923 \
+  --auto-run phase4b1-stop-smoke --smoke-test
+# real CUDA task stopped at a batch boundary; cancelled result only and no
+# partial SEG-Y member was published
+```
+
+No numerical kernel, FD coefficient, CPML/free-surface/source/receiver
+mathematics, GPU layout, HDF5/SEG-Y definition, `CudaForwardSession`, workspace
+mode, Files/Workflow navigator, theme, or `VolumeViewport` algorithm changed.
+Production code adds no `findChild` call and the Inspector has no renderer,
+worker, or CUDA dependency.

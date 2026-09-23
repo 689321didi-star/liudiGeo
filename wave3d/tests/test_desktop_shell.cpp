@@ -559,6 +559,59 @@ void test_hdf5_model_import() {
                 ->text()
                 .contains(QStringLiteral("10201 个接收器")),
         "model did not configure the 101 by 101 three-component acquisition");
+    const auto project_id = window.current_project()->project_id;
+    const auto shot_id = window.current_project()->shots.front().id;
+    const auto current_draft =
+        dynamic_cast<wave3d::desktop::ExperimentEditor*>(
+            require_child<QWidget>(window, "experimentEditor"))
+            ->current_draft();
+    const auto expected_step_count = static_cast<qulonglong>(
+        std::ceil(static_cast<long double>(current_draft.total_time_s) /
+                  static_cast<long double>(current_draft.dt_s)));
+    const auto select = [&](wave3d::desktop::SelectionKind kind,
+                            const QString& object_id) {
+        window.selection_controller()->setSelection(
+            wave3d::desktop::SelectionContext{kind, object_id, project_id});
+    };
+    select(wave3d::desktop::SelectionKind::Source,
+           shot_id + QStringLiteral(":source"));
+    expect(
+        require_child<QLabel>(window, "sourceInspectorStatus")->text() ==
+                QStringLiteral("Configured") &&
+            require_child<QLabel>(window, "sourceInspectorFrequency")
+                ->text()
+                .contains(QStringLiteral("3 Hz")),
+        "real resolved draft did not reach SourceInspector");
+    select(wave3d::desktop::SelectionKind::ReceiverSet,
+           shot_id + QStringLiteral(":receivers"));
+    expect(
+        require_child<QLabel>(window, "receiverInspectorCount")->text() ==
+            QStringLiteral("10201"),
+        "real resolved acquisition did not reach ReceiverSetInspector");
+    const auto simulation_id = project_id + QStringLiteral(":elastic-forward");
+    select(wave3d::desktop::SelectionKind::Simulation, simulation_id);
+    expect(
+        require_child<QLabel>(window, "simulationInspectorSpatialOrder")->text() ==
+                QStringLiteral("12th order") &&
+            require_child<QLabel>(window, "simulationInspectorSteps")->text() ==
+                QString::number(expected_step_count),
+        "real resolved numerics did not reach SimulationInspector");
+    select(wave3d::desktop::SelectionKind::Boundary,
+           simulation_id + QStringLiteral(":boundary"));
+    expect(
+        require_child<QLabel>(window, "boundaryInspectorX")->text() ==
+                QStringLiteral("2 / 2 cells") &&
+            require_child<QLabel>(window, "boundaryInspectorZ")->text() ==
+                QStringLiteral("0 / 2 cells"),
+        "real grid boundaries did not reach BoundaryInspector");
+    select(wave3d::desktop::SelectionKind::Output,
+           simulation_id + QStringLiteral(":output"));
+    expect(
+        require_child<QLabel>(window, "outputInspectorComponents")->text() ==
+                QStringLiteral("Vx, Vy, Vz") &&
+            require_child<QLabel>(window, "outputInspectorSamples")->text() ==
+                QString::number(expected_step_count),
+        "real receiver output did not reach OutputInspector");
 #if defined(WAVE3D_DESKTOP_HAS_YAML) && defined(WAVE3D_DESKTOP_HAS_SEGY)
     expect(
         require_child<QAction>(window, "validateExperimentAction")->isEnabled(),

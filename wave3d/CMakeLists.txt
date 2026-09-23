@@ -451,7 +451,8 @@ if(WAVE3D_BUILD_DESKTOP)
 
     add_library(
         wave3d_desktop_experiment STATIC
-        src/desktop/experiment_draft.cpp)
+        src/desktop/experiment_draft.cpp
+        src/desktop/experiment_inspector_state.cpp)
     target_link_libraries(
         wave3d_desktop_experiment PUBLIC wave3d_core Qt6::Core)
 
@@ -596,6 +597,19 @@ if(WAVE3D_BUILD_DESKTOP)
         set_tests_properties(
             wave3d_desktop_experiment_tests
             PROPERTIES LABELS "desktop;interfaces;numerics;source")
+
+        add_executable(
+            wave3d_desktop_experiment_inspector_state_tests
+            tests/test_desktop_experiment_inspector_state.cpp)
+        target_link_libraries(
+            wave3d_desktop_experiment_inspector_state_tests
+            PRIVATE wave3d_desktop_experiment)
+        add_test(
+            NAME wave3d_desktop_experiment_inspector_state_tests
+            COMMAND wave3d_desktop_experiment_inspector_state_tests)
+        set_tests_properties(
+            wave3d_desktop_experiment_inspector_state_tests
+            PROPERTIES LABELS "desktop;interfaces")
 
         if(WAVE3D_ENABLE_HDF5)
             add_executable(

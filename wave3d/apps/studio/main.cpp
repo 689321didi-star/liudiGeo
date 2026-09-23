@@ -172,6 +172,16 @@ bool select_project_node(
             const bool matches_source =
                 key == QStringLiteral("source") && selection &&
                 selection->kind == wave3d::desktop::SelectionKind::Source;
+            const bool matches_experiment_object =
+                selection &&
+                ((key == QStringLiteral("receivers") &&
+                  selection->kind == wave3d::desktop::SelectionKind::ReceiverSet) ||
+                 (key == QStringLiteral("simulation") &&
+                  selection->kind == wave3d::desktop::SelectionKind::Simulation) ||
+                 (key == QStringLiteral("boundary") &&
+                  selection->kind == wave3d::desktop::SelectionKind::Boundary) ||
+                 (key == QStringLiteral("output") &&
+                  selection->kind == wave3d::desktop::SelectionKind::Output));
             const bool matches_object =
                 selection &&
                 ((key == QStringLiteral("project") &&
@@ -180,7 +190,8 @@ bool select_project_node(
                   selection->kind == wave3d::desktop::SelectionKind::Model) ||
                  (key == QStringLiteral("grid") &&
                   selection->kind == wave3d::desktop::SelectionKind::Grid));
-            if (matches_property || matches_source || matches_object) return index;
+            if (matches_property || matches_source || matches_experiment_object ||
+                matches_object) return index;
             const auto nested = find(index);
             if (nested.isValid()) return nested;
         }
@@ -263,7 +274,8 @@ int main(int argc, char** argv) {
     const QCommandLineOption project_selection_option(
         QStringLiteral("project-selection"),
         QStringLiteral(
-            "选择审查节点：project、model、vp、vs、density、grid 或 source"),
+            "选择审查节点：project、model、vp、vs、density、grid、source、"
+            "receivers、simulation、boundary 或 output"),
         QStringLiteral("node"));
     const QCommandLineOption navigator_width_option(
         QStringLiteral("navigator-width"),

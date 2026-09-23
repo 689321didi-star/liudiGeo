@@ -110,10 +110,11 @@ void ProjectNavigatorModel::setProjectState(const ProjectNavigatorState& state) 
     auto* acquisition = add_node(
         project, ProjectNavigatorNodeKind::AcquisitionGroup,
         QStringLiteral("Acquisition"));
-    if (state.source_configured) {
+    if (!state.source_id.isEmpty()) {
         add_node(
             acquisition, ProjectNavigatorNodeKind::Source,
-            QStringLiteral("Source"),
+            state.source_configured ? QStringLiteral("Source")
+                                    : QStringLiteral("Source · Not configured"),
             SelectionContext{
                 SelectionKind::Source, state.source_id, state.project_id});
     } else {
@@ -121,10 +122,12 @@ void ProjectNavigatorModel::setProjectState(const ProjectNavigatorState& state) 
             acquisition, ProjectNavigatorNodeKind::Information,
             QStringLiteral("Source · Not configured"));
     }
-    if (state.receiver_set_configured) {
+    if (!state.receiver_set_id.isEmpty()) {
         add_node(
             acquisition, ProjectNavigatorNodeKind::ReceiverSet,
-            QStringLiteral("Receivers"),
+            state.receiver_set_configured
+                ? QStringLiteral("Receivers")
+                : QStringLiteral("Receivers · Not configured"),
             SelectionContext{
                 SelectionKind::ReceiverSet, state.receiver_set_id,
                 state.project_id});

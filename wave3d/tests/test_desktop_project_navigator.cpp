@@ -149,6 +149,23 @@ void test_selection_mapping_and_emission() {
     expect(changes.count() >= 12, "selection changes were not emitted");
 }
 
+void test_unconfigured_acquisition_is_inspectable() {
+    auto state = empty_model_state();
+    state.source_id = QStringLiteral("shot-001:source");
+    state.receiver_set_id = QStringLiteral("shot-001:receivers");
+    ProjectNavigatorModel model;
+    model.setProjectState(state);
+    const auto source = find_kind(model, ProjectNavigatorNodeKind::Source);
+    const auto receivers = find_kind(model, ProjectNavigatorNodeKind::ReceiverSet);
+    expect(source.isValid() && receivers.isValid(),
+           "unconfigured acquisition objects are not inspectable");
+    expect(model.flags(source).testFlag(Qt::ItemIsSelectable) &&
+               model.flags(receivers).testFlag(Qt::ItemIsSelectable) &&
+               model.data(source).toString().contains(QStringLiteral("Not configured")) &&
+               model.data(receivers).toString().contains(QStringLiteral("Not configured")),
+           "unconfigured acquisition nodes do not expose their state safely");
+}
+
 void test_refresh_restore_and_removal_fallback() {
     SelectionController controller;
     ProjectNavigator navigator(&controller);
@@ -205,6 +222,7 @@ int main(int argc, char** argv) {
     try {
         test_empty_and_loaded_models();
         test_selection_mapping_and_emission();
+        test_unconfigured_acquisition_is_inspectable();
         test_refresh_restore_and_removal_fallback();
         test_run_result_and_model_boundary();
     } catch (const std::exception& error) {

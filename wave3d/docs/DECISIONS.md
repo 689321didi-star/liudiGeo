@@ -1091,6 +1091,11 @@ model receives a snapshot of existing project, model, single-shot acquisition,
 run, and result state; it performs no project I/O, simulation, rendering, or
 Inspector/Workspace activation.
 
+Phase 4B1 keeps an existing shot's Source and ReceiverSet configuration slots
+selectable when unresolved so their Inspector can report `Not configured`.
+This is a real shot-scoped identity, while absent model/run/result entries
+remain non-selectable informational nodes.
+
 Vp, Vs, density, grid, source, receiver set, elastic forward, boundary, output,
 run, and result selections use stable project-scoped identities. Source and
 receiver keys remain transient `shot-id` derivatives until a future project
@@ -1116,3 +1121,31 @@ shown, so project close/switch cannot retain stale values. Unsupported kinds
 use a safe future-phase page. Legacy crop, slice, transfer-function, camera,
 and experiment controls remain intact in a compatibility dialog reached from
 Legacy Actions rather than as permanent Context Inspector tabs.
+
+## D068 — Acquisition and simulation inspection reuses resolved production state
+
+**Status:** Accepted and verified, 2026-09-23
+
+Phase 4B1 adds Source, ReceiverSet, Simulation, Boundary, and Output pages to
+the persistent selection-driven `ContextInspector`. The pages receive one
+value-semantic `ExperimentInspectorState` built by the MainWindow compatibility
+adapter from the current `ExperimentDraft`, existing
+`ResolvedExperimentDraft`, prepared-run state, persisted display field, and
+compiled output/backend capabilities. The projection is read-only and is not a
+second experiment state source: it cannot mutate a draft, validate, save,
+preflight, invoke a worker, call CUDA, or control a renderer.
+
+Resolved physical/source/receiver/time/boundary values are projected from the
+same production types used by a run. The staggered-grid spatial order and
+radius use the numerical constants rather than UI literals. SEG-Y presentation
+describes the current three-file Revision 1 big-endian IEEE-float contract and
+is distinct from the selected live visualization field.
+
+An existing shot defines selectable Source and ReceiverSet identities even
+before a valid resolved experiment exists. Their Inspector pages then show
+`Not configured` and unavailable marks instead of plausible zero/default
+values. Closing or replacing the project removes the complete experiment
+snapshot, and both project and object identities must match before any page is
+shown. The existing `ExperimentEditor` remains the sole editing surface; Draft,
+Apply, Revert, dirty-state, automatic validation, Run/Result inspection, and
+controller extraction remain later phases.

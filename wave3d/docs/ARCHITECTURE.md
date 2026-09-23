@@ -682,6 +682,37 @@ The right dock now exposes a single Properties tab. Existing model display,
 slice, crop, and ExperimentEditor widgets remain unchanged in a Legacy Actions
 compatibility dialog until their controller-backed replacements exist.
 
+Wave3D Studio V2 Phase 4B1 extends the same one-way inspection boundary to
+Source, ReceiverSet, Simulation, Boundary, and Output selections:
+
+```text
+ExperimentEditor/current project state
+          + ResolvedExperimentDraft
+          + prepared-run/display/build capabilities
+                         |
+                         v
+              ExperimentInspectorState
+                         |
+ProjectNavigator -> SelectionController -> ContextInspector
+```
+
+`ExperimentInspectorState` is a Qt Core-only value snapshot. It projects the
+existing draft and its production `ExperimentDraftStore::resolve` result; it
+cannot edit, validate, save, preflight, render, or start work. Source position,
+Ricker parameters and resolved tensor, actual receiver bounds/count, time
+sampling, compile-time staggered order/radius, grid boundary widths and free
+surface all come from the current production types. Output presentation states
+the existing three-file Revision 1, big-endian IEEE-float SEG-Y contract while
+keeping the independently persisted visualization component separate.
+
+Unconfigured Source and ReceiverSet entries remain real selectable,
+shot-scoped configuration slots and display explicit `Not configured` pages;
+they do not expose draft defaults as accepted values. Project identity and
+object identity must both match before a page is shown. Run and Result remain
+on the unsupported page. The Inspector still has no renderer, worker, CUDA,
+project-I/O, or `ExperimentEditor` dependency; MainWindow remains the temporary
+compatibility adapter until a later ExperimentController phase.
+
 Increment 11 verifies that behavior by configuring and building with the whole
 `optional/rtm` tree temporarily absent. RTM-off exposes only the forward views,
 observer, factory, and receiver reader. Increment 31 adds header-only
