@@ -1,6 +1,7 @@
 #include "wave3d/desktop/main_window.hpp"
 #include "wave3d/desktop/experiment_editor.hpp"
 #include "wave3d/desktop/model_derivation.hpp"
+#include "wave3d/desktop/project_navigator.hpp"
 #include "wave3d/desktop/result_workspace.hpp"
 #include "wave3d/desktop/static_model_scene.hpp"
 #include "wave3d/desktop/volume_viewport.hpp"
@@ -36,6 +37,8 @@
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QInputDialog>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -61,6 +64,7 @@
 #include <QTextEdit>
 #include <QTimer>
 #include <QToolBar>
+#include <QToolButton>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -516,11 +520,18 @@ QWidget* make_run_controls(QWidget* parent) {
     return group;
 }
 
-QWidget* make_navigator_project_page(QWidget* parent) {
-    auto* scroll = new QScrollArea(parent);
-    scroll->setObjectName(QStringLiteral("navigatorProjectPage"));
-    auto* contents = new QWidget(scroll);
+QWidget* make_navigator_project_page(
+    QWidget* parent,
+    SelectionController* selection_controller,
+    ProjectNavigator** navigator_output) {
+    auto* contents = new QWidget(parent);
+    contents->setObjectName(QStringLiteral("navigatorProjectPage"));
     auto* layout = new QVBoxLayout(contents);
+
+    auto* project_navigator =
+        new ProjectNavigator(selection_controller, contents);
+    *navigator_output = project_navigator;
+    layout->addWidget(project_navigator, 1);
 
     auto* navigation = new QListWidget(contents);
     navigation->setObjectName(QStringLiteral("moduleNavigation"));
@@ -537,26 +548,50 @@ QWidget* make_navigator_project_page(QWidget* parent) {
     queue_item->setFlags(queue_item->flags() & ~Qt::ItemIsEnabled);
     queue_item->setToolTip(QStringLiteral("多任务队列不属于当前单炮版本"));
     navigation->setCurrentRow(0);
-    navigation->setMinimumWidth(230);
-    navigation->setMinimumHeight(272);
-    layout->addWidget(navigation, 1);
+    navigation->hide();
 
-    auto* project_group = new QGroupBox(QStringLiteral("当前项目"), contents);
-    project_group->setObjectName(QStringLiteral("projectSummaryGroup"));
-    auto* project_form = new QFormLayout(project_group);
-    auto* project_name = new QLabel(QStringLiteral("未打开"), project_group);
+    auto* legacy_actions = new QToolButton(contents);
+    legacy_actions->setObjectName(QStringLiteral("legacyNavigationActions"));
+    legacy_actions->setText(QStringLiteral("Legacy Actions"));
+    legacy_actions->setPopupMode(QToolButton::InstantPopup);
+    auto* legacy_menu = new QMenu(legacy_actions);
+    for (int row = 0; row < navigation->count(); ++row) {
+        auto* action = legacy_menu->addAction(navigation->item(row)->text());
+        action->setEnabled(navigation->item(row)->flags().testFlag(Qt::ItemIsEnabled));
+        QObject::connect(action, &QAction::triggered, navigation, [navigation, row] {
+            navigation->setCurrentRow(row);
+        });
+    }
+    legacy_actions->setMenu(legacy_menu);
+    layout->addWidget(legacy_actions);
+
+    auto* project_name = new QLabel(QStringLiteral("未打开"), contents);
     project_name->setObjectName(QStringLiteral("projectNameLabel"));
-    auto* project_path = new QLabel(QStringLiteral("—"), project_group);
+    project_name->hide();
+    auto* project_path = new QLabel(QStringLiteral("—"), contents);
     project_path->setObjectName(QStringLiteral("projectPathLabel"));
     project_path->setWordWrap(true);
-    auto* shot_count = new QLabel(QStringLiteral("0"), project_group);
+    project_path->setProperty("secondaryText", true);
+    auto* shot_count = new QLabel(QStringLiteral("0"), contents);
     shot_count->setObjectName(QStringLiteral("projectShotCountLabel"));
-    project_form->addRow(QStringLiteral("名称："), project_name);
-    project_form->addRow(QStringLiteral("路径："), project_path);
-    project_form->addRow(QStringLiteral("炮数："), shot_count);
-    layout->addWidget(project_group);
+    shot_count->hide();
+    layout->addWidget(project_path);
 
-    auto* display_group = new QGroupBox(QStringLiteral("共享显示量"), contents);
+    auto* legacy_controls_toggle = new QToolButton(contents);
+    legacy_controls_toggle->setObjectName(
+        QStringLiteral("legacyControlsToggle"));
+    legacy_controls_toggle->setText(QStringLiteral("Legacy Controls"));
+    legacy_controls_toggle->setCheckable(true);
+    legacy_controls_toggle->setArrowType(Qt::RightArrow);
+    layout->addWidget(legacy_controls_toggle);
+
+    auto* legacy_controls = new QWidget(contents);
+    legacy_controls->setObjectName(QStringLiteral("legacyControls"));
+    auto* legacy_controls_layout = new QVBoxLayout(legacy_controls);
+    legacy_controls_layout->setContentsMargins(0, 0, 0, 0);
+
+    auto* display_group =
+        new QGroupBox(QStringLiteral("共享显示量"), legacy_controls);
     auto* display_form = new QFormLayout(display_group);
     auto* field = new QComboBox(display_group);
     field->setObjectName(QStringLiteral("displayFieldSelector"));
@@ -567,14 +602,19 @@ QWidget* make_navigator_project_page(QWidget* parent) {
     field->addItem(QStringLiteral("散度"), QStringLiteral("divergence"));
     field->addItem(QStringLiteral("旋度模"), QStringLiteral("curl_magnitude"));
     display_form->addRow(QStringLiteral("波场："), field);
-    layout->addWidget(display_group);
-    layout->addWidget(make_run_controls(contents));
+    legacy_controls_layout->addWidget(display_group);
+    legacy_controls_layout->addWidget(make_run_controls(legacy_controls));
+    legacy_controls->hide();
+    layout->addWidget(legacy_controls);
+    QObject::connect(
+        legacy_controls_toggle, &QToolButton::toggled,
+        legacy_controls, [legacy_controls_toggle, legacy_controls](bool visible) {
+            legacy_controls_toggle->setArrowType(
+                visible ? Qt::DownArrow : Qt::RightArrow);
+            legacy_controls->setVisible(visible);
+        });
 
-    scroll->setWidgetResizable(true);
-    scroll->setFrameShape(QFrame::NoFrame);
-    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scroll->setWidget(contents);
-    return scroll;
+    return contents;
 }
 
 QWidget* make_log_page(QWidget* parent) {
@@ -748,6 +788,48 @@ void scroll_to_widget_top(QScrollArea* scroll, QWidget* target) {
     QTimer::singleShot(0, scroll, apply);
 }
 
+QVector<ProjectNavigatorRun> discover_project_navigator_runs(
+    const QString& project_root) {
+    QVector<ProjectNavigatorRun> runs;
+    const QDir runs_directory(
+        QDir(project_root).filePath(QStringLiteral("runs")));
+    for (const auto& run_id : runs_directory.entryList(
+             QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name)) {
+        const QDir run(runs_directory.filePath(run_id));
+        QFile manifest(run.filePath(QStringLiteral("manifest.json")));
+        if (!manifest.open(QIODevice::ReadOnly)) {
+            continue;
+        }
+        const auto manifest_document = QJsonDocument::fromJson(manifest.readAll());
+        if (!manifest_document.isObject()) {
+            continue;
+        }
+        const auto manifest_root = manifest_document.object();
+        if (manifest_root.value(QStringLiteral("schema")).toString() !=
+                QString::fromUtf8(kDesktopRunSchema) ||
+            manifest_root.value(QStringLiteral("run_id")).toString() != run_id) {
+            continue;
+        }
+
+        bool has_result = false;
+        QFile result(run.filePath(QStringLiteral("result.json")));
+        if (result.open(QIODevice::ReadOnly)) {
+            const auto result_document = QJsonDocument::fromJson(result.readAll());
+            if (result_document.isObject()) {
+                const auto result_root = result_document.object();
+                has_result =
+                    result_root.value(QStringLiteral("schema")).toString() ==
+                        QString::fromUtf8(kDesktopRunResultSchema) &&
+                    result_root.value(QStringLiteral("state")).toString() ==
+                        QStringLiteral("completed") &&
+                    result_root.value(QStringLiteral("product")).isObject();
+            }
+        }
+        runs.push_back({run_id, has_result});
+    }
+    return runs;
+}
+
 } // namespace
 
 MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
@@ -803,7 +885,8 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
 
     set_navigator_pages(
         NavigatorPage{
-            make_navigator_project_page(navigator_host()),
+            make_navigator_project_page(
+                navigator_host(), selection_controller(), &project_navigator_),
             QStringLiteral("Project"),
             SelectionContext{
                 SelectionKind::Project, QStringLiteral("project-placeholder")}},
@@ -824,6 +907,12 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
             SelectionContext{
                 SelectionKind::WorkflowStep,
                 QStringLiteral("workflow-placeholder")}});
+    refresh_project_navigator();
+    connect(
+        navigator_host(), &QTabWidget::currentChanged,
+        project_navigator_, [this](int index) {
+            if (index == 0) project_navigator_->publishCurrentSelection();
+        });
     set_inspector_pages(
         make_model_information_page(context_inspector_host()),
         make_experiment_editor_page(context_inspector_host()));
@@ -1646,6 +1735,7 @@ bool MainWindow::preflight_experiment(
                     .arg(prepared->configuration_path));
         statusBar()->showMessage(
             QStringLiteral("预检完成 · 已生成不可变运行配置"));
+        refresh_project_navigator();
         return true;
     } catch (const std::exception& error) {
         if (prepared) {
@@ -1997,6 +2087,7 @@ void MainWindow::poll_forward_run() {
         ->setText(QStringLiteral("波场帧：运行已结束"));
     set_run_editing_locked(false);
     update_model_view();
+    refresh_project_navigator();
 #endif
 }
 
@@ -2118,6 +2209,10 @@ const QString& MainWindow::current_project_root() const noexcept {
     return project_root_;
 }
 
+ProjectNavigator* MainWindow::project_navigator() const noexcept {
+    return project_navigator_;
+}
+
 void MainWindow::closeEvent(QCloseEvent* event) {
 #ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
     if (forward_worker_ && forward_worker_->isRunning()) {
@@ -2203,6 +2298,7 @@ void MainWindow::activate_project(
         }
     }
 #endif
+    refresh_project_navigator();
 }
 
 void MainWindow::clear_model_view() {
@@ -2264,6 +2360,31 @@ void MainWindow::clear_model_view() {
         findChild<QOpenGLWidget*>(viewport.first)
             ->setProperty("receiverCount", QVariant::fromValue<qulonglong>(0));
     }
+}
+
+void MainWindow::refresh_project_navigator() {
+    if (project_navigator_ == nullptr) {
+        return;
+    }
+    ProjectNavigatorState state;
+    if (project_) {
+        state.project_id = project_->project_id;
+        state.project_name = project_->name;
+        state.model_id = project_->model_reference.isEmpty()
+                             ? project_->project_id + QStringLiteral(":model")
+                             : project_->model_reference;
+        state.model_loaded = model_scene_ != nullptr;
+        if (!project_->shots.isEmpty()) {
+            const auto& shot_id = project_->shots.front().id;
+            state.source_id = shot_id + QStringLiteral(":source");
+            state.receiver_set_id = shot_id + QStringLiteral(":receivers");
+        }
+        state.source_configured = resolved_experiment_.has_value();
+        state.receiver_set_configured =
+            resolved_experiment_ && !resolved_experiment_->receivers.empty();
+        state.runs = discover_project_navigator_runs(project_root_);
+    }
+    project_navigator_->setProjectState(state);
 }
 
 void MainWindow::populate_model_information() {
@@ -2404,6 +2525,7 @@ void MainWindow::update_experiment_validation() {
     invalidate_prepared_run();
     if (!project_ || !model_scene_) {
         resolved_experiment_.reset();
+        refresh_project_navigator();
         return;
     }
     try {
@@ -2431,6 +2553,7 @@ void MainWindow::update_experiment_validation() {
         experiment_editor(this)->show_validation_error(
             QString::fromUtf8(error.what()));
     }
+    refresh_project_navigator();
 #endif
 }
 

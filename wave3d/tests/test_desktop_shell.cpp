@@ -190,6 +190,9 @@ void test_shell_contract() {
 
     expect(navigation->count() == 8, "required desktop modules are missing");
     expect(
+        navigation->isHidden() && window.project_navigator() != nullptr,
+        "legacy list replaced the V2 Project Navigator in the visible layout");
+    expect(
         navigation->item(0)->text() == QStringLiteral("项目概览") &&
             navigation->item(3)->text() == QStringLiteral("震源"),
         "single-shot navigation labels are incorrect");

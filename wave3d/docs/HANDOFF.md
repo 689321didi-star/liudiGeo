@@ -2132,3 +2132,41 @@ No numerical kernel, CPML, source/receiver mathematics, GPU layout, HDF5,
 SEG-Y definition, or `VolumeViewport` rendering algorithm changed. Phase 3 may
 consume the selection contract for a real Navigator/Inspector adapter, but it
 must not migrate unrelated state in the same increment.
+
+## Wave3D Studio V2 Phase 3A real Project Navigator
+
+**Status:** Verified on 2026-09-23.
+
+The visible Project tab now uses `ProjectNavigator` backed by a custom
+`ProjectNavigatorModel`. Its real tree contains Project, loaded Model
+properties and Grid, the current single Source and ReceiverSet, Elastic
+Forward/Boundary/Output, real manifest-backed Runs, and completed v2 Results.
+Empty model/acquisition/run/result states are disabled information rather than
+invented domain objects. Selection survives display-only refreshes and falls
+back to Project when a selected object disappears.
+
+The old eight-item module list is hidden and retained only as the temporary
+Legacy Actions router. Shared display and embedded run widgets are available
+under collapsed Legacy Controls. Files, Workflow, Inspector, Workspace modes,
+Theme, CUDA, and numerical code are unchanged.
+
+Validation and screenshot evidence use
+`build/ui-v2-phase3a-screenshots/` as local review artifacts.
+
+```text
+cmake --build build/ui-v2-baseline-20260922 --parallel 6
+QT_QPA_PLATFORM=offscreen ctest \
+  --test-dir build/ui-v2-baseline-20260922 --output-on-failure -j4
+# complete build and 39/39 tests passed
+
+QT_QPA_PLATFORM=xcb build/ui-v2-baseline-20260922/wave3d_studio \
+  --project /tmp/wave3d-v2-phase2-review-20260923 \
+  --module project --project-selection vp --smoke-test
+# real Overthrust model, typed Vp selection, and four OpenGL views passed
+```
+
+A real desktop CUDA task was also started from the same Overthrust project and
+cooperatively stopped at a batch boundary. It published only a cancelled v2
+result record and no partial SEG-Y files. Existing worker tests cover
+pause/resume/completion; CUDA forward and three-component SEG-Y tests remain
+green.

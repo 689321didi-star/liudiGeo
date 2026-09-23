@@ -1079,3 +1079,21 @@ from page titles. The legacy `MainWindow` supplies placeholder page identities
 and replaces their project scope when a real project opens. This bridge does
 not move project, experiment, run, result, or visualization ownership.
 `ForwardRunState` remains the only desktop run-lifecycle enum.
+
+## D066 — Project navigation uses typed snapshots and Qt Model/View
+
+**Status:** Accepted and verified, 2026-09-23
+
+The V2 Project tab uses a custom `QAbstractItemModel` over a presentation-only
+tree. Nodes never infer semantics from display text: every selectable node owns
+a complete `SelectionContext`, and informational empty states own none. The
+model receives a snapshot of existing project, model, single-shot acquisition,
+run, and result state; it performs no project I/O, simulation, rendering, or
+Inspector/Workspace activation.
+
+Vp, Vs, density, grid, source, receiver set, elastic forward, boundary, output,
+run, and result selections use stable project-scoped identities. Source and
+receiver keys remain transient `shot-id` derivatives until a future project
+schema explicitly defines their identities. Run/result discovery accepts only
+existing v1 manifests and v2 completed result metadata. No future solver,
+multi-shot, RTM, Files, Workflow, or Workspace concept is exposed.

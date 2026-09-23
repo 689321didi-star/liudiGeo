@@ -644,6 +644,23 @@ The intended controller boundary remains `ProjectController`,
 implemented in Phase 2; later phases introduce a controller only when it owns
 real behavior and replaces a verified legacy responsibility.
 
+Wave3D Studio V2 Phase 3A replaces the visible legacy module list in the
+Project tab with `ProjectNavigator` and a custom `ProjectNavigatorModel` based
+on `QTreeView`/`QAbstractItemModel`. The model owns presentation nodes only:
+typed node kind, label, selectability, stable key, optional
+`SelectionContext`, parent link, and children. It stores no widget or domain
+object pointer. A MainWindow compatibility adapter translates the current
+`ProjectDocument`, loaded-model state, resolved single-shot acquisition, and
+validated run/result metadata into one `ProjectNavigatorState` snapshot.
+
+ProjectNavigator sends selectable tree nodes only to `SelectionController`.
+It does not call Inspector, Workspace, renderer, CUDA, or MainWindow business
+operations. Refresh preserves an equal typed selection; if the selected object
+disappears, it falls back to the real project root or clears selection when no
+project exists. Files and Workflow remain Phase 1 placeholders. The old module
+routes remain available behind a temporary Legacy Actions menu, while shared
+display and run widgets remain available in a collapsed Legacy Controls area.
+
 Increment 11 verifies that behavior by configuring and building with the whole
 `optional/rtm` tree temporarily absent. RTM-off exposes only the forward views,
 observer, factory, and receiver reader. Increment 31 adds header-only

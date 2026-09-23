@@ -17,6 +17,7 @@ class QAction;
 namespace wave3d::desktop {
 
 class StaticModelScene;
+class ProjectNavigator;
 #ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
 class ForwardRunWorker;
 struct LiveWavefieldFrame;
@@ -57,6 +58,7 @@ public:
 
     [[nodiscard]] const ProjectDocument* current_project() const noexcept;
     [[nodiscard]] const QString& current_project_root() const noexcept;
+    [[nodiscard]] ProjectNavigator* project_navigator() const noexcept;
 
 protected:
     void closeEvent(QCloseEvent* event) override;
@@ -69,6 +71,7 @@ private:
     void update_crop_summary();
     void update_model_view();
     void populate_model_information();
+    void refresh_project_navigator();
     void invalidate_prepared_run();
     void poll_forward_run();
 #ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
@@ -80,6 +83,7 @@ private:
     QString project_root_;
     std::optional<ProjectDocument> project_;
     std::unique_ptr<StaticModelScene> model_scene_;
+    ProjectNavigator* project_navigator_{nullptr};
     std::optional<ResolvedExperimentDraft> resolved_experiment_;
     std::optional<PreparedRun> prepared_run_;
 #ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD

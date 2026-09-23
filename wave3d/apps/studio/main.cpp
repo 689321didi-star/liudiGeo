@@ -1,4 +1,5 @@
 #include "wave3d/desktop/main_window.hpp"
+#include "wave3d/desktop/project_navigator.hpp"
 #include "wave3d/desktop/theme.hpp"
 #include "wave3d/desktop/volume_viewport.hpp"
 
@@ -15,9 +16,11 @@
 #include <QSpinBox>
 #include <QTabWidget>
 #include <QTimer>
+#include <QTreeView>
 
 #include <array>
 #include <exception>
+#include <functional>
 #include <iostream>
 #include <vector>
 
@@ -139,6 +142,52 @@ bool set_volume_camera(
     return true;
 }
 
+bool select_project_node(
+    wave3d::desktop::MainWindow& window,
+    const QString& key,
+    QString* error) {
+    auto* navigator = window.project_navigator();
+    auto* model = navigator == nullptr ? nullptr : navigator->model();
+    if (model == nullptr) {
+        *error = QStringLiteral("Project Navigator is unavailable");
+        return false;
+    }
+    std::function<QModelIndex(const QModelIndex&)> find =
+        [&](const QModelIndex& parent) -> QModelIndex {
+        for (int row = 0; row < model->rowCount(parent); ++row) {
+            const auto index = model->index(row, 0, parent);
+            const auto selection = model->selectionForIndex(index);
+            const bool matches_property =
+                selection && selection->kind ==
+                                 wave3d::desktop::SelectionKind::ModelProperty &&
+                ((key == QStringLiteral("vp") &&
+                  selection->model_property ==
+                      wave3d::desktop::SelectionModelProperty::Vp) ||
+                 (key == QStringLiteral("vs") &&
+                  selection->model_property ==
+                      wave3d::desktop::SelectionModelProperty::Vs) ||
+                 (key == QStringLiteral("density") &&
+                  selection->model_property ==
+                      wave3d::desktop::SelectionModelProperty::Density));
+            const bool matches_source =
+                key == QStringLiteral("source") && selection &&
+                selection->kind == wave3d::desktop::SelectionKind::Source;
+            if (matches_property || matches_source) return index;
+            const auto nested = find(index);
+            if (nested.isValid()) return nested;
+        }
+        return {};
+    };
+    const auto index = find({});
+    if (!index.isValid()) {
+        *error = QStringLiteral("Project Navigator node is unavailable: %1").arg(key);
+        return false;
+    }
+    navigator->treeView()->setCurrentIndex(index);
+    navigator->treeView()->scrollTo(index);
+    return true;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -203,6 +252,14 @@ int main(int argc, char** argv) {
         QStringLiteral("auto-run"),
         QStringLiteral("保存、预检并启动指定编号的审查运行"),
         QStringLiteral("run-id"));
+    const QCommandLineOption project_selection_option(
+        QStringLiteral("project-selection"),
+        QStringLiteral("选择审查节点：vp、vs、density 或 source"),
+        QStringLiteral("node"));
+    const QCommandLineOption navigator_width_option(
+        QStringLiteral("navigator-width"),
+        QStringLiteral("设置审查截图中的 Navigator 宽度"),
+        QStringLiteral("pixels"));
     parser.addOption(inspect_option);
     parser.addOption(smoke_option);
     parser.addOption(capture_option);
@@ -216,6 +273,8 @@ int main(int argc, char** argv) {
     parser.addOption(hide_inspector_option);
     parser.addOption(collapse_bottom_option);
     parser.addOption(auto_run_option);
+    parser.addOption(project_selection_option);
+    parser.addOption(navigator_width_option);
     parser.process(application);
 
     wave3d::desktop::MainWindow window(
@@ -281,6 +340,22 @@ int main(int argc, char** argv) {
             return 2;
         }
         navigation->setCurrentRow(row);
+    }
+    if (parser.isSet(project_selection_option) &&
+        !select_project_node(
+            window, parser.value(project_selection_option), &error)) {
+        std::cerr << "Cannot select project node: " << error.toStdString() << '\n';
+        return 2;
+    }
+    if (parser.isSet(navigator_width_option)) {
+        bool valid = false;
+        const auto width = parser.value(navigator_width_option).toInt(&valid);
+        if (!valid || width < 180 || width > 700) {
+            std::cerr << "Navigator width must be between 180 and 700\n";
+            return 2;
+        }
+        window.resizeDocks(
+            {window.navigator_dock()}, {width}, Qt::Horizontal);
     }
     if (parser.isSet(hide_navigator_option)) {
         window.navigator_dock()->hide();
