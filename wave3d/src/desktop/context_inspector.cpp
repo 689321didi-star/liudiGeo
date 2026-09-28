@@ -1,12 +1,16 @@
 #include "wave3d/desktop/context_inspector.hpp"
 
+#include "wave3d/desktop/experiment_controller.hpp"
+#include "wave3d/desktop/inspector_edit_footer.hpp"
 #include "wave3d/desktop/selection_controller.hpp"
 
+#include <QDoubleSpinBox>
 #include <QFileInfo>
 #include <QFrame>
 #include <QGridLayout>
 #include <QLabel>
 #include <QScrollArea>
+#include <QSignalBlocker>
 #include <QStackedWidget>
 #include <QVBoxLayout>
 
@@ -28,13 +32,20 @@ QString time_value(double seconds) {
     return QStringLiteral("%1 s").arg(number(seconds));
 }
 
-QString point_value(const PhysicalPoint3D& point) {
-    return QStringLiteral("(%1, %2, %3) m")
-        .arg(number(point.x_m), number(point.y_m), number(point.z_m));
-}
-
 QString range_value(double minimum, double maximum) {
     return QStringLiteral("%1 … %2 m").arg(number(minimum), number(maximum));
+}
+
+QString source_type(DraftSourceMode mode) {
+    switch (mode) {
+    case DraftSourceMode::IsotropicExplosion:
+        return QStringLiteral("Isotropic explosion moment tensor");
+    case DraftSourceMode::MomentTensor:
+        return QStringLiteral("Symmetric moment tensor");
+    case DraftSourceMode::DoubleCouple:
+        return QStringLiteral("Double couple (strike/dip/rake)");
+    }
+    return QStringLiteral("Unknown");
 }
 
 QLabel* value_label(QWidget* parent, const char* object_name) {
@@ -51,6 +62,19 @@ void add_row(QGridLayout* layout, int row, const QString& name, QLabel* value) {
     caption->setAlignment(Qt::AlignLeft | Qt::AlignTop);
     layout->addWidget(caption, row, 0);
     layout->addWidget(value, row, 1);
+    layout->setColumnStretch(1, 1);
+}
+
+void add_control_row(
+    QGridLayout* layout,
+    int row,
+    const QString& name,
+    QWidget* control) {
+    auto* caption = new QLabel(name, control->parentWidget());
+    caption->setProperty("secondaryText", true);
+    caption->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    layout->addWidget(caption, row, 0);
+    layout->addWidget(control, row, 1);
     layout->setColumnStretch(1, 1);
 }
 
@@ -77,6 +101,50 @@ QWidget* section(
     for (const auto& item : rows) add_row(grid, row++, item.first, item.second);
     layout->addLayout(grid);
     return widget;
+}
+
+QWidget* control_section(
+    QWidget* parent,
+    const QString& title,
+    std::initializer_list<std::pair<QString, QWidget*>> rows) {
+    auto* widget = new QWidget(parent);
+    auto* layout = new QVBoxLayout(widget);
+    layout->setContentsMargins(0, 4, 0, 8);
+    layout->setSpacing(7);
+    auto* heading = new QLabel(title, widget);
+    heading->setProperty("panelTitle", true);
+    layout->addWidget(heading);
+    auto* separator = new QFrame(widget);
+    separator->setFrameShape(QFrame::HLine);
+    separator->setProperty("inspectorSeparator", true);
+    layout->addWidget(separator);
+    auto* grid = new QGridLayout;
+    grid->setContentsMargins(0, 0, 0, 0);
+    grid->setHorizontalSpacing(14);
+    grid->setVerticalSpacing(7);
+    int row = 0;
+    for (const auto& item : rows) {
+        add_control_row(grid, row++, item.first, item.second);
+    }
+    layout->addLayout(grid);
+    return widget;
+}
+
+QDoubleSpinBox* source_spin(
+    QWidget* parent,
+    const char* object_name,
+    double minimum,
+    double maximum,
+    int decimals,
+    const QString& suffix) {
+    auto* spin = new QDoubleSpinBox(parent);
+    spin->setObjectName(QString::fromUtf8(object_name));
+    spin->setRange(minimum, maximum);
+    spin->setDecimals(decimals);
+    spin->setKeyboardTracking(false);
+    spin->setSuffix(suffix);
+    spin->setMinimumWidth(128);
+    return spin;
 }
 
 QWidget* inspector_page(
@@ -122,8 +190,11 @@ QWidget* message_page(
 
 ContextInspector::ContextInspector(
     SelectionController* selection_controller,
+    ExperimentController* experiment_controller,
     QWidget* parent)
-    : QWidget(parent), selection_controller_(selection_controller) {
+    : QWidget(parent),
+      selection_controller_(selection_controller),
+      experiment_controller_(experiment_controller) {
     setObjectName(QStringLiteral("contextInspector"));
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -249,36 +320,57 @@ ContextInspector::ContextInspector(
 
     source_page_ = inspector_page(
         pages_, "sourceInspector", QStringLiteral("Source"),
-        QStringLiteral("Current resolved source configuration"),
+        QStringLiteral("Edit physical position and the production Ricker wavelet"),
         [this](QVBoxLayout* page, QWidget* contents) {
             source_status_ = value_label(contents, "sourceInspectorStatus");
             source_type_ = value_label(contents, "sourceInspectorType");
             source_id_ = value_label(contents, "sourceInspectorId");
-            source_physical_position_ = value_label(contents, "sourceInspectorPhysicalPosition");
             source_storage_position_ = value_label(contents, "sourceInspectorStoragePosition");
             source_wavelet_type_ = value_label(contents, "sourceInspectorWaveletType");
-            source_frequency_ = value_label(contents, "sourceInspectorFrequency");
-            source_peak_rate_ = value_label(contents, "sourceInspectorPeakRate");
-            source_peak_time_ = value_label(contents, "sourceInspectorPeakTime");
-            source_origin_time_ = value_label(contents, "sourceInspectorOriginTime");
             source_mechanism_ = value_label(contents, "sourceInspectorMechanism");
             source_tensor_ = value_label(contents, "sourceInspectorTensor");
+            source_x_ = source_spin(
+                contents, "sourceInspectorXSpin", -1.0e12, 1.0e12, 3,
+                QStringLiteral(" m"));
+            source_y_ = source_spin(
+                contents, "sourceInspectorYSpin", -1.0e12, 1.0e12, 3,
+                QStringLiteral(" m"));
+            source_z_ = source_spin(
+                contents, "sourceInspectorZSpin", -1.0e12, 1.0e12, 3,
+                QStringLiteral(" m"));
+            source_origin_time_ = source_spin(
+                contents, "sourceInspectorOriginTimeSpin", 0.0, 10000.0, 6,
+                QStringLiteral(" s"));
+            source_frequency_ = source_spin(
+                contents, "sourceInspectorFrequencySpin", 0.0, 10000.0, 3,
+                QStringLiteral(" Hz"));
+            source_peak_time_ = source_spin(
+                contents, "sourceInspectorPeakDelaySpin", 0.0, 10000.0, 6,
+                QStringLiteral(" s"));
+            source_peak_rate_ = source_spin(
+                contents, "sourceInspectorPeakRateSpin", -1.0e12, 1.0e12, 6,
+                QStringLiteral(" s⁻¹"));
             page->addWidget(section(contents, QStringLiteral("General"), {
                 {QStringLiteral("Status"), source_status_},
-                {QStringLiteral("Type"), source_type_},
+                {QStringLiteral("Draft type"), source_type_},
                 {QStringLiteral("Shot / Source ID"), source_id_}}));
-            page->addWidget(section(contents, QStringLiteral("Coordinates"), {
-                {QStringLiteral("Physical position"), source_physical_position_},
-                {QStringLiteral("Storage coordinate"), source_storage_position_}}));
-            page->addWidget(section(contents, QStringLiteral("Wavelet"), {
+            page->addWidget(control_section(contents, QStringLiteral("Position"), {
+                {QStringLiteral("X"), source_x_},
+                {QStringLiteral("Y"), source_y_},
+                {QStringLiteral("Z (positive down)"), source_z_},
+                {QStringLiteral("Applied storage coordinate"),
+                 source_storage_position_}}));
+            page->addWidget(control_section(contents, QStringLiteral("Wavelet"), {
                 {QStringLiteral("Type"), source_wavelet_type_},
                 {QStringLiteral("Dominant frequency"), source_frequency_},
-                {QStringLiteral("Peak rate"), source_peak_rate_},
+                {QStringLiteral("Peak rate / amplitude"), source_peak_rate_},
                 {QStringLiteral("Peak delay"), source_peak_time_},
                 {QStringLiteral("Origin time"), source_origin_time_}}));
-            page->addWidget(section(contents, QStringLiteral("Mechanism"), {
+            source_footer_ = new InspectorEditFooter(contents);
+            page->addWidget(source_footer_);
+            page->addWidget(section(contents, QStringLiteral("Applied mechanism (read-only)"), {
                 {QStringLiteral("Parameters"), source_mechanism_},
-                {QStringLiteral("Resolved tensor"), source_tensor_}}));
+                {QStringLiteral("Applied tensor"), source_tensor_}}));
         });
 
     receiver_page_ = inspector_page(
@@ -429,12 +521,54 @@ ContextInspector::ContextInspector(
                 applySelection(selection);
             });
     }
+    const auto publish_source = [this](double) { publishSourceEdit(); };
+    for (auto* spin : {source_x_, source_y_, source_z_, source_frequency_,
+                       source_peak_rate_, source_peak_time_,
+                       source_origin_time_}) {
+        connect(spin, &QDoubleSpinBox::valueChanged, this, publish_source);
+    }
+    source_footer_->setCallbacks(
+        [this] {
+            if (experiment_controller_ != nullptr) {
+                static_cast<void>(experiment_controller_->revert());
+            }
+        },
+        [this] {
+            if (experiment_controller_ != nullptr) {
+                static_cast<void>(experiment_controller_->apply());
+            }
+        });
+    if (experiment_controller_ != nullptr) {
+        connect(
+            experiment_controller_, &ExperimentController::draftChanged,
+            this, [this](const ExperimentDraft&) { updateSourceEditor(); });
+        connect(
+            experiment_controller_, &ExperimentController::validationChanged,
+            this,
+            [this](const ExperimentValidationResult&) { updateSourceFooter(); });
+        connect(
+            experiment_controller_, &ExperimentController::editStateChanged,
+            this, [this](ExperimentEditState) { updateSourceFooter(); });
+        connect(
+            experiment_controller_, &ExperimentController::dirtyChanged,
+            this, [this](bool) { updateSourceFooter(); });
+        connect(
+            experiment_controller_, &ExperimentController::contextChanged,
+            this, [this](bool) {
+                updateSourceEditor();
+                updateSourceFooter();
+            });
+    }
     updatePages();
+    updateSourceEditor();
+    updateSourceFooter();
     applySelection(selection_);
 }
 
 void ContextInspector::setState(ContextInspectorState state) {
     state_ = std::move(state);
+    updateSourceEditor();
+    updateSourceFooter();
     applySelection(selection_);
 }
 
@@ -570,26 +704,28 @@ void ContextInspector::updatePages() {
     if (state_.experiment) {
         const auto& experiment = *state_.experiment;
         const auto& source = experiment.source;
+        const auto* draft = experiment_controller_ != nullptr &&
+                                    experiment_controller_->draft()
+                                ? &*experiment_controller_->draft()
+                                : nullptr;
         source_status_->setText(
-            source.configured ? QStringLiteral("Configured")
-                              : QStringLiteral("Not configured"));
-        source_id_->setText(source.shot_id.isEmpty() ? QStringLiteral("—")
-                                                     : source.shot_id);
+            draft != nullptr ? QStringLiteral("Draft available")
+                             : QStringLiteral("Not configured"));
+        source_id_->setText(
+            draft != nullptr ? draft->shot_id
+                             : source.shot_id.isEmpty() ? QStringLiteral("—")
+                                                       : source.shot_id);
+        source_type_->setText(
+            draft != nullptr ? source_type(draft->source_mode)
+                             : QStringLiteral("—"));
+        source_wavelet_type_->setText(
+            draft != nullptr ? QStringLiteral("Ricker") : QStringLiteral("—"));
         if (source.configured) {
-            source_type_->setText(source.source_type);
-            source_physical_position_->setText(point_value(source.physical_position_m));
             source_storage_position_->setText(
                 QStringLiteral("(%1, %2, %3) cells")
                     .arg(number(source.storage_position.x),
                          number(source.storage_position.y),
                          number(source.storage_position.z)));
-            source_wavelet_type_->setText(QStringLiteral("Ricker"));
-            source_frequency_->setText(
-                QStringLiteral("%1 Hz").arg(number(source.wavelet.dominant_frequency_hz)));
-            source_peak_rate_->setText(
-                QStringLiteral("%1 s⁻¹").arg(number(source.wavelet.peak_rate_s_inv)));
-            source_peak_time_->setText(time_value(source.wavelet.peak_delay_s));
-            source_origin_time_->setText(time_value(source.origin_time_s));
             source_mechanism_->setText(source.mechanism_detail);
             source_tensor_->setText(
                 QStringLiteral("Mxx %1 · Myy %2 · Mzz %3\nMxy %4 · Mxz %5 · Myz %6 N·m")
@@ -600,10 +736,8 @@ void ContextInspector::updatePages() {
                          number(source.moment_nm.m_xz_nm),
                          number(source.moment_nm.m_yz_nm)));
         } else {
-            unavailable({source_type_, source_physical_position_,
-                         source_storage_position_, source_wavelet_type_,
-                         source_frequency_, source_peak_rate_, source_peak_time_,
-                         source_origin_time_, source_mechanism_, source_tensor_});
+            unavailable({source_storage_position_, source_mechanism_,
+                         source_tensor_});
         }
 
         const auto& receivers = experiment.receivers;
@@ -701,10 +835,8 @@ void ContextInspector::updatePages() {
         }
     } else {
         unavailable({source_status_, source_type_, source_id_,
-                     source_physical_position_, source_storage_position_,
-                     source_wavelet_type_, source_frequency_, source_peak_rate_,
-                     source_peak_time_, source_origin_time_, source_mechanism_,
-                     source_tensor_, receiver_status_, receiver_count_,
+                     source_storage_position_, source_wavelet_type_,
+                     source_mechanism_, source_tensor_, receiver_status_, receiver_count_,
                      receiver_geometry_type_, receiver_components_, receiver_geometry_,
                      receiver_spacing_, receiver_x_range_, receiver_y_range_,
                      receiver_z_range_, receiver_sample_interval_,
@@ -805,6 +937,91 @@ void ContextInspector::updatePages() {
     grid_total_cells_->setText(
         QStringLiteral("%1 × %2 × %3 = %4")
             .arg(model.nx).arg(model.ny).arg(model.nz).arg(cells));
+}
+
+void ContextInspector::updateSourceEditor() {
+    const auto available = experiment_controller_ != nullptr &&
+                           experiment_controller_->hasContext() &&
+                           experiment_controller_->draft().has_value();
+    const QSignalBlocker block_x(source_x_);
+    const QSignalBlocker block_y(source_y_);
+    const QSignalBlocker block_z(source_z_);
+    const QSignalBlocker block_frequency(source_frequency_);
+    const QSignalBlocker block_peak_rate(source_peak_rate_);
+    const QSignalBlocker block_peak_time(source_peak_time_);
+    const QSignalBlocker block_origin(source_origin_time_);
+    for (auto* spin : {source_x_, source_y_, source_z_, source_frequency_,
+                       source_peak_rate_, source_peak_time_,
+                       source_origin_time_}) {
+        spin->setEnabled(available);
+        if (!available) spin->clear();
+    }
+    if (!available) {
+        source_status_->setText(QStringLiteral("Not configured"));
+        source_type_->setText(QStringLiteral("—"));
+        source_id_->setText(QStringLiteral("—"));
+        source_wavelet_type_->setText(QStringLiteral("—"));
+        return;
+    }
+    const auto& draft = *experiment_controller_->draft();
+    source_x_->setValue(draft.source_location_m.x_m);
+    source_y_->setValue(draft.source_location_m.y_m);
+    source_z_->setValue(draft.source_location_m.z_m);
+    source_frequency_->setValue(draft.wavelet.dominant_frequency_hz);
+    source_peak_rate_->setValue(draft.wavelet.peak_rate_s_inv);
+    source_peak_time_->setValue(draft.wavelet.peak_delay_s);
+    source_origin_time_->setValue(draft.source_origin_time_s);
+    source_status_->setText(QStringLiteral("Draft available"));
+    source_type_->setText(source_type(draft.source_mode));
+    source_id_->setText(draft.shot_id);
+    source_wavelet_type_->setText(QStringLiteral("Ricker"));
+}
+
+void ContextInspector::updateSourceFooter() {
+    if (experiment_controller_ == nullptr ||
+        !experiment_controller_->hasContext()) {
+        source_footer_->setState({
+            InspectorEditStatus::Unavailable,
+            QStringLiteral("No experiment loaded"),
+            false,
+            false});
+        return;
+    }
+    const auto state = experiment_controller_->state();
+    InspectorEditStatus status = InspectorEditStatus::Applied;
+    QString message = QStringLiteral(
+        "Draft matches the applied runtime configuration.");
+    if (state.edit_state == ExperimentEditState::Invalid) {
+        status = InspectorEditStatus::Invalid;
+        const auto& issues = experiment_controller_->validation().issues;
+        message = issues.isEmpty() ? QStringLiteral("Experiment is invalid")
+                                   : issues.front().message;
+    } else if (state.dirty) {
+        status = InspectorEditStatus::Modified;
+        message = QStringLiteral(
+            "Draft validation passed. Apply to update runtime configuration.");
+    } else if (!state.applied) {
+        status = InspectorEditStatus::Unavailable;
+        message = QStringLiteral("No applied experiment configuration");
+    }
+    source_footer_->setState({
+        status, message, state.can_apply, state.can_revert});
+}
+
+void ContextInspector::publishSourceEdit() {
+    if (experiment_controller_ == nullptr ||
+        !experiment_controller_->draft()) {
+        return;
+    }
+    auto draft = *experiment_controller_->draft();
+    draft.source_location_m = {
+        source_x_->value(), source_y_->value(), source_z_->value()};
+    draft.source_origin_time_s = source_origin_time_->value();
+    draft.wavelet = {
+        source_frequency_->value(),
+        source_peak_time_->value(),
+        source_peak_rate_->value()};
+    static_cast<void>(experiment_controller_->updateDraft(std::move(draft)));
 }
 
 } // namespace wave3d::desktop

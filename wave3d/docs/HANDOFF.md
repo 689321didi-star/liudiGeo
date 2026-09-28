@@ -2290,3 +2290,53 @@ and Revert without starting a numerical run or persisting the temporary edit.
 Final build, full CTest, shell inspection, XCB/OpenGL smoke, real CUDA
 cooperative-stop smoke, protected-code diff, and `findChild` audit are recorded
 in the Phase 4B2A commit report.
+
+## Wave3D Studio V2 Phase 4B2B1 editable Source Inspector
+
+**Status:** Verified on 2026-09-28.
+
+The Source Inspector now edits physical X/Y/Z position, origin time, and the
+production Ricker dominant frequency, peak delay, and peak rate through
+`ExperimentController`. A reusable `InspectorEditFooter` presents Applied,
+Modified, Invalid, or Unavailable state with controller-backed Apply/Revert.
+Mechanism and applied tensor remain read-only; all other Inspector pages remain
+unchanged.
+
+Controller-to-Inspector synchronization blocks spin-box signals with
+`QSignalBlocker`. Controller-to-legacy-editor synchronization uses its existing
+population guard. Focused tests prove one Draft notification per user edit,
+bidirectional Source value synchronization, invalid-Draft isolation, Apply,
+Revert, project replacement, and clear behavior.
+
+```text
+PATH=/home/byai/.cache/wave3d-toolchain/env/bin:$PATH \
+  cmake --build build/ui-v2-baseline-20260922 --parallel 6
+# complete build passed
+
+PATH=/home/byai/.cache/wave3d-toolchain/env/bin:$PATH \
+  QT_QPA_PLATFORM=offscreen ctest \
+  --test-dir build/ui-v2-baseline-20260922 --output-on-failure -j4
+# 43/43 passed, including controller, editable Source, legacy editor,
+# CUDA/session/worker, CPML/free-surface, and three-component SEG-Y tests
+
+QT_QPA_PLATFORM=offscreen \
+  build/ui-v2-baseline-20260922/wave3d_studio --inspect-shell
+# 4 viewports; Navigator/Inspector/Bottom pages = 3/1/4
+
+QT_QPA_PLATFORM=xcb build/ui-v2-baseline-20260922/wave3d_studio \
+  --project /tmp/wave3d-v2-phase4b2a-review-20260928 \
+  --module project --project-selection source --smoke-test
+# real Overthrust model and all visible OpenGL contexts passed
+
+QT_QPA_PLATFORM=xcb build/ui-v2-baseline-20260922/wave3d_studio \
+  --project /tmp/wave3d-v2-phase4b2a-review-20260928 \
+  --auto-run phase4b2b1-final-stop --smoke-test
+# canonical 2500/2500/1150 m, 3 Hz, 1 ms/3000-step, 101x101 setup;
+# cancelled result only, no partial SEG-Y was published
+```
+
+Five inspected 1440 by 1000 XCB captures are stored in the ignored
+`build/ui-v2-phase4b2b1-screenshots/` directory: applied, modified, invalid,
+after Revert, and explicit Ricker validation. Production code adds no
+`findChild` call. Numerical/CUDA/CPML/free-surface/source-injection/
+receiver-sampling/HDF5/SEG-Y and `VolumeViewport` files are unchanged.

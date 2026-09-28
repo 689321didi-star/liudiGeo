@@ -1178,3 +1178,26 @@ state, so invalid or unapplied edits cannot alter production presentation.
 The controller is Qt Core-only and has no CUDA, OpenGL, renderer, worker,
 project-navigation, or SEG-Y implementation dependency. The desktop supplies
 the existing SEG-Y sample-axis check through a narrow resolved-value validator.
+
+## D070 — Source editing is a controller-backed Inspector pattern
+
+**Status:** Accepted and verified, 2026-09-28
+
+The V2 Source Inspector edits physical X/Y/Z coordinates, source origin time,
+and the existing Ricker dominant-frequency, peak-delay, and peak-rate fields.
+It copies and updates the current `ExperimentDraft`; it owns no independent
+Source model and never writes `ResolvedExperimentDraft`. Storage coordinates
+remain derived, read-only applied values. Source mechanism editing remains in
+the legacy editor for this narrow phase.
+
+Both Source Inspector and `ExperimentEditor` communicate only through
+`ExperimentController`. Controller refresh blocks Source widget signals with
+`QSignalBlocker` and uses the legacy editor's `populating_` guard, preventing a
+controller-to-widget refresh from producing another Draft update. Apply and
+Revert use only controller operations; Apply neither saves nor starts work.
+
+`InspectorEditFooter` is the reusable status/validation/Apply/Revert component
+for later experiment pages. It projects controller state and contains no
+validation, persistence, preflight, renderer, or solver behavior. Resolver
+errors without a reliable structured field path remain page-level messages;
+the UI does not infer field identity from exception text.

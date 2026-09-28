@@ -60,6 +60,14 @@ void apply_scientific_theme(QApplication& application) {
         QPushButton:hover { background: #20506b; border-color: #42a7d3; }
         QPushButton:pressed { background: #12394f; }
         QPushButton:disabled { color: #657783; background: #17212a; border-color: #26343e; }
+        QPushButton[primaryAction="true"] { background: #087ca8; border-color: #32b8e8; font-weight: 700; }
+        QPushButton[primaryAction="true"]:disabled { color: #657783; background: #17212a; border-color: #26343e; }
+        QLabel#inspectorEditStatus { border-radius: 9px; padding: 3px 9px; font-weight: 700; }
+        QLabel#inspectorEditStatus[editState="unavailable"] { color: #8da1af; background: #17232d; border: 1px solid #2b3d49; }
+        QLabel#inspectorEditStatus[editState="applied"] { color: #88e0b1; background: #123829; border: 1px solid #286b4c; }
+        QLabel#inspectorEditStatus[editState="modified"] { color: #ffd487; background: #493716; border: 1px solid #80612c; }
+        QLabel#inspectorEditStatus[editState="invalid"] { color: #ffaaa3; background: #4a2022; border: 1px solid #843c40; }
+        QLabel#inspectorEditValidation[validationError="true"] { color: #ffaaa3; }
         QPushButton#startRunButton { background: #087ca8; border-color: #32b8e8; font-weight: 700; }
         QPushButton#startRunButton:disabled { color: #657783; background: #17212a; border-color: #26343e; }
         QProgressBar { min-height: 9px; max-height: 9px; border: none; border-radius: 4px; background: #26343e; text-align: center; }

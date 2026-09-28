@@ -1,14 +1,18 @@
 #include "wave3d/desktop/context_inspector.hpp"
+#include "wave3d/desktop/experiment_controller.hpp"
 #include "wave3d/desktop/selection_controller.hpp"
 
 #include <QApplication>
+#include <QDoubleSpinBox>
 #include <QLabel>
+#include <QPushButton>
 
 #include <stdexcept>
 #include <type_traits>
 
 namespace {
 
+using namespace wave3d;
 using namespace wave3d::desktop;
 
 void expect(bool condition, const char* message) {
@@ -19,6 +23,31 @@ QLabel* label(ContextInspector& inspector, const char* name) {
     auto* value = inspector.findChild<QLabel*>(QString::fromUtf8(name));
     if (value == nullptr) throw std::runtime_error("inspector label is missing");
     return value;
+}
+
+template <typename Widget>
+Widget* widget(ContextInspector& inspector, const char* name) {
+    auto* value = inspector.findChild<Widget*>(QString::fromUtf8(name));
+    if (value == nullptr) throw std::runtime_error("inspector widget is missing");
+    return value;
+}
+
+Grid3D source_grid() {
+    return {
+        200, 200, 187,
+        25.0F, 25.0F, 25.0F,
+        6, {20, 20}, {20, 20}, {0, 20}};
+}
+
+PhysicalModelExtrema source_extrema() {
+    return {
+        {2445.75928F, 1412.05981F, 2180.04321F},
+        {6000.0F, 3464.10156F, 2728.34644F}};
+}
+
+ExperimentDraft source_draft(const QString& shot = QStringLiteral("shot-001")) {
+    return ExperimentDraftStore::defaults(
+        shot, QStringLiteral("models/model.h5"), source_grid(), source_extrema());
 }
 
 ContextInspectorState state(
@@ -108,7 +137,8 @@ SelectionContext selection(
 
 void test_page_mapping_and_reuse() {
     SelectionController controller;
-    ContextInspector inspector(&controller);
+    ExperimentController experiment;
+    ContextInspector inspector(&controller, &experiment);
     inspector.setState(state());
     expect(inspector.currentPage() == InspectorPage::Empty, "None is not empty");
 
@@ -159,7 +189,8 @@ void test_page_mapping_and_reuse() {
 
 void test_state_replacement_and_safe_fallback() {
     SelectionController controller;
-    ContextInspector inspector(&controller);
+    ExperimentController experiment;
+    ContextInspector inspector(&controller, &experiment);
     inspector.setState(state());
     controller.setSelection(selection(SelectionKind::Project, QStringLiteral("project-a")));
 
@@ -190,7 +221,9 @@ void test_state_replacement_and_safe_fallback() {
 
 void test_experiment_page_mapping_and_values() {
     SelectionController controller;
-    ContextInspector inspector(&controller);
+    ExperimentController experiment;
+    experiment.load(source_grid(), source_extrema(), source_draft());
+    ContextInspector inspector(&controller, &experiment);
     auto configured = state();
     configured.experiment = experiment_state(true);
     inspector.setState(configured);
@@ -199,9 +232,9 @@ void test_experiment_page_mapping_and_values() {
         SelectionKind::Source, QStringLiteral("shot-001:source")));
     expect(inspector.currentPage() == InspectorPage::Source &&
                label(inspector, "sourceInspectorStatus")->text() ==
-                   QStringLiteral("Configured") &&
-               label(inspector, "sourceInspectorFrequency")->text() ==
-                   QStringLiteral("3 Hz"),
+                   QStringLiteral("Draft available") &&
+               widget<QDoubleSpinBox>(inspector, "sourceInspectorFrequencySpin")
+                       ->value() == 3.0,
            "configured Source did not populate SourceInspector");
 
     controller.setSelection(selection(
@@ -253,7 +286,8 @@ void test_experiment_page_mapping_and_values() {
 
 void test_unconfigured_and_stale_experiment_state() {
     SelectionController controller;
-    ContextInspector inspector(&controller);
+    ExperimentController experiment;
+    ContextInspector inspector(&controller, &experiment);
     auto unconfigured = state();
     unconfigured.experiment = experiment_state(false);
     inspector.setState(unconfigured);
@@ -262,8 +296,8 @@ void test_unconfigured_and_stale_experiment_state() {
     expect(inspector.currentPage() == InspectorPage::Source &&
                label(inspector, "sourceInspectorStatus")->text() ==
                    QStringLiteral("Not configured") &&
-               label(inspector, "sourceInspectorFrequency")->text() ==
-                   QStringLiteral("—"),
+               !widget<QDoubleSpinBox>(inspector, "sourceInspectorFrequencySpin")
+                    ->isEnabled(),
            "unconfigured Source exposed plausible default values");
     controller.setSelection(selection(
         SelectionKind::ReceiverSet, QStringLiteral("shot-001:receivers")));
@@ -283,6 +317,115 @@ void test_unconfigured_and_stale_experiment_state() {
            "project replacement retained stale experiment values");
 }
 
+void test_editable_source_controller_contract() {
+    SelectionController selection_controller;
+    ExperimentController experiment_controller;
+    experiment_controller.load(
+        source_grid(), source_extrema(), source_draft());
+    ContextInspector inspector(
+        &selection_controller, &experiment_controller);
+    auto configured = state();
+    configured.experiment = experiment_state(true);
+    inspector.setState(configured);
+    selection_controller.setSelection(selection(
+        SelectionKind::Source, QStringLiteral("shot-001:source")));
+
+    auto* x = widget<QDoubleSpinBox>(inspector, "sourceInspectorXSpin");
+    auto* y = widget<QDoubleSpinBox>(inspector, "sourceInspectorYSpin");
+    auto* z = widget<QDoubleSpinBox>(inspector, "sourceInspectorZSpin");
+    auto* frequency =
+        widget<QDoubleSpinBox>(inspector, "sourceInspectorFrequencySpin");
+    auto* status = label(inspector, "inspectorEditStatus");
+    auto* validation = label(inspector, "inspectorEditValidation");
+    auto* apply = widget<QPushButton>(inspector, "inspectorApplyButton");
+    auto* revert = widget<QPushButton>(inspector, "inspectorRevertButton");
+    expect(
+        x->value() == 2500.0 && y->value() == 2500.0 &&
+            z->value() == 1150.0 && frequency->value() == 3.0 &&
+            status->text() == QStringLiteral("Applied"),
+        "SourceInspector did not load the controller draft");
+
+    int draft_changes = 0;
+    QObject::connect(
+        &experiment_controller, &ExperimentController::draftChanged,
+        [&draft_changes](const ExperimentDraft&) { ++draft_changes; });
+    x->setValue(2525.0);
+    y->setValue(2475.0);
+    z->setValue(1175.0);
+    frequency->setValue(2.9);
+    expect(
+        draft_changes == 4 && experiment_controller.state().dirty &&
+            experiment_controller.draft()->source_location_m.x_m == 2525.0 &&
+            experiment_controller.draft()->source_location_m.y_m == 2475.0 &&
+            experiment_controller.draft()->source_location_m.z_m == 1175.0 &&
+            experiment_controller.draft()->wavelet.dominant_frequency_hz ==
+                2.9 &&
+            experiment_controller.appliedConfiguration()
+                    ->source.physical_location.x_m == 2500.0 &&
+            status->text() == QStringLiteral("Modified") && apply->isEnabled() &&
+            revert->isEnabled(),
+        "SourceInspector edit did not produce one synchronized dirty draft");
+    expect(
+        !experiment_controller.updateDraft(*experiment_controller.draft()) &&
+            draft_changes == 4,
+        "controller refresh emitted a duplicate draftChanged signal");
+
+    frequency->setValue(0.0);
+    expect(
+        experiment_controller.state().edit_state ==
+                ExperimentEditState::Invalid &&
+            status->text() == QStringLiteral("Invalid") &&
+            validation->text().contains(QStringLiteral("Ricker")) &&
+            !apply->isEnabled() && revert->isEnabled() &&
+            experiment_controller.appliedConfiguration()
+                    ->source.wavelet.dominant_frequency_hz == 3.0,
+        "invalid Source draft replaced applied state or enabled Apply");
+
+    revert->click();
+    expect(
+        !experiment_controller.state().dirty && x->value() == 2500.0 &&
+            y->value() == 2500.0 && z->value() == 1150.0 &&
+            frequency->value() == 3.0 &&
+            status->text() == QStringLiteral("Applied"),
+        "Revert did not restore SourceInspector from the domain baseline");
+
+    x->setValue(2525.0);
+    apply->click();
+    expect(
+        !experiment_controller.state().dirty &&
+            experiment_controller.appliedConfiguration()
+                    ->source.physical_location.x_m == 2525.0 &&
+            status->text() == QStringLiteral("Applied"),
+        "SourceInspector Apply did not publish the resolved source");
+
+    auto next_draft = source_draft(QStringLiteral("shot-002"));
+    next_draft.source_location_m.x_m = 1000.0;
+    experiment_controller.load(source_grid(), source_extrema(), next_draft);
+    auto next = state(QStringLiteral("project-b"), QStringLiteral("Project B"));
+    next.experiment = experiment_state(true);
+    next.experiment->source.object_id = QStringLiteral("shot-002:source");
+    next.experiment->source.shot_id = QStringLiteral("shot-002");
+    inspector.setState(next);
+    selection_controller.setSelection(selection(
+        SelectionKind::Source,
+        QStringLiteral("shot-002:source"),
+        std::nullopt,
+        QStringLiteral("project-b")));
+    expect(
+        x->value() == 1000.0 &&
+            label(inspector, "sourceInspectorId")->text() ==
+                QStringLiteral("shot-002"),
+        "project switch retained stale SourceInspector values");
+
+    experiment_controller.clear();
+    inspector.setState({});
+    expect(
+        !x->isEnabled() && !frequency->isEnabled() &&
+            label(inspector, "inspectorEditStatus")->text() ==
+                QStringLiteral("Unavailable"),
+        "project close retained an editable Source draft");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -294,6 +437,7 @@ int main(int argc, char** argv) {
         test_state_replacement_and_safe_fallback();
         test_experiment_page_mapping_and_values();
         test_unconfigured_and_stale_experiment_state();
+        test_editable_source_controller_contract();
     } catch (const std::exception& error) {
         qCritical("%s", error.what());
         return 1;

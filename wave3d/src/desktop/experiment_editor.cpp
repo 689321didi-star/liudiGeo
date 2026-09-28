@@ -95,6 +95,7 @@ ExperimentEditor::ExperimentEditor(QWidget* parent) : QWidget(parent) {
     auto* state = new QLabel(QStringLiteral("请先加载模型"), identity);
     state->setObjectName(QStringLiteral("experimentSaveStateLabel"));
     state->setWordWrap(true);
+    save_state_label_ = state;
     identity_form->addRow(QStringLiteral("炮号："), shot);
     identity_form->addRow(QStringLiteral("状态："), state);
     layout->addWidget(identity);
@@ -587,13 +588,23 @@ void ExperimentEditor::set_model_context(
     update_source_mode_page();
     populate_acquisition(
         draft.acquisition.value_or(ExperimentDraftStore::default_acquisition(grid)));
-    findChild<QLabel*>(QStringLiteral("experimentSaveStateLabel"))
-        ->setText(model_reference_changed
-                      ? QStringLiteral("草稿来自另一模型，请重新验证并保存")
-                      : loaded_from_disk ? QStringLiteral("已加载保存的草稿")
-                                         : QStringLiteral("尚未保存"));
+    save_state_label_->setText(
+        model_reference_changed
+            ? QStringLiteral("草稿来自另一模型，请重新验证并保存")
+            : loaded_from_disk ? QStringLiteral("已加载保存的草稿")
+                               : QStringLiteral("尚未保存"));
     setEnabled(true);
     populating_ = false;
+}
+
+void ExperimentEditor::synchronize_draft(
+    const Grid3D& grid,
+    const ExperimentDraft& draft,
+    bool dirty) {
+    set_model_context(grid, draft, false, false);
+    save_state_label_->setText(
+        dirty ? QStringLiteral("有未保存修改")
+              : QStringLiteral("与已应用配置一致"));
 }
 
 void ExperimentEditor::clear_model_context() {
@@ -607,8 +618,7 @@ void ExperimentEditor::clear_model_context() {
         ->setText(QStringLiteral("—"));
     findChild<QLabel*>(QStringLiteral("workspaceStorageSummaryLabel"))
         ->setText(QStringLiteral("—"));
-    findChild<QLabel*>(QStringLiteral("experimentSaveStateLabel"))
-        ->setText(QStringLiteral("请先加载模型"));
+    save_state_label_->setText(QStringLiteral("请先加载模型"));
     findChild<QLabel*>(QStringLiteral("experimentValidationLabel"))
         ->setText(QStringLiteral("等待模型"));
     findChild<QLabel*>(QStringLiteral("acquisitionEstimateLabel"))
@@ -858,8 +868,7 @@ void ExperimentEditor::show_validation(
     findChild<QPushButton*>(QStringLiteral("saveExperimentDraftButton"))
         ->setEnabled(true);
     if (model_reference_changed) {
-        findChild<QLabel*>(QStringLiteral("experimentSaveStateLabel"))
-            ->setText(QStringLiteral("模型已变化，保存后绑定当前模型"));
+        save_state_label_->setText(QStringLiteral("模型已变化，保存后绑定当前模型"));
     }
 }
 
@@ -875,16 +884,14 @@ void ExperimentEditor::show_validation_error(const QString& message) {
 }
 
 void ExperimentEditor::mark_saved() {
-    findChild<QLabel*>(QStringLiteral("experimentSaveStateLabel"))
-        ->setText(QStringLiteral("已保存"));
+    save_state_label_->setText(QStringLiteral("已保存"));
 }
 
 void ExperimentEditor::publish_change() {
     if (populating_) {
         return;
     }
-    findChild<QLabel*>(QStringLiteral("experimentSaveStateLabel"))
-        ->setText(QStringLiteral("有未保存修改"));
+    save_state_label_->setText(QStringLiteral("有未保存修改"));
     try {
         if (change_callback_) {
             change_callback_(current_draft());

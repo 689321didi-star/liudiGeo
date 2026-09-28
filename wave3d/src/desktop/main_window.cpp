@@ -932,7 +932,10 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
             if (index == 0) project_navigator_->publishCurrentSelection();
         });
     context_inspector_ =
-        new ContextInspector(selection_controller(), context_inspector_host());
+        new ContextInspector(
+            selection_controller(),
+            experiment_controller_,
+            context_inspector_host());
     set_context_inspector(context_inspector_);
     refresh_context_inspector();
     connect(
@@ -1359,6 +1362,21 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
         &QPushButton::clicked,
         this,
         [this] { volume_viewport(this)->reset_camera(); });
+    connect(
+        experiment_controller_, &ExperimentController::draftChanged,
+        this, [this](const ExperimentDraft& draft) {
+            if (model_scene_ == nullptr) return;
+            experiment_editor(this)->synchronize_draft(
+                model_scene_->summary().grid,
+                draft,
+                experiment_controller_->state().dirty);
+            update_experiment_editor_feedback();
+        });
+    connect(
+        experiment_controller_, &ExperimentController::contextChanged,
+        this, [this](bool available) {
+            if (!available) experiment_editor(this)->clear_model_context();
+        });
     experiment_editor(this)->set_callbacks(
         [this](ExperimentDraft draft) {
             accept_experiment_draft(std::move(draft));

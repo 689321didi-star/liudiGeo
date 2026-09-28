@@ -578,10 +578,10 @@ void test_hdf5_model_import() {
            shot_id + QStringLiteral(":source"));
     expect(
         require_child<QLabel>(window, "sourceInspectorStatus")->text() ==
-                QStringLiteral("Configured") &&
-            require_child<QLabel>(window, "sourceInspectorFrequency")
-                ->text()
-                .contains(QStringLiteral("3 Hz")),
+                QStringLiteral("Draft available") &&
+            require_child<QDoubleSpinBox>(
+                window, "sourceInspectorFrequencySpin")
+                    ->value() == 3.0,
         "real resolved draft did not reach SourceInspector");
     select(wave3d::desktop::SelectionKind::ReceiverSet,
            shot_id + QStringLiteral(":receivers"));

@@ -6,6 +6,8 @@
 
 #include <functional>
 
+class QLabel;
+
 namespace wave3d::desktop {
 
 class ExperimentEditor final : public QWidget {
@@ -21,6 +23,10 @@ public:
         const ExperimentDraft& draft,
         bool loaded_from_disk,
         bool model_reference_changed);
+    void synchronize_draft(
+        const Grid3D& grid,
+        const ExperimentDraft& draft,
+        bool dirty);
     void clear_model_context();
 
     [[nodiscard]] ExperimentDraft current_draft() const;
@@ -50,6 +56,7 @@ private:
     QString shot_id_;
     QString model_reference_;
     std::vector<PhysicalPoint3D> explicit_receivers_;
+    QLabel* save_state_label_{nullptr};
     bool populating_{false};
 };
 

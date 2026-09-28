@@ -799,7 +799,68 @@ state is the current clean, synchronized production state.
 MainWindow remains the compatibility composition root and continues to own
 project persistence, preflight, prepared-run, worker, and visualization
 wiring. `ProjectNavigator` remains selection-only. `ContextInspector` consumes
-only the controller's applied snapshot and cannot edit or validate it.
+the controller's applied snapshot; at the Phase 4B2A boundary it remains
+entirely read-only. Phase 4B2B1 narrows the first editing migration to Source.
+
+## Editable Source Inspector contract
+
+Wave3D Studio V2 Phase 4B2B1 makes only the Source page editable. The page is
+constructed with explicit `SelectionController` and `ExperimentController`
+dependencies. It owns widget presentation state but no Source domain object,
+resolved configuration, project fields, or numerical logic.
+
+```text
+SourceInspector physical/Ricker controls
+        -> copy ExperimentController::draft()
+        -> update source fields
+        -> ExperimentController::updateDraft
+        -> production resolve/validation
+        -> Draft / ValidUnapplied / Invalid state
+
+InspectorEditFooter::Apply
+        -> ExperimentController::apply
+        -> applied Draft + applied ResolvedExperimentDraft
+        -> MainWindow's existing Inspector/overlay refresh pipeline
+
+InspectorEditFooter::Revert
+        -> ExperimentController::revert
+        -> draftChanged
+        +-> SourceInspector refresh
+        +-> MainWindow compatibility adapter
+              -> ExperimentEditor::synchronize_draft
+```
+
+Physical X/Y/Z in metres are the only editable coordinate representation.
+The displayed padded storage coordinate is explicitly the applied derived
+coordinate. It is never editable. The page also edits source origin time and
+the production `RickerWavelet` dominant frequency, peak delay, and peak rate.
+Source mechanism and applied tensor remain read-only in this phase; the
+existing production mechanism editor remains in `ExperimentEditor`.
+
+`InspectorEditFooter` is a lightweight reusable Widget component with an
+explicit status, page-level validation message, and Apply/Revert callbacks. It
+does not know how to validate, resolve, save, preflight, render, or run an
+experiment. Its states are Unavailable, Applied, Modified, and Invalid and are
+projected from `ExperimentControllerState`.
+
+Controller-to-SourceInspector refresh uses `QSignalBlocker` on every editable
+spin box. Controller-to-ExperimentEditor refresh uses the editor's existing
+`populating_` guard through a typed `synchronize_draft` adapter. Consequently,
+neither presentation refresh publishes another draft. Both editors publish to
+the controller and never call one another.
+
+Validation messages come from the controller's existing production resolver.
+The current resolver exposes exceptions rather than structured field paths, so
+this phase shows unresolved issues in the page-level validation area instead
+of guessing a field mapping. Invalid values remain in Draft while renderer,
+preflight, and run consumers continue reading Applied state. Apply remains
+separate from project persistence.
+
+ReceiverSet, Simulation, Boundary, and Output pages remain read-only. Ricker
+preview is deferred; a later presentation-only component may reuse the pure
+production `ricker_value` API without copying its formula. Confirmation before
+discarding a dirty Draft during project replacement remains a future project
+lifecycle UX decision.
 
 Increment 11 verifies that behavior by configuring and building with the whole
 `optional/rtm` tree temporarily absent. RTM-off exposes only the forward views,

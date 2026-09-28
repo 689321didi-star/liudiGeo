@@ -9,11 +9,14 @@
 #include <optional>
 
 class QLabel;
+class QDoubleSpinBox;
 class QStackedWidget;
 
 namespace wave3d::desktop {
 
 class SelectionController;
+class ExperimentController;
+class InspectorEditFooter;
 
 struct ProjectInspectorState final {
     QString project_id;
@@ -70,6 +73,7 @@ class ContextInspector final : public QWidget {
 public:
     explicit ContextInspector(
         SelectionController* selection_controller,
+        ExperimentController* experiment_controller,
         QWidget* parent = nullptr);
 
     void setState(ContextInspectorState state);
@@ -81,8 +85,12 @@ public:
 private:
     void applySelection(const SelectionContext& selection);
     void updatePages();
+    void updateSourceEditor();
+    void updateSourceFooter();
+    void publishSourceEdit();
 
     SelectionController* selection_controller_{nullptr};
+    ExperimentController* experiment_controller_{nullptr};
     ContextInspectorState state_;
     SelectionContext selection_;
     QStackedWidget* pages_{nullptr};
@@ -143,15 +151,18 @@ private:
     QLabel* source_status_{nullptr};
     QLabel* source_type_{nullptr};
     QLabel* source_id_{nullptr};
-    QLabel* source_physical_position_{nullptr};
     QLabel* source_storage_position_{nullptr};
     QLabel* source_wavelet_type_{nullptr};
-    QLabel* source_frequency_{nullptr};
-    QLabel* source_peak_rate_{nullptr};
-    QLabel* source_peak_time_{nullptr};
-    QLabel* source_origin_time_{nullptr};
     QLabel* source_mechanism_{nullptr};
     QLabel* source_tensor_{nullptr};
+    QDoubleSpinBox* source_x_{nullptr};
+    QDoubleSpinBox* source_y_{nullptr};
+    QDoubleSpinBox* source_z_{nullptr};
+    QDoubleSpinBox* source_frequency_{nullptr};
+    QDoubleSpinBox* source_peak_rate_{nullptr};
+    QDoubleSpinBox* source_peak_time_{nullptr};
+    QDoubleSpinBox* source_origin_time_{nullptr};
+    InspectorEditFooter* source_footer_{nullptr};
 
     QLabel* receiver_status_{nullptr};
     QLabel* receiver_count_{nullptr};

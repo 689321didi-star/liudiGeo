@@ -480,6 +480,7 @@ if(WAVE3D_BUILD_DESKTOP)
         wave3d_desktop_shell STATIC
         src/desktop/experiment_editor.cpp
         src/desktop/context_inspector.cpp
+        src/desktop/inspector_edit_footer.cpp
         src/desktop/main_window.cpp
         src/desktop/main_window_shell.cpp
         src/desktop/project_navigator.cpp
