@@ -2263,3 +2263,30 @@ mathematics, GPU layout, HDF5/SEG-Y definition, `CudaForwardSession`, workspace
 mode, Files/Workflow navigator, theme, or `VolumeViewport` algorithm changed.
 Production code adds no `findChild` call and the Inspector has no renderer,
 worker, or CUDA dependency.
+
+## Wave3D Studio V2 Phase 4B2A experiment controller
+
+**Status:** Verified on 2026-09-28.
+
+`ExperimentController` now owns the complete editable `ExperimentDraft`, the
+validated candidate, and the separately applied draft/resolved configuration.
+Dirty state is computed from domain values. Invalid and valid-unapplied edits
+leave the last applied configuration intact; Apply validates transactionally,
+and Revert restores the last loaded or applied domain baseline.
+
+The existing `ExperimentEditor` remains the only production editor and sends
+typed draft snapshots through a compatibility callback. MainWindow retains
+explicit persistence, preflight, `PreparedRun`, worker, and renderer wiring.
+The read-only Context Inspector and source/receiver overlays consume applied
+controller state. No editable Inspector, Workflow/Files navigator, workspace
+mode, theme, RunController, or future solver was introduced.
+
+The real Overthrust integration check preserved source position
+2500/2500/1150 m, 3 Hz Ricker frequency, 10,201 receivers, 12th-order
+radius-6 numerics, 1 ms/3,000-step sampling, free-surface/CPML boundaries, and
+Vx/Vy/Vz output. It also exercised ExperimentEditor edit, validation, Apply,
+and Revert without starting a numerical run or persisting the temporary edit.
+
+Final build, full CTest, shell inspection, XCB/OpenGL smoke, real CUDA
+cooperative-stop smoke, protected-code diff, and `findChild` audit are recorded
+in the Phase 4B2A commit report.

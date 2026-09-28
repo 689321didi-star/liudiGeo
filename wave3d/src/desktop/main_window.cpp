@@ -1,6 +1,7 @@
 #include "wave3d/desktop/main_window.hpp"
 
 #include "wave3d/desktop/context_inspector.hpp"
+#include "wave3d/desktop/experiment_controller.hpp"
 #include "wave3d/desktop/experiment_editor.hpp"
 #include "wave3d/desktop/model_derivation.hpp"
 #include "wave3d/desktop/project_navigator.hpp"
@@ -311,6 +312,18 @@ ExperimentEditor* experiment_editor(QMainWindow* window) {
         throw std::logic_error("experiment editor is missing");
     }
     return editor;
+}
+
+ExperimentController::ResolvedValidator experiment_output_validator() {
+#ifdef WAVE3D_DESKTOP_HAS_SEGY
+    return [](const ResolvedExperimentDraft& resolved) {
+        wave3d::io::require_segy_rev1_sample_axis(
+            resolved.acquisition.sample_count,
+            resolved.simulation.time.dt_s);
+    };
+#else
+    return {};
+#endif
 }
 
 ResultWorkspace* result_workspace(QMainWindow* window) {
@@ -838,6 +851,7 @@ QVector<ProjectNavigatorRun> discover_project_navigator_runs(
 
 MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
     : MainWindowShell(parent) {
+    experiment_controller_ = new ExperimentController(this);
     auto* central = new QWidget(this);
     auto* central_layout = new QVBoxLayout(central);
     central_layout->setContentsMargins(10, 10, 10, 10);
@@ -921,6 +935,22 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
         new ContextInspector(selection_controller(), context_inspector_host());
     set_context_inspector(context_inspector_);
     refresh_context_inspector();
+    connect(
+        experiment_controller_, &ExperimentController::dirtyChanged,
+        this, [this](bool dirty) {
+            setProperty("experimentDirty", dirty);
+        });
+    connect(
+        experiment_controller_,
+        &ExperimentController::appliedConfigurationChanged,
+        this,
+        [this](const ResolvedExperimentDraft&) {
+            refresh_project_navigator();
+            update_model_view();
+        });
+    connect(
+        experiment_controller_, &ExperimentController::contextChanged,
+        this, [this](bool) { refresh_project_navigator(); });
 
     legacy_inspector_dialog_ = new QDialog(this);
     legacy_inspector_dialog_->setObjectName(
@@ -1007,9 +1037,10 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
     toolbar->addAction(save_project_action_);
     toolbar->addAction(import_model);
     toolbar->addSeparator();
-    auto* validate = toolbar->addAction(QStringLiteral("实验预检"));
-    validate->setObjectName(QStringLiteral("validateExperimentAction"));
-    validate->setEnabled(false);
+    validate_experiment_action_ = toolbar->addAction(QStringLiteral("实验预检"));
+    validate_experiment_action_->setObjectName(
+        QStringLiteral("validateExperimentAction"));
+    validate_experiment_action_->setEnabled(false);
     auto* run = toolbar->addAction(QStringLiteral("开始正演"));
     run->setObjectName(QStringLiteral("startRunAction"));
     run->setEnabled(false);
@@ -1102,7 +1133,7 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
         }
 #endif
     });
-    connect(validate, &QAction::triggered, this, [this] {
+    connect(validate_experiment_action_, &QAction::triggered, this, [this] {
         QString error;
         if (!save_experiment_draft(&error)) {
             QMessageBox::critical(this, QStringLiteral("无法保存实验草稿"), error);
@@ -1329,9 +1360,12 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
         this,
         [this] { volume_viewport(this)->reset_camera(); });
     experiment_editor(this)->set_callbacks(
-        [this] {
-            update_experiment_validation();
+        [this](ExperimentDraft draft) {
+            accept_experiment_draft(std::move(draft));
             update_model_view();
+        },
+        [this](QString message) {
+            reject_experiment_draft_input(message);
         },
         [this] {
             QString error;
@@ -1676,22 +1710,27 @@ bool MainWindow::save_experiment_draft(QString* error_message) {
         return false;
     }
     try {
-        auto draft = experiment_editor(this)->current_draft();
-        draft.model_reference = project_->model_reference;
+        update_experiment_validation();
+        QString apply_error;
+        if (!experiment_controller_->apply(&apply_error) ||
+            !experiment_controller_->appliedDraft()) {
+            throw std::invalid_argument(apply_error.toStdString());
+        }
+        const auto draft = *experiment_controller_->appliedDraft();
         const auto& summary = model_scene_->summary();
-        const auto checked = ExperimentDraftStore::resolve(
-            draft, summary.grid, summary.extrema);
-#ifdef WAVE3D_DESKTOP_HAS_SEGY
-        wave3d::io::require_segy_rev1_sample_axis(
-            checked.acquisition.sample_count, checked.simulation.time.dt_s);
-#endif
         ExperimentDraftStore::save(project_root_, draft);
         const auto verified = ExperimentDraftStore::load(
             project_root_, draft.shot_id);
-        resolved_experiment_ = ExperimentDraftStore::resolve(
-            verified, summary.grid, summary.extrema);
+        experiment_controller_->load(
+            summary.grid,
+            summary.extrema,
+            verified,
+            experiment_output_validator());
         experiment_model_reference_changed_ = false;
         experiment_editor(this)->mark_saved();
+        update_experiment_editor_feedback();
+        refresh_project_navigator();
+        update_model_view();
         findChild<QTextEdit*>(QStringLiteral("runLog"))
             ->append(QStringLiteral("已保存实验草稿：%1")
                          .arg(ExperimentDraftStore::relative_path(draft.shot_id)));
@@ -1719,7 +1758,9 @@ bool MainWindow::preflight_experiment(
     }
     return false;
 #else
-    if (!project_ || !model_scene_ || !resolved_experiment_ ||
+    const auto& resolved = experiment_controller_->appliedConfiguration();
+    if (!project_ || !model_scene_ || !resolved ||
+        !experiment_controller_->state().can_preflight ||
         project_->shots.isEmpty()) {
         if (error_message != nullptr) {
             *error_message = QStringLiteral("请先完成有效的模型、震源和观测系统配置");
@@ -1731,9 +1772,9 @@ bool MainWindow::preflight_experiment(
         const auto model_path =
             QStringLiteral("../../") + project_->model_reference;
         wave3d::io::ForwardRunConfiguration configuration{
-            resolved_experiment_->simulation,
-            resolved_experiment_->source,
-            resolved_experiment_->receivers,
+            resolved->simulation,
+            resolved->source,
+            resolved->receivers,
             model_path.toStdString(),
             "output"};
         wave3d::io::require_valid_run_configuration(configuration);
@@ -1767,7 +1808,7 @@ bool MainWindow::preflight_experiment(
             ->append(
                 QStringLiteral("正演预检完成：%1；%2 个接收器；配置 %3")
                     .arg(run_id)
-                    .arg(resolved_experiment_->receivers.size())
+                    .arg(resolved->receivers.size())
                     .arg(prepared->configuration_path));
         statusBar()->showMessage(
             QStringLiteral("预检完成 · 已生成不可变运行配置"));
@@ -1895,8 +1936,7 @@ void MainWindow::set_run_editing_locked(bool locked) {
     experiment_editor(this)->setEnabled(!locked && model_scene_ != nullptr);
     save_project_action_->setEnabled(!locked && model_scene_ != nullptr);
     if (locked) {
-        findChild<QAction*>(QStringLiteral("validateExperimentAction"))
-            ->setEnabled(false);
+        validate_experiment_action_->setEnabled(false);
         findChild<QPushButton*>(QStringLiteral("createCropButton"))
             ->setEnabled(false);
     } else {
@@ -1988,10 +2028,11 @@ void MainWindow::poll_forward_run() {
         state_label->setText(QStringLiteral("正演失败"));
         break;
     }
+    const auto& resolved = experiment_controller_->appliedConfiguration();
     const auto physical_time_s =
-        resolved_experiment_
+        resolved
             ? static_cast<double>(snapshot.completed_steps) *
-                  resolved_experiment_->simulation.time.dt_s
+                  resolved->simulation.time.dt_s
             : 0.0;
     set_run_telemetry(
         state_label->text(),
@@ -2249,6 +2290,10 @@ ProjectNavigator* MainWindow::project_navigator() const noexcept {
     return project_navigator_;
 }
 
+ExperimentController* MainWindow::experiment_controller() const noexcept {
+    return experiment_controller_;
+}
+
 void MainWindow::closeEvent(QCloseEvent* event) {
 #ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
     if (forward_worker_ && forward_worker_->isRunning()) {
@@ -2339,13 +2384,12 @@ void MainWindow::activate_project(
 
 void MainWindow::clear_model_view() {
     model_scene_.reset();
-    resolved_experiment_.reset();
+    experiment_controller_->clear();
     invalidate_prepared_run();
     experiment_model_reference_changed_ = false;
     volume_property_index_ = -1;
     volume_viewport(this)->clear_volume();
-    findChild<QAction*>(QStringLiteral("validateExperimentAction"))
-        ->setEnabled(false);
+    validate_experiment_action_->setEnabled(false);
     save_project_action_->setEnabled(false);
     experiment_editor(this)->clear_model_context();
     auto* property =
@@ -2415,9 +2459,10 @@ void MainWindow::refresh_project_navigator() {
             state.source_id = shot_id + QStringLiteral(":source");
             state.receiver_set_id = shot_id + QStringLiteral(":receivers");
         }
-        state.source_configured = resolved_experiment_.has_value();
+        const auto& resolved = experiment_controller_->appliedConfiguration();
+        state.source_configured = resolved.has_value();
         state.receiver_set_configured =
-            resolved_experiment_ && !resolved_experiment_->receivers.empty();
+            resolved && !resolved->receivers.empty();
         state.runs = discover_project_navigator_runs(project_root_);
     }
     project_navigator_->setProjectState(state);
@@ -2472,16 +2517,6 @@ void MainWindow::refresh_context_inspector() {
     }
 #endif
     if (project_ && !project_->shots.isEmpty()) {
-        std::optional<ExperimentDraft> draft;
-        if (model_scene_) {
-            try {
-                draft = experiment_editor(this)->current_draft();
-                draft->model_reference = project_->model_reference;
-            } catch (const std::exception&) {
-                // The inspector represents invalid/incomplete editor state as
-                // unconfigured until the production resolver accepts it.
-            }
-        }
         const auto visualization_component = [this]() {
             if (!project_) return QStringLiteral("—");
             const auto& key = project_->display_field;
@@ -2505,8 +2540,8 @@ void MainWindow::refresh_context_inspector() {
         state.experiment = make_experiment_inspector_state(
             project_->project_id,
             project_->shots.front().id,
-            draft,
-            resolved_experiment_,
+            experiment_controller_->appliedDraft(),
+            experiment_controller_->appliedConfiguration(),
             prepared_run_.has_value(),
             prepared_run_ ? prepared_run_->directory : QString{},
             visualization_component,
@@ -2609,7 +2644,7 @@ void MainWindow::configure_experiment_editor() {
 #else
     if (!project_ || !model_scene_ || project_->shots.isEmpty()) {
         experiment_editor(this)->clear_model_context();
-        resolved_experiment_.reset();
+        experiment_controller_->clear();
         return;
     }
     const auto& summary = model_scene_->summary();
@@ -2627,15 +2662,26 @@ void MainWindow::configure_experiment_editor() {
         experiment_model_reference_changed_ =
             stored && draft.model_reference != project_->model_reference;
         draft.model_reference = project_->model_reference;
+        experiment_controller_->load(
+            summary.grid,
+            summary.extrema,
+            draft,
+            experiment_output_validator());
         experiment_editor(this)->set_model_context(
             summary.grid,
-            draft,
+            *experiment_controller_->draft(),
             stored,
             experiment_model_reference_changed_);
         save_project_action_->setEnabled(true);
-        update_experiment_validation();
+        update_experiment_editor_feedback();
+#if defined(WAVE3D_DESKTOP_HAS_HDF5) && defined(WAVE3D_DESKTOP_HAS_YAML) && \
+    defined(WAVE3D_DESKTOP_HAS_SEGY)
+        validate_experiment_action_->setEnabled(
+            experiment_controller_->validation().valid());
+#endif
+        refresh_project_navigator();
     } catch (const std::exception& error) {
-        resolved_experiment_.reset();
+        experiment_controller_->clear();
         save_project_action_->setEnabled(false);
         experiment_editor(this)->clear_model_context();
         experiment_editor(this)->show_validation_error(
@@ -2651,39 +2697,56 @@ void MainWindow::update_experiment_validation() {
 #ifndef WAVE3D_DESKTOP_HAS_HDF5
     return;
 #else
+    try {
+        accept_experiment_draft(experiment_editor(this)->current_draft());
+    } catch (const std::exception& error) {
+        reject_experiment_draft_input(QString::fromUtf8(error.what()));
+    }
+#endif
+}
+
+void MainWindow::accept_experiment_draft(ExperimentDraft draft) {
     invalidate_prepared_run();
-    if (!project_ || !model_scene_) {
-        resolved_experiment_.reset();
+    if (!project_ || !model_scene_ || !experiment_controller_->hasContext()) {
+        experiment_controller_->clear();
         refresh_project_navigator();
         return;
     }
-    try {
-        auto draft = experiment_editor(this)->current_draft();
-        draft.model_reference = project_->model_reference;
-        const auto& summary = model_scene_->summary();
-        resolved_experiment_ = ExperimentDraftStore::resolve(
-            draft, summary.grid, summary.extrema);
-#ifdef WAVE3D_DESKTOP_HAS_SEGY
-        wave3d::io::require_segy_rev1_sample_axis(
-            resolved_experiment_->acquisition.sample_count,
-            resolved_experiment_->simulation.time.dt_s);
-#endif
-        experiment_editor(this)->show_validation(
-            *resolved_experiment_, experiment_model_reference_changed_);
+    draft.model_reference = project_->model_reference;
+    static_cast<void>(experiment_controller_->updateDraft(std::move(draft)));
+    update_experiment_editor_feedback();
 #if defined(WAVE3D_DESKTOP_HAS_HDF5) && defined(WAVE3D_DESKTOP_HAS_YAML) && \
     defined(WAVE3D_DESKTOP_HAS_SEGY)
-        findChild<QAction*>(QStringLiteral("validateExperimentAction"))
-            ->setEnabled(true);
+    validate_experiment_action_->setEnabled(
+        experiment_controller_->validation().valid());
 #endif
-    } catch (const std::exception& error) {
-        resolved_experiment_.reset();
-        findChild<QAction*>(QStringLiteral("validateExperimentAction"))
-            ->setEnabled(false);
-        experiment_editor(this)->show_validation_error(
-            QString::fromUtf8(error.what()));
-    }
     refresh_project_navigator();
-#endif
+}
+
+void MainWindow::reject_experiment_draft_input(const QString& message) {
+    invalidate_prepared_run();
+    experiment_controller_->reportDraftInputError(
+        QStringLiteral("experiment.editor_input"),
+        message,
+        ExperimentValidationTarget::General);
+    validate_experiment_action_->setEnabled(false);
+    update_experiment_editor_feedback();
+    refresh_project_navigator();
+}
+
+void MainWindow::update_experiment_editor_feedback() {
+    const auto& validation = experiment_controller_->validation();
+    const auto& candidate =
+        experiment_controller_->validatedConfiguration();
+    if (validation.valid() && candidate) {
+        experiment_editor(this)->show_validation(
+            *candidate, experiment_model_reference_changed_);
+        return;
+    }
+    const auto message = validation.issues.isEmpty()
+                             ? QStringLiteral("尚未验证")
+                             : validation.issues.front().message;
+    experiment_editor(this)->show_validation_error(message);
 }
 
 void MainWindow::update_crop_summary() {
@@ -2759,8 +2822,9 @@ void MainWindow::update_model_view() {
     std::optional<std::array<float, 3>> source_texture;
     std::vector<std::array<double, 3>> receiver_indices;
     std::vector<std::array<float, 3>> receiver_textures;
-    if (resolved_experiment_) {
-        const auto& point = resolved_experiment_->source.physical_location;
+    const auto& resolved = experiment_controller_->appliedConfiguration();
+    if (resolved) {
+        const auto& point = resolved->source.physical_location;
         source_index = std::array<double, 3>{
             point.x_m / grid.dx_m,
             point.y_m / grid.dy_m,
@@ -2776,9 +2840,9 @@ void MainWindow::update_model_view() {
             normalized(point.x_m, grid.dx_m, grid.nx),
             normalized(point.y_m, grid.dy_m, grid.ny),
             normalized(point.z_m, grid.dz_m, grid.nz)};
-        receiver_indices.reserve(resolved_experiment_->receivers.size());
-        receiver_textures.reserve(resolved_experiment_->receivers.size());
-        for (const auto& receiver : resolved_experiment_->receivers) {
+        receiver_indices.reserve(resolved->receivers.size());
+        receiver_textures.reserve(resolved->receivers.size());
+        for (const auto& receiver : resolved->receivers) {
             receiver_indices.push_back({
                 receiver.x_m / grid.dx_m,
                 receiver.y_m / grid.dy_m,

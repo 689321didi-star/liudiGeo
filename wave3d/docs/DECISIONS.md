@@ -1149,3 +1149,32 @@ snapshot, and both project and object identities must match before any page is
 shown. The existing `ExperimentEditor` remains the sole editing surface; Draft,
 Apply, Revert, dirty-state, automatic validation, Run/Result inspection, and
 controller extraction remain later phases.
+
+## D069 — Experiment editing has separate draft and applied state
+
+**Status:** Accepted and verified, 2026-09-28
+
+`ExperimentController` is the single UI-facing coordinator for an experiment's
+editable draft, validation candidate, applied draft, and applied resolved
+configuration. `ExperimentEditor` remains the production editing surface in
+Phase 4B2A and publishes complete typed drafts through a compatibility
+callback. Widget text and modified flags are not authoritative state.
+
+Every representable edit is validated with the existing production
+`ExperimentDraftStore::resolve` path and the configured output constraint.
+Validation never mutates applied state. Apply repeats validation and publishes
+the draft and resolved configuration together only when valid. Revert restores
+the last loaded or applied domain draft. Exact domain comparison, including
+all acquisition variants and explicit receiver coordinates, defines dirty
+state.
+
+MainWindow retains project persistence, preflight, immutable run preparation,
+worker ownership, and visualization wiring. Preflight consumes only the
+controller's applied state and is disabled while unapplied edits exist. Apply
+does not save, start a worker, allocate GPU storage, or write output. The
+read-only Context Inspector and source/receiver overlays also consume applied
+state, so invalid or unapplied edits cannot alter production presentation.
+
+The controller is Qt Core-only and has no CUDA, OpenGL, renderer, worker,
+project-navigation, or SEG-Y implementation dependency. The desktop supplies
+the existing SEG-Y sample-axis check through a narrow resolved-value validator.

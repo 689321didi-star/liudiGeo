@@ -13,7 +13,8 @@ public:
     explicit ExperimentEditor(QWidget* parent = nullptr);
 
     void set_callbacks(
-        std::function<void()> change_callback,
+        std::function<void(ExperimentDraft)> change_callback,
+        std::function<void(QString)> invalid_input_callback,
         std::function<void()> save_callback);
     void set_model_context(
         const Grid3D& grid,
@@ -43,7 +44,8 @@ private:
     [[nodiscard]] AcquisitionGeometry current_acquisition() const;
     void populate_acquisition(const AcquisitionGeometry& acquisition);
 
-    std::function<void()> change_callback_;
+    std::function<void(ExperimentDraft)> change_callback_;
+    std::function<void(QString)> invalid_input_callback_;
     std::function<void()> save_callback_;
     QString shot_id_;
     QString model_reference_;

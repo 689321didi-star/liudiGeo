@@ -625,10 +625,10 @@ The current and recommended V2 state ownership boundary is:
 | --- | --- | --- | --- |
 | Current project | `MainWindow::project_` | MainWindow actions, project/model/run adapters | `ProjectController` |
 | `PhysicalModel` | `StaticModelScene::model_` | static scene derivations and MainWindow presentation | `ProjectController` model service; views receive immutable presentation data |
-| `ExperimentDraft` | `ExperimentEditor` controls/current draft | MainWindow validation/save and editor widgets | `ExperimentController` |
-| `ResolvedExperimentDraft` | `MainWindow::resolved_experiment_` | preflight, source/receiver presentation | `ExperimentController` immutable resolved state |
-| Source | draft plus resolved experiment | editor writes; MainWindow and run preparation read | `ExperimentController` |
-| Receiver set | acquisition draft plus resolved receiver vector | editor writes; MainWindow and run preparation read | `ExperimentController` |
+| `ExperimentDraft` | `ExperimentController::draft_` | ExperimentEditor compatibility adapter writes; MainWindow saves the applied snapshot | `ExperimentController` (implemented) |
+| `ResolvedExperimentDraft` | `ExperimentController::applied_configuration_` | preflight, Inspector projection, source/receiver presentation | `ExperimentController` immutable applied state (implemented) |
+| Source | controller draft plus applied experiment | editor adapter writes; MainWindow and run preparation read applied state | `ExperimentController` (implemented) |
+| Receiver set | controller acquisition draft plus applied receiver vector | editor adapter writes; MainWindow and run preparation read applied state | `ExperimentController` (implemented) |
 | Prepared run | `MainWindow::prepared_run_` | MainWindow preflight/start | `RunController` |
 | Run status | `ForwardRunWorker::snapshot_` using `ForwardRunState` | worker writes; MainWindow polling reads | `RunController`, reusing `ForwardRunState` |
 | Result selection/data | `ResultWorkspace::Impl` | result widget reads/writes | `ResultController` |
@@ -640,9 +640,10 @@ The current and recommended V2 state ownership boundary is:
 
 The intended controller boundary remains `ProjectController`,
 `ExperimentController`, `RunController`, `VisualizationController`,
-`ResultController`, and `SelectionController`. Only `SelectionController` is
-implemented in Phase 2; later phases introduce a controller only when it owns
-real behavior and replaces a verified legacy responsibility.
+`ResultController`, and `SelectionController`. `SelectionController` and
+`ExperimentController` are implemented; later phases introduce another
+controller only when it owns real behavior and replaces a verified legacy
+responsibility.
 
 Wave3D Studio V2 Phase 3A replaces the visible legacy module list in the
 Project tab with `ProjectNavigator` and a custom `ProjectNavigatorModel` based
@@ -710,8 +711,95 @@ shot-scoped configuration slots and display explicit `Not configured` pages;
 they do not expose draft defaults as accepted values. Project identity and
 object identity must both match before a page is shown. Run and Result remain
 on the unsupported page. The Inspector still has no renderer, worker, CUDA,
-project-I/O, or `ExperimentEditor` dependency; MainWindow remains the temporary
-compatibility adapter until a later ExperimentController phase.
+project-I/O, or `ExperimentEditor` dependency.
+
+## Experiment editing contract
+
+Wave3D Studio V2 Phase 4B2A makes `ExperimentController` the single
+UI-facing owner of editable and applied experiment state. UI widgets are not
+the authoritative experiment state. The existing `ExperimentEditor` remains
+the production editing surface, but now publishes a complete typed
+`ExperimentDraft` through a compatibility callback rather than asking
+MainWindow to reconstruct an independent editing state.
+
+Before Phase 4B2A, the actual lifecycle was:
+
+```text
+MainWindow::configure_experiment_editor
+  -> ExperimentDraftStore::load/defaults
+  -> ExperimentEditor::set_model_context (widget values become editable state)
+
+ExperimentEditor widget signal
+  -> ExperimentEditor::publish_change
+  -> MainWindow::update_experiment_validation
+  -> ExperimentEditor::current_draft
+  -> ExperimentDraftStore::resolve
+  -> MainWindow::resolved_experiment_
+
+MainWindow::save_experiment_draft
+  -> ExperimentEditor::current_draft
+  -> ExperimentDraftStore::resolve + SEG-Y sample-axis validation
+  -> ExperimentDraftStore::save/load
+  -> MainWindow::resolved_experiment_
+
+MainWindow::preflight_experiment
+  -> ResolvedExperimentDraft -> ForwardRunConfiguration
+  -> ForwardConfigurationAdapter::save/load
+  -> ProjectWorkspace::prepare_run -> PreparedRun
+  -> MainWindow::start_prepared_run -> ForwardRunWorker
+```
+
+That path allowed an accepted widget edit to replace the same resolved value
+used by presentation and preflight before an explicit Apply boundary. Phase
+4B2A changes the state path to:
+
+```text
+ExperimentEditor widgets (compatibility view)
+  -> complete ExperimentDraft
+  -> ExperimentController::updateDraft
+  -> ExperimentDraftStore::resolve + optional output validator
+  -> validated candidate
+  -> ExperimentController::apply
+  -> applied ExperimentDraft + applied ResolvedExperimentDraft
+       |                         |
+       |                         +-> read-only ContextInspector projection
+       |                         +-> source/receiver visualization overlays
+       +-> MainWindow::save_experiment_draft (explicit persistence)
+                                      |
+                                      v
+MainWindow::preflight_experiment -> resolved config.yaml -> PreparedRun
+                                      |
+                                      v
+                              ForwardRunWorker -> CUDA production path
+```
+
+Draft is the complete domain value currently being edited. Validation always
+uses the production `ExperimentDraftStore::resolve` implementation; the
+desktop supplies the existing SEG-Y Revision 1 sample-axis check as an
+additional resolved-value validator. Validation creates a candidate only. It
+does not replace the applied configuration and is distinct from run preflight,
+which still checks model/run configuration and creates immutable run files.
+
+Apply repeats validation and atomically replaces the applied draft and
+resolved configuration only on success. It starts no simulation, allocates no
+GPU data, writes no SEG-Y, and does not persist the project. Revert restores
+the last loaded or successfully applied domain draft; it never reconstructs a
+baseline from widget text. Dirty state is exact semantic comparison of the
+complete draft (including acquisition variants and explicit receivers) with
+that domain baseline. A separate invalid-input issue represents widget text
+that cannot yet be converted to a draft.
+
+The controller exposes `Empty`, `Invalid`, `ValidUnapplied`, and `Applied` as
+the reachable automatic-validation states; the separate typed state snapshot
+answers dirty, validation-performed, Apply, Revert, and preflight eligibility.
+The retained `Clean` enum value is the explicit unvalidated clean state seam,
+although the current adapter validates immediately after loading. Applied
+state is the current clean, synchronized production state.
+
+MainWindow remains the compatibility composition root and continues to own
+project persistence, preflight, prepared-run, worker, and visualization
+wiring. `ProjectNavigator` remains selection-only. `ContextInspector` consumes
+only the controller's applied snapshot and cannot edit or validate it.
 
 Increment 11 verifies that behavior by configuring and building with the whole
 `optional/rtm` tree temporarily absent. RTM-off exposes only the forward views,

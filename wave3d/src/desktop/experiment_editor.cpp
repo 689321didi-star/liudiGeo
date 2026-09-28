@@ -499,9 +499,11 @@ ExperimentEditor::ExperimentEditor(QWidget* parent) : QWidget(parent) {
 }
 
 void ExperimentEditor::set_callbacks(
-    std::function<void()> change_callback,
+    std::function<void(ExperimentDraft)> change_callback,
+    std::function<void(QString)> invalid_input_callback,
     std::function<void()> save_callback) {
     change_callback_ = std::move(change_callback);
+    invalid_input_callback_ = std::move(invalid_input_callback);
     save_callback_ = std::move(save_callback);
 }
 
@@ -883,8 +885,14 @@ void ExperimentEditor::publish_change() {
     }
     findChild<QLabel*>(QStringLiteral("experimentSaveStateLabel"))
         ->setText(QStringLiteral("有未保存修改"));
-    if (change_callback_) {
-        change_callback_();
+    try {
+        if (change_callback_) {
+            change_callback_(current_draft());
+        }
+    } catch (const std::exception& error) {
+        const auto message = QString::fromUtf8(error.what());
+        show_validation_error(message);
+        if (invalid_input_callback_) invalid_input_callback_(message);
     }
 }
 

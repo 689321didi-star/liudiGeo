@@ -451,8 +451,11 @@ if(WAVE3D_BUILD_DESKTOP)
 
     add_library(
         wave3d_desktop_experiment STATIC
+        include/wave3d/desktop/experiment_controller.hpp
+        src/desktop/experiment_controller.cpp
         src/desktop/experiment_draft.cpp
         src/desktop/experiment_inspector_state.cpp)
+    set_target_properties(wave3d_desktop_experiment PROPERTIES AUTOMOC ON)
     target_link_libraries(
         wave3d_desktop_experiment PUBLIC wave3d_core Qt6::Core)
 
@@ -611,7 +614,39 @@ if(WAVE3D_BUILD_DESKTOP)
             wave3d_desktop_experiment_inspector_state_tests
             PROPERTIES LABELS "desktop;interfaces")
 
+        add_executable(
+            wave3d_desktop_experiment_controller_tests
+            tests/test_desktop_experiment_controller.cpp)
+        target_link_libraries(
+            wave3d_desktop_experiment_controller_tests
+            PRIVATE wave3d_desktop_experiment)
+        add_test(
+            NAME wave3d_desktop_experiment_controller_tests
+            COMMAND wave3d_desktop_experiment_controller_tests)
+        set_tests_properties(
+            wave3d_desktop_experiment_controller_tests
+            PROPERTIES LABELS "desktop;interfaces")
+
         if(WAVE3D_ENABLE_HDF5)
+            add_executable(
+                wave3d_desktop_overthrust_experiment_controller_tests
+                tests/test_desktop_overthrust_experiment_controller.cpp)
+            target_link_libraries(
+                wave3d_desktop_overthrust_experiment_controller_tests
+                PRIVATE wave3d_desktop_shell)
+            target_compile_definitions(
+                wave3d_desktop_overthrust_experiment_controller_tests
+                PRIVATE
+                    WAVE3D_TEST_OVERTHRUST_MODEL="${CMAKE_CURRENT_SOURCE_DIR}/data/overthrust/models/elastic_200x200x187.h5")
+            add_test(
+                NAME wave3d_desktop_overthrust_experiment_controller_tests
+                COMMAND wave3d_desktop_overthrust_experiment_controller_tests)
+            set_tests_properties(
+                wave3d_desktop_overthrust_experiment_controller_tests
+                PROPERTIES
+                    LABELS "desktop;interfaces;model"
+                    ENVIRONMENT "QT_QPA_PLATFORM=minimal")
+
             add_executable(
                 wave3d_desktop_static_model_tests
                 tests/test_desktop_static_model.cpp)

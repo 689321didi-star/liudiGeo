@@ -1,4 +1,5 @@
 #include "wave3d/desktop/main_window.hpp"
+#include "wave3d/desktop/experiment_controller.hpp"
 #include "wave3d/desktop/experiment_editor.hpp"
 #include "wave3d/desktop/project_workspace.hpp"
 #include "wave3d/desktop/selection_controller.hpp"
@@ -814,10 +815,14 @@ void test_hdf5_model_import() {
     require_child<QDoubleSpinBox>(window, "receiverLineLastYSpin")
         ->setValue(10.0);
     expect(
-        volume->property("receiverCount").toULongLong() == 3 &&
+        volume->property("receiverCount").toULongLong() == 10201 &&
+            window.experiment_controller()->state().dirty &&
+            window.experiment_controller()
+                    ->appliedConfiguration()
+                    ->receivers.size() == 10201 &&
             require_child<QPushButton>(window, "saveExperimentDraftButton")
                 ->isEnabled(),
-        "valid receiver line did not update the resolved overlay");
+        "unapplied receiver line changed the applied overlay or lost dirty state");
 
     const auto csv_path = QDir(project_root).filePath(QStringLiteral("receivers.csv"));
     QFile csv_file(csv_path);
@@ -836,8 +841,8 @@ void test_hdf5_model_import() {
             require_child<QLabel>(window, "explicitReceiverCountLabel")
                 ->text()
                 .contains(QStringLiteral("3 个")) &&
-            volume->property("receiverCount").toULongLong() == 3,
-        "CSV receiver import did not preserve and resolve three rows");
+            volume->property("receiverCount").toULongLong() == 10201,
+        "CSV receiver import changed the applied overlay before Apply");
     require_child<QDoubleSpinBox>(window, "receiverTranslateXSpin")
         ->setValue(5.0);
     expect(
@@ -857,7 +862,7 @@ void test_hdf5_model_import() {
             receiver_geometry->currentIndex() == 2 &&
             require_child<QDoubleSpinBox>(window, "receiverTranslateXSpin")
                     ->value() == 5.0 &&
-            volume->property("receiverCount").toULongLong() == 3,
+            volume->property("receiverCount").toULongLong() == 10201,
         "acquisition template load did not restore CSV geometry");
     receiver_geometry->setCurrentIndex(0);
     require_child<QDoubleSpinBox>(window, "receiverTranslateXSpin")
@@ -914,8 +919,10 @@ void test_hdf5_model_import() {
             require_child<QLabel>(window, "experimentValidationLabel")
                 ->text()
                 .startsWith(QStringLiteral("参数无效")) &&
-            volume->property("sourceMarkerPosition").toList().isEmpty(),
-        "invalid CFL state remained saveable or retained a source marker");
+            volume->property("sourceMarkerPosition").toList().size() == 3 &&
+            window.experiment_controller()->state().edit_state ==
+                wave3d::desktop::ExperimentEditState::Invalid,
+        "invalid CFL state was saveable or replaced the applied source marker");
     require_child<QDoubleSpinBox>(window, "timeStepMsSpin")->setValue(1.0);
 
 #ifdef WAVE3D_DESKTOP_HAS_SEGY
@@ -936,8 +943,8 @@ void test_hdf5_model_import() {
              ->isEnabled() &&
             !require_child<QAction>(window, "validateExperimentAction")
                  ->isEnabled() &&
-            volume->property("receiverCount").toULongLong() == 0,
-        "out-of-domain receiver aperture remained saveable or visible");
+            volume->property("receiverCount").toULongLong() == 20,
+        "invalid receiver aperture was saveable or replaced applied geometry");
     require_child<QDoubleSpinBox>(window, "receiverMaxXSpin")->setValue(30.0);
 
 #if defined(WAVE3D_DESKTOP_HAS_YAML) && defined(WAVE3D_DESKTOP_HAS_SEGY)

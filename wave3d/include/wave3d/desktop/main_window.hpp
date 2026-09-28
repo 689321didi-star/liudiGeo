@@ -20,6 +20,7 @@ namespace wave3d::desktop {
 class StaticModelScene;
 class ProjectNavigator;
 class ContextInspector;
+class ExperimentController;
 #ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
 class ForwardRunWorker;
 struct LiveWavefieldFrame;
@@ -61,6 +62,7 @@ public:
     [[nodiscard]] const ProjectDocument* current_project() const noexcept;
     [[nodiscard]] const QString& current_project_root() const noexcept;
     [[nodiscard]] ProjectNavigator* project_navigator() const noexcept;
+    [[nodiscard]] ExperimentController* experiment_controller() const noexcept;
 
 protected:
     void closeEvent(QCloseEvent* event) override;
@@ -69,7 +71,10 @@ private:
     void activate_project(QString root_directory, ProjectDocument project);
     void clear_model_view();
     void configure_experiment_editor();
+    void accept_experiment_draft(ExperimentDraft draft);
+    void reject_experiment_draft_input(const QString& message);
     void update_experiment_validation();
+    void update_experiment_editor_feedback();
     void update_crop_summary();
     void update_model_view();
     void populate_model_information();
@@ -90,7 +95,7 @@ private:
     ContextInspector* context_inspector_{nullptr};
     QWidget* legacy_inspector_dialog_{nullptr};
     QTabWidget* legacy_inspector_host_{nullptr};
-    std::optional<ResolvedExperimentDraft> resolved_experiment_;
+    ExperimentController* experiment_controller_{nullptr};
     std::optional<PreparedRun> prepared_run_;
 #ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
     std::unique_ptr<ForwardRunWorker> forward_worker_;
@@ -98,6 +103,7 @@ private:
 #endif
     QTimer* run_poll_timer_{nullptr};
     QAction* save_project_action_{nullptr};
+    QAction* validate_experiment_action_{nullptr};
     QAction* pause_run_action_{nullptr};
     QAction* resume_run_action_{nullptr};
     QAction* stop_run_action_{nullptr};
