@@ -1201,3 +1201,20 @@ for later experiment pages. It projects controller state and contains no
 validation, persistence, preflight, renderer, or solver behavior. Resolver
 errors without a reliable structured field path remain page-level messages;
 the UI does not infer field identity from exception text.
+
+## D071 — Dirty experiment navigation requires an explicit domain decision
+
+**Status:** Accepted and verified, 2026-09-28
+
+Creating or opening a replacement project and closing the application must
+first resolve a dirty `ExperimentDraft`. The semantic choices are Apply,
+Discard, and Cancel. Apply uses `ExperimentController::apply` and proceeds only
+after successful validation; it does not persist the project. Discard uses
+`ExperimentController::revert`. Cancel performs no domain or selection action.
+
+Decision execution is a Qt Core-only guard with explicit `Proceed` and
+`Cancelled` outcomes. `MainWindow` separately presents the standard Qt dialog,
+with Cancel as the default and escape action, and injects decisions in tests.
+The guard runs before project loading/creation, worker shutdown, selection
+refresh, or settings persistence. The application has no independent Close
+Project command at this phase, so shutdown is the only close lifecycle path.

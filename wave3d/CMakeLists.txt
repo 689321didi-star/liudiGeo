@@ -452,7 +452,9 @@ if(WAVE3D_BUILD_DESKTOP)
     add_library(
         wave3d_desktop_experiment STATIC
         include/wave3d/desktop/experiment_controller.hpp
+        include/wave3d/desktop/experiment_navigation_guard.hpp
         src/desktop/experiment_controller.cpp
+        src/desktop/experiment_navigation_guard.cpp
         src/desktop/experiment_draft.cpp
         src/desktop/experiment_inspector_state.cpp)
     set_target_properties(wave3d_desktop_experiment PROPERTIES AUTOMOC ON)
@@ -628,6 +630,19 @@ if(WAVE3D_BUILD_DESKTOP)
             wave3d_desktop_experiment_controller_tests
             PROPERTIES LABELS "desktop;interfaces")
 
+        add_executable(
+            wave3d_desktop_experiment_navigation_guard_tests
+            tests/test_desktop_experiment_navigation_guard.cpp)
+        target_link_libraries(
+            wave3d_desktop_experiment_navigation_guard_tests
+            PRIVATE wave3d_desktop_experiment)
+        add_test(
+            NAME wave3d_desktop_experiment_navigation_guard_tests
+            COMMAND wave3d_desktop_experiment_navigation_guard_tests)
+        set_tests_properties(
+            wave3d_desktop_experiment_navigation_guard_tests
+            PROPERTIES LABELS "desktop;interfaces")
+
         if(WAVE3D_ENABLE_HDF5)
             add_executable(
                 wave3d_desktop_overthrust_experiment_controller_tests
@@ -644,6 +659,25 @@ if(WAVE3D_BUILD_DESKTOP)
                 COMMAND wave3d_desktop_overthrust_experiment_controller_tests)
             set_tests_properties(
                 wave3d_desktop_overthrust_experiment_controller_tests
+                PROPERTIES
+                    LABELS "desktop;interfaces;model"
+                    ENVIRONMENT "QT_QPA_PLATFORM=minimal")
+
+            add_executable(
+                wave3d_desktop_dirty_navigation_tests
+                tests/test_desktop_dirty_navigation.cpp)
+            target_link_libraries(
+                wave3d_desktop_dirty_navigation_tests
+                PRIVATE wave3d_desktop_shell)
+            target_compile_definitions(
+                wave3d_desktop_dirty_navigation_tests
+                PRIVATE
+                    WAVE3D_TEST_OVERTHRUST_MODEL="${CMAKE_CURRENT_SOURCE_DIR}/data/overthrust/models/elastic_200x200x187.h5")
+            add_test(
+                NAME wave3d_desktop_dirty_navigation_tests
+                COMMAND wave3d_desktop_dirty_navigation_tests)
+            set_tests_properties(
+                wave3d_desktop_dirty_navigation_tests
                 PROPERTIES
                     LABELS "desktop;interfaces;model"
                     ENVIRONMENT "QT_QPA_PLATFORM=minimal")

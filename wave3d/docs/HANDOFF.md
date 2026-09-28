@@ -2340,3 +2340,51 @@ Five inspected 1440 by 1000 XCB captures are stored in the ignored
 after Revert, and explicit Ricker validation. Production code adds no
 `findChild` call. Numerical/CUDA/CPML/free-surface/source-injection/
 receiver-sampling/HDF5/SEG-Y and `VolumeViewport` files are unchanged.
+
+## Wave3D Studio V2 Phase 4B2B1.5 dirty Draft navigation guard
+
+**Status:** Verified on 2026-09-28.
+
+New project, project open/switch, and application close now resolve a dirty
+experiment through one Apply/Discard/Cancel guard. Cancel and failed Apply keep
+the active project, Draft, and selection. Discard uses controller Revert and
+synchronizes both Source editors; valid Apply publishes before navigation.
+The dialog uses “unapplied changes” terminology and defaults to Cancel. There
+is no separate Close Project command in the current UI.
+
+The policy/action test links only `wave3d_desktop_experiment` and Qt6 Core;
+`ldd` reports no CUDA, OpenGL, or Qt Widgets dependency. The real Overthrust
+integration test verifies canonical 2500/2500/1150 m and 3 Hz values, all
+navigation decisions, new-project protection, selection preservation, both UI
+surfaces, failed Apply isolation, and one decision per close attempt.
+
+```text
+PATH=/home/byai/.cache/wave3d-toolchain/env/bin:$PATH \
+  cmake --build build/ui-v2-baseline-20260922 --parallel 6
+# complete build passed
+
+PATH=/home/byai/.cache/wave3d-toolchain/env/bin:$PATH \
+  QT_QPA_PLATFORM=offscreen ctest \
+  --test-dir build/ui-v2-baseline-20260922 --output-on-failure -j4
+# 45/45 passed, including dirty navigation, controller/Source synchronization,
+# CUDA/session/worker pause-resume-stop, CPML/free-surface, and SEG-Y tests
+
+QT_QPA_PLATFORM=offscreen \
+  build/ui-v2-baseline-20260922/wave3d_studio --inspect-shell
+# 4 viewports; display fields 6; Navigator/Inspector/Bottom pages = 3/1/4
+
+QT_QPA_PLATFORM=xcb build/ui-v2-baseline-20260922/wave3d_studio \
+  --project /tmp/wave3d-v2-phase4b2a-review-20260928 \
+  --module project --project-selection source --smoke-test
+# real Overthrust and visible OpenGL smoke passed
+
+QT_QPA_PLATFORM=xcb build/ui-v2-baseline-20260922/wave3d_studio \
+  --project /tmp/wave3d-v2-phase4b2a-review-20260928 \
+  --auto-run phase4b2b15-final-stop-2 --smoke-test
+# canonical configuration; cancelled result only; no partial SEG-Y files
+```
+
+No numerical kernel, CPML, free-surface, source/receiver mathematics, GPU
+layout, HDF5/SEG-Y definition, `CudaForwardSession`, or `VolumeViewport`
+algorithm changed. Production code adds no `findChild` call. ReceiverInspector
+editing remains the next independent migration and is not part of this phase.

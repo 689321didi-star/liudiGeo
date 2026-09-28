@@ -858,9 +858,26 @@ separate from project persistence.
 
 ReceiverSet, Simulation, Boundary, and Output pages remain read-only. Ricker
 preview is deferred; a later presentation-only component may reuse the pure
-production `ricker_value` API without copying its formula. Confirmation before
-discarding a dirty Draft during project replacement remains a future project
-lifecycle UX decision.
+production `ricker_value` API without copying its formula.
+
+## Dirty experiment navigation contract
+
+Project replacement and application close ask for an explicit decision before
+discarding a dirty `ExperimentDraft`. A Qt Core-only navigation guard maps
+`Apply`, `Discard`, and `Cancel` to `ExperimentController::apply`,
+`ExperimentController::revert`, or no action. It returns `Proceed` or
+`Cancelled`; it owns no dialog, project, selection, persistence, worker, or
+CUDA behavior.
+
+`MainWindow` is the presentation and lifecycle adapter. It skips the dialog for
+a clean Draft, presents one standard dialog for a dirty Draft, and invokes the
+guard before creating/loading a replacement project or before shutdown side
+effects. Cancel and failed Apply therefore leave the active project, Draft,
+selection, worker, and window settings untouched. Apply remains separate from
+project save. Discard follows the controller signal path, which synchronizes
+the Source Inspector and legacy ExperimentEditor. The current product has no
+separate Close Project command; application close is its only explicit close
+path.
 
 Increment 11 verifies that behavior by configuring and building with the whole
 `optional/rtm` tree temporarily absent. RTM-off exposes only the forward views,

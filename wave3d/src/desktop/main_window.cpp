@@ -849,8 +849,12 @@ QVector<ProjectNavigatorRun> discover_project_navigator_runs(
 
 } // namespace
 
-MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
-    : MainWindowShell(parent) {
+MainWindow::MainWindow(
+    QWidget* parent,
+    bool restore_last_project,
+    ExperimentNavigationDecisionProvider navigation_decision_provider)
+    : MainWindowShell(parent),
+      navigation_decision_provider_(std::move(navigation_decision_provider)) {
     experiment_controller_ = new ExperimentController(this);
     auto* central = new QWidget(this);
     auto* central_layout = new QVBoxLayout(central);
@@ -1085,7 +1089,7 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
             return;
         }
         QString error;
-        if (!create_project(root, name, &error)) {
+        if (!create_project(root, name, &error) && !error.isEmpty()) {
             QMessageBox::critical(this, QStringLiteral("无法创建项目"), error);
         }
     });
@@ -1099,7 +1103,9 @@ MainWindow::MainWindow(QWidget* parent, bool restore_last_project)
             return;
         }
         QString error;
-        if (!this->open_project(QFileInfo(document).absolutePath(), &error)) {
+        if (!this->open_project(
+                QFileInfo(document).absolutePath(), &error) &&
+            !error.isEmpty()) {
             QMessageBox::critical(this, QStringLiteral("无法打开项目"), error);
         }
     });
@@ -1506,6 +1512,10 @@ bool MainWindow::create_project(
     const QString& root_directory,
     const QString& project_name,
     QString* error_message) {
+    if (request_experiment_navigation_permission(error_message) ==
+        ExperimentNavigationOutcome::Cancelled) {
+        return false;
+    }
     try {
         auto project = ProjectWorkspace::create(root_directory, project_name);
         activate_project(QDir(root_directory).absolutePath(), std::move(project));
@@ -1521,6 +1531,10 @@ bool MainWindow::create_project(
 bool MainWindow::open_project(
     const QString& root_directory,
     QString* error_message) {
+    if (request_experiment_navigation_permission(error_message) ==
+        ExperimentNavigationOutcome::Cancelled) {
+        return false;
+    }
     try {
         auto project = ProjectWorkspace::load(root_directory);
         activate_project(QDir(root_directory).absolutePath(), std::move(project));
@@ -2313,6 +2327,11 @@ ExperimentController* MainWindow::experiment_controller() const noexcept {
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
+    if (request_experiment_navigation_permission() ==
+        ExperimentNavigationOutcome::Cancelled) {
+        event->ignore();
+        return;
+    }
 #ifdef WAVE3D_DESKTOP_HAS_CUDA_FORWARD
     if (forward_worker_ && forward_worker_->isRunning()) {
         forward_worker_->request_stop();
@@ -2322,6 +2341,47 @@ void MainWindow::closeEvent(QCloseEvent* event) {
 #endif
     save_window_settings();
     QMainWindow::closeEvent(event);
+}
+
+ExperimentNavigationOutcome
+MainWindow::request_experiment_navigation_permission(QString* error_message) {
+    if (error_message != nullptr) error_message->clear();
+    if (!experiment_navigation_requires_decision(*experiment_controller_)) {
+        return ExperimentNavigationOutcome::Proceed;
+    }
+
+    ExperimentNavigationDecision decision{ExperimentNavigationDecision::Cancel};
+    if (navigation_decision_provider_) {
+        decision = navigation_decision_provider_();
+    } else {
+        QMessageBox dialog(
+            QMessageBox::Warning,
+            QStringLiteral("未应用的实验修改"),
+            QStringLiteral(
+                "当前实验包含未应用的修改。继续操作前请选择如何处理这些修改。"),
+            QMessageBox::NoButton,
+            this);
+        auto* apply_button = dialog.addButton(
+            QStringLiteral("应用修改"), QMessageBox::ApplyRole);
+        auto* discard_button = dialog.addButton(
+            QStringLiteral("放弃修改"), QMessageBox::DestructiveRole);
+        auto* cancel_button = dialog.addButton(
+            QStringLiteral("取消"), QMessageBox::RejectRole);
+        dialog.setDefaultButton(cancel_button);
+        dialog.setEscapeButton(cancel_button);
+        dialog.exec();
+        if (dialog.clickedButton() == apply_button) {
+            decision = ExperimentNavigationDecision::Apply;
+        } else if (dialog.clickedButton() == discard_button) {
+            decision = ExperimentNavigationDecision::Discard;
+        }
+    }
+
+    QString local_error;
+    const auto outcome = resolve_experiment_navigation(
+        *experiment_controller_, decision, &local_error);
+    if (error_message != nullptr) *error_message = local_error;
+    return outcome;
 }
 
 void MainWindow::activate_project(

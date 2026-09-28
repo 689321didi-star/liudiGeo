@@ -1,12 +1,14 @@
 #pragma once
 
 #include "wave3d/desktop/experiment_draft.hpp"
+#include "wave3d/desktop/experiment_navigation_guard.hpp"
 #include "wave3d/desktop/main_window_shell.hpp"
 #include "wave3d/desktop/project_workspace.hpp"
 #include "wave3d/desktop/segy_model_conversion.hpp"
 
 #include <QString>
 
+#include <functional>
 #include <memory>
 #include <optional>
 
@@ -28,9 +30,13 @@ struct LiveWavefieldFrame;
 
 class MainWindow final : public MainWindowShell {
 public:
+    using ExperimentNavigationDecisionProvider =
+        std::function<ExperimentNavigationDecision()>;
+
     explicit MainWindow(
         QWidget* parent = nullptr,
-        bool restore_last_project = true);
+        bool restore_last_project = true,
+        ExperimentNavigationDecisionProvider navigation_decision_provider = {});
     ~MainWindow() override;
 
     [[nodiscard]] bool create_project(
@@ -68,6 +74,9 @@ protected:
     void closeEvent(QCloseEvent* event) override;
 
 private:
+    [[nodiscard]] ExperimentNavigationOutcome
+    request_experiment_navigation_permission(
+        QString* error_message = nullptr);
     void activate_project(QString root_directory, ProjectDocument project);
     void clear_model_view();
     void configure_experiment_editor();
@@ -107,6 +116,7 @@ private:
     QAction* pause_run_action_{nullptr};
     QAction* resume_run_action_{nullptr};
     QAction* stop_run_action_{nullptr};
+    ExperimentNavigationDecisionProvider navigation_decision_provider_;
     bool experiment_model_reference_changed_{false};
     int volume_property_index_{-1};
 };
